@@ -43,7 +43,7 @@ const Dashboard = () => {
 
   const [selectedMonth, setSelectedMonth] = useState('');
   const [selectedState, setSelectedState] = useState('');
-  const [revenue, setRevenue] = useState('$0.00');
+  const [revenue, setRevenue] = useState('₹0.00');
   const [numOfSession, setNumOfSession] = useState('0');
   const [usage, setUsage] = useState('0%');
   const [uptime, setUptime] = useState('0%');

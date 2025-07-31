@@ -1,4 +1,4 @@
-// src/components/Sidebar.js
+
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {FaArrowRight,FaArrowLeft,FaTachometerAlt,FaBatteryFull,FaWallet,FaCar,FaBell,FaHeadset,} from 'react-icons/fa';

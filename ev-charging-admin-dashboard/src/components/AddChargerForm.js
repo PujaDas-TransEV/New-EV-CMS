@@ -44,7 +44,7 @@ const AddChargerForm = () => {
     e.preventDefault();
 
     try {
-      const response = await fetch('http://localhost:3000/admin/createchargerunit', {
+      const response = await fetch('https://be.cms.ocpp.transev.site/admin/createchargerunit', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

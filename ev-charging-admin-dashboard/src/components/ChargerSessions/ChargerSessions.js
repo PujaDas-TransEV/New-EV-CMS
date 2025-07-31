@@ -29,10 +29,10 @@ const ChargerList = () => {
       setLoading(false);
       return;
     }
-
+    
     try {
       const response = await axios.post(
-        'http://localhost:3000/admin/getchargerbyuserid',
+        'https://be.cms.ocpp.transev.site/admin/getchargerbyuserid',
         { get_user_id: userId },
         {
           headers: {
