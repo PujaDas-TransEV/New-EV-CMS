@@ -8,6 +8,8 @@ import './index.css';
 import RevenueManagement from './components/RevenueManagement';
 import AddChargerForm from './components/AddChargerForm';
 import DriversVehicles from './components/DriversVehicles';
+import Alerts from './components/Alerts';
+import Support from './components/Support';
 
 function App() {
   return (
@@ -21,6 +23,8 @@ function App() {
         <Route path="/revenue" element={<RevenueManagement />} />
         <Route path="/add-charger" element={<AddChargerForm />} />
         <Route path="/vd-management" element={<DriversVehicles />} />
+        <Route path="/alerts" element={<Alerts />} />
+        <Route path="/support" element={<Support />} />
       </Routes>
     </Router>
   );
