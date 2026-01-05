@@ -67,8 +67,7 @@ const ChargerList = () => {
       <Sidebar />
 
       <div className="flex-1 p-6 space-y-6">
-        {/* PAGE HEADER */}
-        {/* PAGE HEADER */}
+      
 <div className="bg-white/5 border border-white/10 backdrop-blur-xl rounded-2xl p-5">
   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
     

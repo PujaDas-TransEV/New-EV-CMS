@@ -79,7 +79,8 @@ const Dashboard = () => {
           {/* TOP BAR */}
           <div className="flex justify-between items-center bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5 shadow-xl">
             <div>
-              <h1 className="text-2xl font-bold text-white">Welcome, {userName} ⚡</h1>
+              <h1 className="text-2xl font-bold text-white">Welcome, {userName} 
+                 </h1>
               <p className="text-sm text-gray-400">Enterprise EV Charging Control Center</p>
             </div>
             <div className="flex items-center gap-4">
