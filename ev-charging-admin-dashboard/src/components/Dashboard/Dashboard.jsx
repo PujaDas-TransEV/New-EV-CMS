@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import Sidebar from "../Sidebar/Sidebar";
 import { jwtDecode } from "jwt-decode";
 import { useNavigate } from "react-router-dom";
@@ -72,6 +72,11 @@ const Dashboard = () => {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [userApiStatus, setUserApiStatus] = useState("active");
   const [statusApiStatus, setStatusApiStatus] = useState("active");
+  
+  // Refs to prevent duplicate API calls
+  const isMounted = useRef(true);
+  const fetchInProgress = useRef(false);
+  const statusFetchPromises = useRef({});
 
   // Get user ID from token
   const getUserID = () => {
@@ -122,18 +127,22 @@ const Dashboard = () => {
       const data = await response.json();
       console.log("User API response data received, chargers found:", data.user_chargerunit_details?.length || 0);
       
-      setUserDetails(data.userdetails);
-      setUserApiStatus("active");
-      
-      if (data.userdetails?.firstname) {
-        setUserName(data.userdetails.firstname);
+      if (isMounted.current) {
+        setUserDetails(data.userdetails);
+        setUserApiStatus("active");
+        
+        if (data.userdetails?.firstname) {
+          setUserName(data.userdetails.firstname);
+        }
       }
       
       return data.user_chargerunit_details || [];
       
     } catch (err) {
       console.error("Error fetching user chargers:", err);
-      setUserApiStatus("error");
+      if (isMounted.current) {
+        setUserApiStatus("error");
+      }
       
       // Fallback demo data
       const demoChargers = [
@@ -161,71 +170,104 @@ const Dashboard = () => {
 
   // Fetch status for a single charger
   const fetchChargerStatus = async (chargerId, chargerInfo) => {
-    try {
-      console.log(`Fetching status for charger ${chargerId} with API key:`, API_CONFIG.STATUS_API.API_KEY.substring(0, 20) + "...");
-      
-      const response = await fetch(API_CONFIG.STATUS_API.BASE_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          [API_CONFIG.STATUS_API.KEY_HEADER]: API_CONFIG.STATUS_API.API_KEY,
-        },
-        body: JSON.stringify({ uid: chargerId }),
-      });
-
-      if (response.status === 401 || response.status === 403) {
-        setStatusApiStatus("invalid");
-        throw new Error("Status API authentication failed - Invalid x-api-key");
-      }
-      
-      if (!response.ok) {
-        throw new Error(`Status API error! status: ${response.status} for charger ${chargerId}`);
-      }
-
-      const statusData = await response.json();
-      console.log(`Status data received for ${chargerId}:`, statusData);
-      
-      setStatusApiStatus("active");
-      
-      return {
-        chargerInfo,
-        statusData,
-        lastUpdated: new Date(),
-        error: null
-      };
-      
-    } catch (err) {
-      console.error(`Error fetching status for charger ${chargerId}:`, err);
-      setStatusApiStatus("error");
-      
-      // Return fallback data for this charger
-      return {
-        chargerInfo,
-        statusData: {
-          charger_id: chargerId,
-          status: "Unknown",
-          connectors: {
-            "0": {
-              status: "Unknown",
-              latest_meter_value: null,
-              latest_transaction_consumption_kwh: 0.0,
-              error_code: "ConnectionError",
-              latest_transaction_id: null
-            }
-          },
-          online: "Offline",
-          latest_message_received_time: null
-        },
-        lastUpdated: new Date(),
-        error: err.message
-      };
+    // Return cached promise if already fetching
+    if (statusFetchPromises.current[chargerId]) {
+      return statusFetchPromises.current[chargerId];
     }
+
+    const fetchPromise = (async () => {
+      try {
+        console.log(`Fetching status for charger ${chargerId} with API key:`, API_CONFIG.STATUS_API.API_KEY.substring(0, 20) + "...");
+        
+        const response = await fetch(API_CONFIG.STATUS_API.BASE_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            [API_CONFIG.STATUS_API.KEY_HEADER]: API_CONFIG.STATUS_API.API_KEY,
+          },
+          body: JSON.stringify({ uid: chargerId }),
+        });
+
+        if (response.status === 401 || response.status === 403) {
+          if (isMounted.current) {
+            setStatusApiStatus("invalid");
+          }
+          throw new Error("Status API authentication failed - Invalid x-api-key");
+        }
+        
+        if (!response.ok) {
+          throw new Error(`Status API error! status: ${response.status} for charger ${chargerId}`);
+        }
+
+        const statusData = await response.json();
+        console.log(`Status data received for ${chargerId}:`, statusData);
+        
+        if (isMounted.current) {
+          setStatusApiStatus("active");
+        }
+        
+        return {
+          chargerInfo,
+          statusData,
+          lastUpdated: new Date(),
+          error: null
+        };
+        
+      } catch (err) {
+        console.error(`Error fetching status for charger ${chargerId}:`, err);
+        if (isMounted.current) {
+          setStatusApiStatus("error");
+        }
+        
+        // Return fallback data for this charger
+        return {
+          chargerInfo,
+          statusData: {
+            charger_id: chargerId,
+            status: "Unknown",
+            connectors: {
+              "0": {
+                status: "Unknown",
+                latest_meter_value: null,
+                latest_transaction_consumption_kwh: 0.0,
+                error_code: "ConnectionError",
+                latest_transaction_id: null
+              }
+            },
+            online: "Offline",
+            latest_message_received_time: null
+          },
+          lastUpdated: new Date(),
+          error: err.message
+        };
+      }
+    })();
+
+    // Store the promise in cache
+    statusFetchPromises.current[chargerId] = fetchPromise;
+    
+    // Clean up promise from cache after completion
+    fetchPromise.finally(() => {
+      delete statusFetchPromises.current[chargerId];
+    });
+    
+    return fetchPromise;
   };
 
-  // Fetch status for all chargers
+  // Fetch status for all chargers with controlled concurrency
   const fetchAllChargersStatus = async () => {
-    setLoading(true);
-    setError(null);
+    // Prevent multiple simultaneous fetches
+    if (fetchInProgress.current) {
+      console.log("Fetch already in progress, skipping...");
+      return;
+    }
+    
+    fetchInProgress.current = true;
+    
+    if (isMounted.current) {
+      setLoading(true);
+      setError(null);
+    }
     
     try {
       // First get user's chargers using the USER API with apiauthkey
@@ -233,34 +275,66 @@ const Dashboard = () => {
       const chargers = await fetchUserChargers();
       
       if (!chargers || chargers.length === 0) {
-        setError("No chargers found for this user.");
-        setLoading(false);
+        if (isMounted.current) {
+          setError("No chargers found for this user.");
+          setLoading(false);
+        }
         return;
       }
       
       console.log(`Step 2: Found ${chargers.length} chargers. Fetching status for each...`);
       
-      // Fetch status for all chargers in parallel using STATUS API with x-api-key
-      const statusPromises = chargers.map(charger => 
-        fetchChargerStatus(charger.uid, charger)
-      );
+      // Limit concurrent status API calls to prevent overwhelming the server
+      const CONCURRENT_LIMIT = 3;
+      const results = new Array(chargers.length).fill(null);
       
-      const results = await Promise.allSettled(statusPromises);
+      // Process in batches
+      const processBatch = async (startIdx, batchSize) => {
+        const batchPromises = [];
+        for (let i = startIdx; i < Math.min(startIdx + batchSize, chargers.length); i++) {
+          const charger = chargers[i];
+          batchPromises.push(
+            fetchChargerStatus(charger.uid, charger)
+              .then(statusData => ({ index: i, uid: charger.uid, ...statusData }))
+              .catch(err => ({ 
+                index: i, 
+                uid: charger.uid, 
+                chargerInfo: charger,
+                statusData: {
+                  charger_id: charger.uid,
+                  status: "Error",
+                  connectors: {},
+                  online: "Offline",
+                  latest_message_received_time: null
+                },
+                lastUpdated: new Date(),
+                error: err.message 
+              }))
+          );
+        }
+        return Promise.all(batchPromises);
+      };
+      
+      // Process in batches
+      for (let i = 0; i < chargers.length; i += CONCURRENT_LIMIT) {
+        const batchResults = await processBatch(i, CONCURRENT_LIMIT);
+        batchResults.forEach(result => {
+          results[result.index] = result;
+        });
+      }
       
       // Process results
       const chargersDataMap = {};
       const newAlerts = [];
       
-      results.forEach((result, index) => {
-        const charger = chargers[index];
-        
-        if (result.status === "fulfilled") {
-          const { chargerInfo, statusData, lastUpdated, error } = result.value;
+      results.forEach((result) => {
+        if (result) {
+          const { uid, chargerInfo, statusData, error } = result;
           
-          chargersDataMap[charger.uid] = {
+          chargersDataMap[uid] = {
             chargerInfo,
             statusData,
-            lastUpdated,
+            lastUpdated: new Date(),
             error
           };
           
@@ -283,37 +357,27 @@ const Dashboard = () => {
               newAlerts.push(`${chargerInfo.ChargerName} - Port ${parseInt(connectorId) + 1} is unavailable`);
             }
           });
-          
-        } else {
-          // Handle rejected promise
-          chargersDataMap[charger.uid] = {
-            chargerInfo: charger,
-            statusData: {
-              charger_id: charger.uid,
-              status: "Error",
-              connectors: {},
-              online: "Offline",
-              latest_message_received_time: null
-            },
-            lastUpdated: new Date(),
-            error: result.reason?.message || "Failed to fetch status"
-          };
-          
-          newAlerts.push(`Failed to load status for ${charger.ChargerName}`);
         }
       });
       
-      setChargersData(chargersDataMap);
-      setAlerts(newAlerts);
-      setLastUpdated(new Date());
+      if (isMounted.current) {
+        setChargersData(chargersDataMap);
+        setAlerts(newAlerts);
+        setLastUpdated(new Date());
+      }
       
       console.log(`Step 3: Data loaded successfully. ${Object.keys(chargersDataMap).length} chargers updated.`);
       
     } catch (err) {
       console.error("Error in fetchAllChargersStatus:", err);
-      setError("Failed to load charger status. Please try again.");
+      if (isMounted.current) {
+        setError("Failed to load charger status. Please try again.");
+      }
     } finally {
-      setLoading(false);
+      if (isMounted.current) {
+        setLoading(false);
+      }
+      fetchInProgress.current = false;
     }
   };
 
@@ -394,22 +458,44 @@ const Dashboard = () => {
   const kpis = calculateKPIs();
 
   useEffect(() => {
+    isMounted.current = true;
+    
     const token = localStorage.getItem("token");
-    if (!token) return navigate("/signin");
+    if (!token) {
+      navigate("/signin");
+      return;
+    }
+    
     try {
       const decoded = jwtDecode(token);
       setUserName(decoded.firstname || "User");
     } catch {
       navigate("/signin");
+      return;
     }
 
-    // Initial fetch
-    fetchAllChargersStatus();
+    // Use a timeout to prevent double calls in development mode
+    const fetchTimeout = setTimeout(() => {
+      if (isMounted.current) {
+        fetchAllChargersStatus();
+      }
+    }, 100);
 
-    // Set up polling every 10 seconds
-    const intervalId = setInterval(fetchAllChargersStatus, 30000);
+    // Set up polling every 30 seconds
+    const intervalId = setInterval(() => {
+      if (isMounted.current && !fetchInProgress.current) {
+        fetchAllChargersStatus();
+      }
+    }, 30000);
 
-    return () => clearInterval(intervalId);
+    return () => {
+      clearTimeout(fetchTimeout);
+      clearInterval(intervalId);
+      isMounted.current = false;
+      fetchInProgress.current = false;
+      // Clear all cached promises
+      statusFetchPromises.current = {};
+    };
   }, [navigate]);
 
   // Generate live power data from all chargers
@@ -551,7 +637,7 @@ const Dashboard = () => {
                 <button 
                   onClick={fetchAllChargersStatus} 
                   className="text-blue-400 hover:text-blue-300 flex items-center gap-1 text-xs"
-                  disabled={loading}
+                  disabled={loading || fetchInProgress.current}
                 >
                   <RefreshCw size={12} className={loading ? "animate-spin" : ""} /> 
                   {loading ? "Refreshing..." : "Refresh"}
