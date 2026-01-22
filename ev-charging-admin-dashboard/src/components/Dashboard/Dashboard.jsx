@@ -41,6 +41,7 @@ import {
   TrendingUp,
   BatteryCharging,
   Calendar,
+  Trash2,
 } from "lucide-react";
 
 // API Configuration with separate keys for different endpoints
@@ -54,6 +55,11 @@ const API_CONFIG = {
     BASE_URL: "https://api.ocpphal.transev.site/api/status",
     API_KEY: "J9YtyNYdbLD8N4qMwU2WQrr9XV2SJn4Q3qrCLEcHa8wwaZC34xhAd3RotuYdHwiB",
     KEY_HEADER: "x-api-key"  // Standard header for this endpoint
+  },
+  DELETE_API: {
+    BASE_URL: "https://be.cms.ocpp.transev.site/admin/deleteacharger",
+    API_KEY: "aBcD1eFgH2iJkLmNoPqRsTuVwXyZ012345678jasldjalsdjurewouroewiru",
+    KEY_HEADER: "apiauthkey"  // Using the same auth key as USER_API
   }
 };
 
@@ -72,6 +78,11 @@ const Dashboard = () => {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [userApiStatus, setUserApiStatus] = useState("active");
   const [statusApiStatus, setStatusApiStatus] = useState("active");
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [chargerToDelete, setChargerToDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
+  const [deleteSuccess, setDeleteSuccess] = useState(false);
   
   // Refs to prevent duplicate API calls
   const isMounted = useRef(true);
@@ -89,6 +100,20 @@ const Dashboard = () => {
     } catch (err) {
       console.error("Error decoding token:", err);
       return "5mrv";
+    }
+  };
+
+  // Get admin ID from token (if available)
+  const getAdminID = () => {
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) return null;
+      
+      const decoded = jwtDecode(token);
+      return decoded.adminId || decoded.admin_id || null;
+    } catch (err) {
+      console.error("Error decoding token for admin ID:", err);
+      return null;
     }
   };
 
@@ -455,6 +480,82 @@ const Dashboard = () => {
     };
   };
 
+  // Handle charger deletion
+  const handleDeleteCharger = async () => {
+    if (!chargerToDelete) return;
+    
+    setIsDeleting(true);
+    setDeleteError(null);
+    setDeleteSuccess(false);
+    
+    try {
+      const userId = getUserID();
+      const adminId = getAdminID();
+      
+      // Prepare request body according to API spec
+      const requestBody = {
+        charger_uid: chargerToDelete.uid,
+      };
+      
+      // Add user_id or admin_id based on what's available
+      if (adminId) {
+        requestBody.admin_id = adminId;
+      } else if (userId) {
+        requestBody.user_id = userId;
+      } else {
+        throw new Error("No user or admin ID found in token");
+      }
+      
+      console.log("Deleting charger with body:", requestBody);
+      console.log("Using API key:", API_CONFIG.DELETE_API.API_KEY.substring(0, 20) + "...");
+      
+      const response = await fetch(API_CONFIG.DELETE_API.BASE_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          [API_CONFIG.DELETE_API.KEY_HEADER]: API_CONFIG.DELETE_API.API_KEY,
+        },
+        body: JSON.stringify(requestBody),
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Delete failed with status ${response.status}: ${errorText}`);
+      }
+      
+      const result = await response.json();
+      console.log("Delete API response:", result);
+      
+      // Update the UI by removing the deleted charger
+      const updatedChargers = { ...chargersData };
+      delete updatedChargers[chargerToDelete.uid];
+      setChargersData(updatedChargers);
+      
+      setDeleteSuccess(true);
+      
+      // Close modal and refresh data after a short delay
+      setTimeout(() => {
+        setShowDeleteModal(false);
+        setChargerToDelete(null);
+        fetchAllChargersStatus(); // Refresh the data
+      }, 1500);
+      
+    } catch (err) {
+      console.error("Error deleting charger:", err);
+      setDeleteError(err.message);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // Open delete confirmation modal
+  const confirmDeleteCharger = (charger) => {
+    setChargerToDelete(charger);
+    setShowDeleteModal(true);
+    setDeleteError(null);
+    setDeleteSuccess(false);
+  };
+
   const kpis = calculateKPIs();
 
   useEffect(() => {
@@ -763,7 +864,7 @@ const Dashboard = () => {
                   return (
                     <div
                       key={chargerId}
-                      className="bg-gray-900/80 border border-gray-700 rounded-2xl p-6 hover:shadow-2xl transition-all hover:border-gray-600"
+                      className="bg-gray-900/80 border border-gray-700 rounded-2xl p-6 hover:shadow-2xl transition-all hover:border-gray-600 group"
                     >
                       {/* Charger Header */}
                       <div className="flex items-center justify-between mb-6">
@@ -786,6 +887,13 @@ const Dashboard = () => {
                           }`}>
                             {statusData?.online || "Offline"}
                           </span>
+                          <button
+                            onClick={() => confirmDeleteCharger({uid: chargerId, ...chargerInfo})}
+                            className="p-2 hover:bg-red-500/20 rounded-lg text-gray-400 hover:text-red-400 transition-colors"
+                            title="Delete Charger"
+                          >
+                            <Trash2 size={18} />
+                          </button>
                         </div>
                       </div>
 
@@ -1101,6 +1209,109 @@ const Dashboard = () => {
             </div>
           </div>
         )}
+
+        {/* DELETE CHARGER MODAL */}
+        {showDeleteModal && (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+            <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-white">Delete Charger</h2>
+                <button
+                  onClick={() => {
+                    setShowDeleteModal(false);
+                    setChargerToDelete(null);
+                    setDeleteError(null);
+                  }}
+                  className="p-2 hover:bg-gray-800 rounded-lg transition"
+                  disabled={isDeleting}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              {deleteSuccess ? (
+                <div className="text-center py-6">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-500/20 flex items-center justify-center">
+                    <CheckCircle className="text-green-400" size={32} />
+                  </div>
+                  <h3 className="text-lg font-semibold text-green-400 mb-2">Charger Deleted Successfully</h3>
+                  <p className="text-gray-400">
+                    {chargerToDelete?.ChargerName || `Charger ${chargerToDelete?.uid}`} has been removed.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <div className="mb-6">
+                    <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-500/20 mb-4 mx-auto">
+                      <AlertTriangle className="text-red-400" size={24} />
+                    </div>
+                    <h3 className="text-lg font-semibold text-center mb-2">Confirm Deletion</h3>
+                    <p className="text-gray-400 text-center mb-4">
+                      Are you sure you want to delete <span className="font-semibold text-white">{chargerToDelete?.ChargerName || `Charger ${chargerToDelete?.uid}`}</span>?
+                    </p>
+                    <div className="bg-gray-800/50 p-4 rounded-xl mb-4">
+                      <p className="text-sm text-gray-400">Charger Details:</p>
+                      <p className="text-sm mt-1">ID: {chargerToDelete?.uid}</p>
+                      {chargerToDelete?.Total_Capacity && (
+                        <p className="text-sm">Capacity: {chargerToDelete.Total_Capacity}</p>
+                      )}
+                      {chargerToDelete?.Chargertype && (
+                        <p className="text-sm">Type: {chargerToDelete.Chargertype}</p>
+                      )}
+                    </div>
+                    <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-xl p-3">
+                      <p className="text-sm text-yellow-400 flex items-center gap-2">
+                        <AlertTriangle size={14} />
+                        This action cannot be undone. All charging data will be lost.
+                      </p>
+                    </div>
+                  </div>
+
+                  {deleteError && (
+                    <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+                      <p className="text-sm text-red-400">{deleteError}</p>
+                    </div>
+                  )}
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        setShowDeleteModal(false);
+                        setChargerToDelete(null);
+                        setDeleteError(null);
+                      }}
+                      className="flex-1 py-3 rounded-xl bg-gray-800 hover:bg-gray-700 font-semibold transition-all disabled:opacity-50"
+                      disabled={isDeleting}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleDeleteCharger}
+                      className="flex-1 py-3 rounded-xl bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={isDeleting}
+                    >
+                      {isDeleting ? (
+                        <div className="flex items-center justify-center gap-2">
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          Deleting...
+                        </div>
+                      ) : (
+                        "Delete Charger"
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="mt-4 text-xs text-gray-500 text-center">
+                    <p>Using {API_CONFIG.DELETE_API.KEY_HEADER} authentication</p>
+                    <p className="mt-1">
+                      Authorization: {getAdminID() ? `admin_id: ${getAdminID()}` : `user_id: ${getUserID()}`}
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1116,4 +1327,4 @@ const Kpi = ({ title, value, icon, color }) => (
   </div>
 );
 
-export default Dashboard;
+export default Dashboard;  
