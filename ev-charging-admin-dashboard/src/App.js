@@ -10,14 +10,16 @@ import AddChargerForm from './components/AddChargerForm';
 import DriversVehicles from './components/DriversVehicles';
 import Alerts from './components/Alerts';
 import Support from './components/Support';
+import BillManagement from './components/BillManagement';
 
 function App() {
   return (
     <Router>
       <Routes>
         <Route path="/" element={<SignIn />} />
+        <Route path="/signin" element={<SignIn />} />
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/dashboard/:userId" element={<Dashboard />} />
+        {/* <Route path="/dashboard/:userId" element={<Dashboard />} /> */}
         <Route path="/sidebar" element={<Sidebar />} />
         <Route path="/charger-session" element={<ChargerSessions />} />
         <Route path="/revenue" element={<RevenueManagement />} />
@@ -25,6 +27,7 @@ function App() {
         <Route path="/vd-management" element={<DriversVehicles />} />
         <Route path="/alerts" element={<Alerts />} />
         <Route path="/support" element={<Support />} />
+        <Route path="/bills" element={<BillManagement />} />
       </Routes>
     </Router>
   );

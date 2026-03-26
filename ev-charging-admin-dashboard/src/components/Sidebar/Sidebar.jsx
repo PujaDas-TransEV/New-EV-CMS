@@ -10,12 +10,14 @@ import {
   FaCar,
   FaBell,
   FaHeadset,
+  FaReceipt,  
 } from "react-icons/fa";
 
 const menuItems = [
   { name: "Dashboard", icon: FaTachometerAlt, path: "/dashboard" },
   { name: "Chargers / Sessions", icon: FaBatteryFull, path: "/charger-session" },
   { name: "Revenue Management", icon: FaWallet, path: "/revenue" },
+  { name: "Bill Management", icon: FaReceipt, path: "/bills" },      
   { name: "Drivers / Vehicles", icon: FaCar, path: "/vd-management" },
   { name: "Alerts", icon: FaBell, path: "/alerts" },
   { name: "Support", icon: FaHeadset, path: "/support" },

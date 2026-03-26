@@ -42,24 +42,26 @@ import {
   BatteryCharging,
   Calendar,
   Trash2,
+  LogOut,
+  User as UserIcon,
 } from "lucide-react";
 
 // API Configuration with separate keys for different endpoints
 const API_CONFIG = {
-  USER_API: {
-    BASE_URL: "https://be.cms.ocpp.transev.site/admin/getchargerbyuserid",
+  ADMIN_API: {
+    BASE_URL: "https://be.cms.ocpp.transev.site/admin/getchargerbyadminid",
     API_KEY: "aBcD1eFgH2iJkLmNoPqRsTuVwXyZ012345678jasldjalsdjurewouroewiru",
-    KEY_HEADER: "apiauthkey"  // Different header name for this endpoint
+    KEY_HEADER: "apiauthkey"
   },
   STATUS_API: {
     BASE_URL: "https://api.ocpphal.transev.site/api/status",
     API_KEY: "J9YtyNYdbLD8N4qMwU2WQrr9XV2SJn4Q3qrCLEcHa8wwaZC34xhAd3RotuYdHwiB",
-    KEY_HEADER: "x-api-key"  // Standard header for this endpoint
+    KEY_HEADER: "x-api-key"
   },
   DELETE_API: {
     BASE_URL: "https://be.cms.ocpp.transev.site/admin/deleteacharger",
     API_KEY: "aBcD1eFgH2iJkLmNoPqRsTuVwXyZ012345678jasldjalsdjurewouroewiru",
-    KEY_HEADER: "apiauthkey"  // Using the same auth key as USER_API
+    KEY_HEADER: "apiauthkey"
   }
 };
 
@@ -76,100 +78,180 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
-  const [userApiStatus, setUserApiStatus] = useState("active");
+  const [adminApiStatus, setAdminApiStatus] = useState("active");
   const [statusApiStatus, setStatusApiStatus] = useState("active");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [chargerToDelete, setChargerToDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
   const [deleteSuccess, setDeleteSuccess] = useState(false);
+  const [userId, setUserId] = useState(null);
+  const [adminId, setAdminId] = useState(null);
   
   // Refs to prevent duplicate API calls
   const isMounted = useRef(true);
   const fetchInProgress = useRef(false);
   const statusFetchPromises = useRef({});
 
-  // Get user ID from token
+  // Get user ID from token - Enhanced with robust token parsing
   const getUserID = () => {
     try {
       const token = localStorage.getItem("token");
-      if (!token) return null;
+      if (!token) {
+        console.error("No token found in localStorage");
+        navigate("/signin");
+        return null;
+      }
       
       const decoded = jwtDecode(token);
-      return decoded.userId || decoded.id || "5mrv";
+      console.log("Decoded token:", decoded); // Debug log
+      
+      // Try different possible field names for user ID
+      const userId = decoded.userId || decoded.userid || decoded.id || decoded.user_id || decoded.UserID;
+      
+      if (!userId) {
+        console.error("No user ID found in token:", decoded);
+        navigate("/signin");
+        return null;
+      }
+      
+      console.log("Extracted user ID:", userId);
+      return userId;
+      
     } catch (err) {
       console.error("Error decoding token:", err);
-      return "5mrv";
+      navigate("/signin");
+      return null;
     }
   };
 
-  // Get admin ID from token (if available)
+  // Get admin ID from token (if available) - Enhanced with robust token parsing
   const getAdminID = () => {
     try {
       const token = localStorage.getItem("token");
-      if (!token) return null;
+      if (!token) {
+        console.error("No token found in localStorage");
+        navigate("/signin");
+        return null;
+      }
       
       const decoded = jwtDecode(token);
-      return decoded.adminId || decoded.admin_id || null;
+      console.log("Decoded token for admin:", decoded); // Debug log
+      
+      // Try different possible field names for admin ID
+      const adminId = decoded.adminId || decoded.admin_id || decoded.adminid || decoded.AdminID || decoded.adminID;
+      
+      if (!adminId) {
+        console.error("No admin ID found in token:", decoded);
+        // If no admin ID, try to use user ID as fallback for admin operations
+        const userId = decoded.userId || decoded.userid || decoded.id;
+        console.log("No admin ID found, using user ID as fallback:", userId);
+        return userId;
+      }
+      
+      console.log("Extracted admin ID:", adminId);
+      return adminId;
+      
     } catch (err) {
       console.error("Error decoding token for admin ID:", err);
       return null;
     }
   };
 
-  // Fetch user details and their chargers
-  const fetchUserChargers = async () => {
-    const userId = getUserID();
-    if (!userId) {
-      setError("User ID not found. Please login again.");
+  // Logout function
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    navigate("/signin");
+  };
+
+  // Fetch chargers by admin ID - Updated to use admin/getchargerbyadminid
+  const fetchAdminChargers = async () => {
+    const currentAdminId = getAdminID();
+    if (!currentAdminId) {
+      setError("Admin ID not found. Please login again.");
       navigate("/signin");
       return [];
     }
 
     try {
-      console.log("Fetching user chargers with API key:", API_CONFIG.USER_API.API_KEY.substring(0, 20) + "...");
+      console.log("Fetching admin chargers for admin ID:", currentAdminId);
+      console.log("Using API key:", API_CONFIG.ADMIN_API.API_KEY.substring(0, 20) + "...");
       
-      const response = await fetch(API_CONFIG.USER_API.BASE_URL, {
+      const response = await fetch(API_CONFIG.ADMIN_API.BASE_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          [API_CONFIG.USER_API.KEY_HEADER]: API_CONFIG.USER_API.API_KEY,
+          [API_CONFIG.ADMIN_API.KEY_HEADER]: API_CONFIG.ADMIN_API.API_KEY,
         },
-        body: JSON.stringify({ get_user_id: userId }),
+        body: JSON.stringify({ 
+          adminid: currentAdminId,
+          // Note: get_charger_id is optional - we're not specifying it to get all chargers
+        }),
       });
 
-      console.log("User API response status:", response.status);
+      console.log("Admin API response status:", response.status);
       
       if (response.status === 401 || response.status === 403) {
-        setUserApiStatus("invalid");
-        throw new Error("User API authentication failed - Invalid apiauthkey");
+        setAdminApiStatus("invalid");
+        throw new Error("Admin API authentication failed - Invalid apiauthkey");
       }
       
       if (!response.ok) {
-        throw new Error(`User API error! status: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`Admin API error! status: ${response.status}, message: ${errorText}`);
       }
 
       const data = await response.json();
-      console.log("User API response data received, chargers found:", data.user_chargerunit_details?.length || 0);
+      console.log("Admin API response data:", data);
+      
+      // Assuming the response structure is similar to the user API
+      // It might return chargers directly or under a different key
+      let chargers = [];
+      
+      if (data.user_chargerunit_details) {
+        chargers = data.user_chargerunit_details;
+        console.log("Chargers found (user_chargerunit_details):", chargers.length);
+      } else if (data.chargerunit_details) {
+        chargers = data.chargerunit_details;
+        console.log("Chargers found (chargerunit_details):", chargers.length);
+      } else if (data.chargers) {
+        chargers = data.chargers;
+        console.log("Chargers found (chargers):", chargers.length);
+      } else if (Array.isArray(data)) {
+        chargers = data;
+        console.log("Chargers found (array):", chargers.length);
+      } else {
+        console.log("No chargers found in response:", data);
+      }
       
       if (isMounted.current) {
-        setUserDetails(data.userdetails);
-        setUserApiStatus("active");
+        setUserDetails(data.userdetails || data.admindetails || {});
+        setAdminApiStatus("active");
         
-        if (data.userdetails?.firstname) {
-          setUserName(data.userdetails.firstname);
+        // Try multiple possible field names for name
+        const firstName = data.userdetails?.firstname || 
+                         data.admindetails?.firstname ||
+                         data.userdetails?.firstName || 
+                         data.admindetails?.firstName ||
+                         data.userdetails?.name || 
+                         data.admindetails?.name ||
+                         data.userdetails?.userName ||
+                         data.admindetails?.adminName;
+        
+        if (firstName) {
+          setUserName(firstName);
         }
       }
       
-      return data.user_chargerunit_details || [];
+      return chargers;
       
     } catch (err) {
-      console.error("Error fetching user chargers:", err);
+      console.error("Error fetching admin chargers:", err);
       if (isMounted.current) {
-        setUserApiStatus("error");
+        setAdminApiStatus("error");
       }
       
-      // Fallback demo data
+      // Fallback demo data for testing
       const demoChargers = [
         {
           uid: "5bvyd1",
@@ -295,13 +377,13 @@ const Dashboard = () => {
     }
     
     try {
-      // First get user's chargers using the USER API with apiauthkey
-      console.log("Step 1: Fetching user chargers...");
-      const chargers = await fetchUserChargers();
+      // First get admin's chargers using the ADMIN API with apiauthkey
+      console.log("Step 1: Fetching admin chargers...");
+      const chargers = await fetchAdminChargers();
       
       if (!chargers || chargers.length === 0) {
         if (isMounted.current) {
-          setError("No chargers found for this user.");
+          setError("No chargers found for this admin.");
           setLoading(false);
         }
         return;
@@ -480,7 +562,7 @@ const Dashboard = () => {
     };
   };
 
-  // Handle charger deletion
+  // Handle charger deletion - Updated with better error handling
   const handleDeleteCharger = async () => {
     if (!chargerToDelete) return;
     
@@ -489,8 +571,12 @@ const Dashboard = () => {
     setDeleteSuccess(false);
     
     try {
-      const userId = getUserID();
-      const adminId = getAdminID();
+      const currentUserId = getUserID();
+      const currentAdminId = getAdminID();
+      
+      if (!currentUserId && !currentAdminId) {
+        throw new Error("No user or admin ID found. Please login again.");
+      }
       
       // Prepare request body according to API spec
       const requestBody = {
@@ -498,12 +584,12 @@ const Dashboard = () => {
       };
       
       // Add user_id or admin_id based on what's available
-      if (adminId) {
-        requestBody.admin_id = adminId;
-      } else if (userId) {
-        requestBody.user_id = userId;
+      if (currentAdminId) {
+        requestBody.admin_id = currentAdminId;
+        console.log("Using admin authorization with admin_id:", currentAdminId);
       } else {
-        throw new Error("No user or admin ID found in token");
+        requestBody.user_id = currentUserId;
+        console.log("Using user authorization with user_id:", currentUserId);
       }
       
       console.log("Deleting charger with body:", requestBody);
@@ -518,13 +604,22 @@ const Dashboard = () => {
         body: JSON.stringify(requestBody),
       });
       
+      const responseText = await response.text();
+      console.log("Delete API response status:", response.status);
+      console.log("Delete API response text:", responseText);
+      
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Delete failed with status ${response.status}: ${errorText}`);
+        throw new Error(`Delete failed with status ${response.status}: ${responseText}`);
       }
       
-      const result = await response.json();
-      console.log("Delete API response:", result);
+      let result;
+      try {
+        result = JSON.parse(responseText);
+      } catch (e) {
+        result = { success: true, message: "Charger deleted successfully" };
+      }
+      
+      console.log("Delete API response parsed:", result);
       
       // Update the UI by removing the deleted charger
       const updatedChargers = { ...chargersData };
@@ -542,7 +637,14 @@ const Dashboard = () => {
       
     } catch (err) {
       console.error("Error deleting charger:", err);
-      setDeleteError(err.message);
+      setDeleteError(err.message || "Failed to delete charger. Please try again.");
+      
+      // If token is invalid, redirect to signin
+      if (err.message.includes("login") || err.message.includes("token")) {
+        setTimeout(() => {
+          navigate("/signin");
+        }, 2000);
+      }
     } finally {
       setIsDeleting(false);
     }
@@ -563,14 +665,34 @@ const Dashboard = () => {
     
     const token = localStorage.getItem("token");
     if (!token) {
+      console.error("No token found, redirecting to signin");
       navigate("/signin");
       return;
     }
     
     try {
       const decoded = jwtDecode(token);
-      setUserName(decoded.firstname || "User");
-    } catch {
+      console.log("Dashboard - Decoded token:", decoded); // Debug log
+      
+      // Set user name from token with multiple fallbacks
+      const firstName = decoded.firstname || decoded.firstName || decoded.name || decoded.userName || "User";
+      setUserName(firstName);
+      
+      // Set user ID and admin ID
+      const currentUserId = decoded.userId || decoded.userid || decoded.id;
+      const currentAdminId = decoded.adminId || decoded.admin_id || decoded.adminid;
+      
+      setUserId(currentUserId);
+      setAdminId(currentAdminId);
+      
+      if (!currentUserId && !currentAdminId) {
+        console.error("No user ID or admin ID in token, redirecting to signin");
+        navigate("/signin");
+        return;
+      }
+      
+    } catch (err) {
+      console.error("Invalid token:", err);
       navigate("/signin");
       return;
     }
@@ -704,13 +826,13 @@ const Dashboard = () => {
 
   // Get API status display
   const getApiStatusDisplay = () => {
-    if (userApiStatus === "active" && statusApiStatus === "active") {
+    if (adminApiStatus === "active" && statusApiStatus === "active") {
       return { text: "All APIs Active", color: "bg-green-500/20 text-green-400" };
     }
-    if (userApiStatus === "invalid" || statusApiStatus === "invalid") {
+    if (adminApiStatus === "invalid" || statusApiStatus === "invalid") {
       return { text: "API Auth Error", color: "bg-red-500/20 text-red-400" };
     }
-    if (userApiStatus === "error" || statusApiStatus === "error") {
+    if (adminApiStatus === "error" || statusApiStatus === "error") {
       return { text: "API Connection Error", color: "bg-yellow-500/20 text-yellow-400" };
     }
     return { text: "API Status Unknown", color: "bg-gray-500/20 text-gray-400" };
@@ -746,9 +868,24 @@ const Dashboard = () => {
               </div>
             </div>
             <div className="flex items-center gap-4">
-              <div className={`flex items-center gap-1 text-xs px-2 py-1 rounded ${apiStatus.color}`}>
-                <Key size={12} />
-                <span>{apiStatus.text}</span>
+              <div className="flex flex-col items-end">
+                <div className={`flex items-center gap-1 text-xs px-2 py-1 rounded ${apiStatus.color}`}>
+                  <Key size={12} />
+                  <span>{apiStatus.text}</span>
+                </div>
+                <div className="text-xs text-gray-500 mt-1 flex items-center gap-1">
+                  <UserIcon size={10} />
+                  {adminId ? (
+                    <>
+                      Admin ID: {adminId ? `${String(adminId).substring(0, 8)}...` : "Unknown"}
+                      <span className="ml-2 text-blue-400">• Admin Mode</span>
+                    </>
+                  ) : (
+                    <>
+                      User ID: {userId ? `${String(userId).substring(0, 8)}...` : "Unknown"}
+                    </>
+                  )}
+                </div>
               </div>
               <div className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-blue-500/20 text-blue-400">
                 <Building size={12} />
@@ -771,6 +908,14 @@ const Dashboard = () => {
                   </span>
                 )}
               </div>
+              <button
+                onClick={handleLogout}
+                className="p-2 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-400 transition-colors flex items-center gap-2"
+                title="Logout"
+              >
+                <LogOut size={16} />
+                <span className="text-sm">Logout</span>
+              </button>
             </div>
           </div>
 
@@ -807,7 +952,7 @@ const Dashboard = () => {
             <div className="flex justify-between items-center mb-6">
               <div>
                 <h2 className="text-lg font-semibold">Charging Stations</h2>
-                <p className="text-sm text-gray-400">All your stations with real-time status</p>
+                <p className="text-sm text-gray-400">All stations with real-time status</p>
               </div>
               <div className="flex items-center gap-4">
                 <div className={`px-3 py-1 rounded-full text-sm font-semibold ${
@@ -836,7 +981,7 @@ const Dashboard = () => {
                 </div>
                 <p className="text-yellow-400 mb-2">{error}</p>
                 <div className="text-xs text-gray-400 mb-3">
-                  {userApiStatus !== "active" && <p>User API: {userApiStatus}</p>}
+                  {adminApiStatus !== "active" && <p>Admin API: {adminApiStatus}</p>}
                   {statusApiStatus !== "active" && <p>Status API: {statusApiStatus}</p>}
                 </div>
                 <button 
@@ -1304,7 +1449,7 @@ const Dashboard = () => {
                   <div className="mt-4 text-xs text-gray-500 text-center">
                     <p>Using {API_CONFIG.DELETE_API.KEY_HEADER} authentication</p>
                     <p className="mt-1">
-                      Authorization: {getAdminID() ? `admin_id: ${getAdminID()}` : `user_id: ${getUserID()}`}
+                      Authorization: {adminId ? `admin_id: ${String(adminId).substring(0, 8)}...` : `user_id: ${String(userId).substring(0, 8)}...`}
                     </p>
                   </div>
                 </>
@@ -1327,4 +1472,4 @@ const Kpi = ({ title, value, icon, color }) => (
   </div>
 );
 
-export default Dashboard;  
+export default Dashboard;
