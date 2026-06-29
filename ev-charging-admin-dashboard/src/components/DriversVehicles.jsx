@@ -321,14 +321,13 @@ const DriversVehicles = () => {
       console.error("Error fetching data:", err);
       setError(`Failed to load data: ${err.message}`);
       
-      // Load demo data for testing
+      
       loadDemoData();
     } finally {
       setLoading(false);
     }
   };
 
-  // Load demo data for testing with Indian context
   const loadDemoData = () => {
     console.log("Loading demo data with Indian context...");
     
@@ -507,15 +506,12 @@ const DriversVehicles = () => {
       <Sidebar />
 
       <div className="flex-1 p-6 space-y-6">
-        {/* PAGE HEADER */}
         <div className="bg-white/5 border border-white/10 backdrop-blur-xl rounded-2xl p-5">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            {/* LEFT: Title + Summary */}
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4"> 
             <div>
               <h1 className="text-2xl font-semibold text-white">
                 Drivers & Vehicles
               </h1>
-
               <p className="text-sm text-gray-400 mt-1">
                 Manage your EV drivers, vehicles and assignments
               </p>

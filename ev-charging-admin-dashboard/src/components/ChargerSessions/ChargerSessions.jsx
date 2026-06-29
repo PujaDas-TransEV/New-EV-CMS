@@ -1,5 +1,12 @@
 import React, { useEffect, useState, useRef } from "react";
-import { FilterList, Search, Refresh, Warning, CheckCircle, Error, Build, FlashOn } from "@mui/icons-material";
+import FilterListIcon from "@mui/icons-material/FilterList";
+import SearchIcon from "@mui/icons-material/Search";
+import RefreshIcon from "@mui/icons-material/Refresh";
+import WarningIcon from "@mui/icons-material/Warning";
+import CheckCircleIcon from "@mui/icons-material/CheckCircle";
+import ErrorIcon from "@mui/icons-material/Error";
+import BuildIcon from "@mui/icons-material/Build";
+import FlashOnIcon from "@mui/icons-material/FlashOn";
 import Sidebar from "../Sidebar/Sidebar";
 import { Link } from "react-router-dom";
 import axios from "axios";
@@ -285,11 +292,11 @@ const ChargerList = () => {
       console.log("Admin ID from token:", adminId);
 
       const API_KEY = "aBcD1eFgH2iJkLmNoPqRsTuVwXyZ012345678jasldjalsdjurewouroewiru";
-      const API_URL = "https://be.cms.ocpp.transev.site/admin/getchargerbyuserid";
+      const API_URL = "https://be.cms.ocpp.transev.site/admin/getchargersforadminuid";
       
       console.log("Making API request to:", API_URL);
       
-      const payload = { get_user_id: adminId };
+      const payload = { adminuid: adminId };
       console.log("Request payload:", payload);
 
       const response = await axios.post(
@@ -525,7 +532,7 @@ const ChargerList = () => {
       return {
         color: 'text-gray-400',
         bg: 'bg-gray-400/10',
-        icon: <Error fontSize="small" />,
+        icon: <ErrorIcon fontSize="small" />,
         text: 'Offline'
       };
     }
@@ -534,7 +541,7 @@ const ChargerList = () => {
       return {
         color: 'text-red-400',
         bg: 'bg-red-400/10',
-        icon: <Warning fontSize="small" />,
+        icon: <WarningIcon fontSize="small" />,
         text: 'API Error'
       };
     }
@@ -544,42 +551,42 @@ const ChargerList = () => {
         return {
           color: 'text-green-400',
           bg: 'bg-green-400/10',
-          icon: <CheckCircle fontSize="small" />,
+          icon: <CheckCircleIcon fontSize="small" />,
           text: 'Available'
         };
       case 'busy':
         return {
           color: 'text-yellow-400',
           bg: 'bg-yellow-400/10',
-          icon: <FlashOn fontSize="small" />,
+          icon: <FlashOnIcon fontSize="small" />,
           text: 'Busy'
         };
       case 'maintenance':
         return {
           color: 'text-orange-400',
           bg: 'bg-orange-400/10',
-          icon: <Build fontSize="small" />,
+          icon: <BuildIcon fontSize="small" />,
           text: 'Maintenance'
         };
       case 'error':
         return {
           color: 'text-red-400',
           bg: 'bg-red-400/10',
-          icon: <Error fontSize="small" />,
+          icon: <ErrorIcon fontSize="small" />,
           text: 'Error'
         };
       case 'unknown':
         return {
           color: 'text-gray-400',
           bg: 'bg-gray-400/10',
-          icon: <Warning fontSize="small" />,
+          icon: <WarningIcon fontSize="small" />,
           text: 'Unknown'
         };
       default:
         return {
           color: 'text-gray-400',
           bg: 'bg-gray-400/10',
-          icon: <Warning fontSize="small" />,
+          icon: <WarningIcon fontSize="small" />,
           text: status || 'Unknown'
         };
     }
@@ -700,10 +707,6 @@ const ChargerList = () => {
     };
   }, []);
 
-  // The rest of the component remains the same...
-  // [Keep all the JSX code exactly as it was in the previous version]
-  // Only the logic above has been modified to prevent duplicate API calls
-
   return (
     <div className="flex min-h-screen bg-[#0B0F1A] text-gray-200">
       <Sidebar />
@@ -727,7 +730,7 @@ const ChargerList = () => {
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full bg-green-500"></div>
                     <span className="text-gray-400">
-                      Logged in as <span className="text-white font-medium">{userDetails.firstname} {userDetails.lastname}</span>
+                      Logged in under <span className="text-white font-medium">{userDetails.firstname} {userDetails.lastname}</span>
                       <span className="text-blue-400 ml-2">({userDetails.role})</span>
                     </span>
                   </div>
@@ -742,7 +745,7 @@ const ChargerList = () => {
                 disabled={loading}
                 className="px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition text-sm font-medium flex items-center gap-2 disabled:opacity-50"
               >
-                <Refresh className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+                <RefreshIcon className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
                 {loading ? "Refreshing..." : "Refresh All"}
               </button>
               
@@ -824,11 +827,11 @@ const ChargerList = () => {
           </select>
 
           <button className="p-2 rounded-xl bg-[#111827] border border-white/10 hover:bg-white/10 transition">
-            <FilterList />
+            <FilterListIcon />
           </button>
 
           <div className="relative ml-auto">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <input
               placeholder="Search by ID, name, serial..."
               value={searchQuery}
@@ -848,7 +851,7 @@ const ChargerList = () => {
           ) : error ? (
             <div className="p-10 text-center">
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-red-500/20 mb-3">
-                <Error className="w-6 h-6 text-red-400" />
+                <ErrorIcon className="w-6 h-6 text-red-400" />
               </div>
               <p className="text-red-400 mb-2">{error}</p>
               <p className="text-sm text-gray-400 mb-4">Showing demo data for reference</p>
@@ -862,7 +865,7 @@ const ChargerList = () => {
           ) : filteredChargers.length === 0 ? (
             <div className="p-10 text-center">
               <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-blue-500/20 mb-3">
-                <Search className="w-6 h-6 text-blue-400" />
+                <SearchIcon className="w-6 h-6 text-blue-400" />
               </div>
               <p className="text-white mb-2">No chargers found</p>
               <p className="text-sm text-gray-400">
@@ -917,7 +920,7 @@ const ChargerList = () => {
                               className="p-1 text-gray-400 hover:text-white disabled:opacity-50"
                               title="Refresh status"
                             >
-                              <Refresh className={`w-3 h-3 ${statusLoading[charger.uid] ? "animate-spin" : ""}`} />
+                              <RefreshIcon className={`w-3 h-3 ${statusLoading[charger.uid] ? "animate-spin" : ""}`} />
                             </button>
                           </div>
                         </td>
@@ -990,7 +993,7 @@ const ChargerList = () => {
               <span className="text-white font-medium">{chargers.length}</span> chargers
               {Object.values(statusLoading).some(v => v) && (
                 <span className="ml-3 text-blue-400">
-                  <Refresh className="w-3 h-3 inline mr-1 animate-spin" />
+                  <RefreshIcon className="w-3 h-3 inline mr-1 animate-spin" />
                   Refreshing status...
                 </span>
               )}
