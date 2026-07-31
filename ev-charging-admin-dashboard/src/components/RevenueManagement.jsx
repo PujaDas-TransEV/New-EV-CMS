@@ -189,11 +189,6 @@ const RevenueManagement = () => {
       
       if (isMounted.current) {
         setError(errorMessage);
-        
-        // Fallback to demo data only if we haven't loaded anything yet
-        if (transactions.length === 0) {
-          loadDemoData();
-        }
       }
     } finally {
       if (isMounted.current) {
@@ -298,80 +293,6 @@ const RevenueManagement = () => {
       rawData: sessionData,
       transactionData: transactionData
     };
-  };
-
-  // Load demo data if API fails
-  const loadDemoData = () => {
-    console.log("Loading demo data...");
-    const demoTransactions = [
-      {
-        id: "1401788217",
-        status: "Invalid",
-        amount: "₹27000.00",
-        charger: "dummy1",
-        hub: "--",
-        tariff: "--",
-        usage: "900.000 kWh",
-        owner: "5mrv",
-        hostDetails: "Admin",
-        driverDetails: "fmkf",
-        timestamp: "26/06/2025 10:45 AM",
-        sessionDetails: {
-          meterStart: "4979.0",
-          meterStop: "904979.0",
-          startTime: "2025-06-26T10:45:01",
-          stopTime: "2025-06-26T10:45:40"
-        }
-      },
-      {
-        id: "839829039",
-        status: "Invalid",
-        amount: "₹1.26",
-        charger: "dummy1",
-        hub: "--",
-        tariff: "--",
-        usage: "0.042 kWh",
-        owner: "5mrv",
-        hostDetails: "Admin",
-        driverDetails: "fmkf",
-        timestamp: "25/06/2025 09:26 AM",
-        sessionDetails: {
-          meterStart: "3501.0",
-          meterStop: "3543.0",
-          startTime: "2025-06-25T09:26:06",
-          stopTime: "2025-06-25T09:26:22"
-        }
-      },
-      {
-        id: "2049273376",
-        status: "Invalid",
-        amount: "₹3.39",
-        charger: "5bvyd1",
-        hub: "--",
-        tariff: "--",
-        usage: "0.113 kWh",
-        owner: "5mrv",
-        hostDetails: "Admin",
-        driverDetails: "fmkf",
-        timestamp: "25/06/2025 09:13 AM",
-        sessionDetails: {
-          meterStart: "4095.0",
-          meterStop: "4208.0",
-          startTime: "2025-06-25T09:12:46",
-          stopTime: "2025-06-25T09:13:46"
-        }
-      },
-    ];
-    
-    if (isMounted.current) {
-      setTransactions(demoTransactions);
-      setPagination(prev => ({
-        ...prev,
-        totalSessions: demoTransactions.length,
-        validCount: 0,
-        invalidCount: demoTransactions.length
-      }));
-    }
   };
 
   // Filter transactions based on search and filters
@@ -526,7 +447,7 @@ const RevenueManagement = () => {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  {error} - Showing demo data
+                  {error}
                 </div>
               )}
             </div>
@@ -832,4 +753,4 @@ const RevenueManagement = () => {
   );
 };
 
-export default RevenueManagement;   
+export default RevenueManagement;

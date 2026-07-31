@@ -54,7 +54,7 @@ const API_CONFIG = {
     KEY_HEADER: "apiauthkey"
   },
   STATUS_API: {
-    BASE_URL: "https://api.ocpphal.transev.site/api/status",
+    BASE_URL: "https://dev-ocpphalapi.transev.site/api/status",
     API_KEY: "J9YtyNYdbLD8N4qMwU2WQrr9XV2SJn4Q3qrCLEcHa8wwaZC34xhAd3RotuYdHwiB",
     KEY_HEADER: "x-api-key"
   },

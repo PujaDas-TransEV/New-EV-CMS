@@ -97,7 +97,6 @@ const Alerts = () => {
       </div>
     </div>
 
-    {/* RIGHT: Actions */}
     <div className="flex items-center gap-3">
       <button className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition text-sm">
         Refresh
@@ -112,7 +111,6 @@ const Alerts = () => {
 </div>
 
 
-        {/* Filters */}
         <div className="flex gap-3 mb-6">
           {["all", "critical", "warning", "info"].map((type) => (
             <button
@@ -130,7 +128,7 @@ const Alerts = () => {
           ))}
         </div>
 
-        {/* Alert List */}
+ 
         <div className="grid gap-4">
           {filteredAlerts.length === 0 ? (
             <div className="text-center text-gray-500 py-20">

@@ -54,7 +54,7 @@ const ChargerList = () => {
       try {
         setStatusLoading(prev => ({ ...prev, [chargerId]: true }));
         
-        const STATUS_API_URL = "https://api.ocpphal.transev.site/api/status";
+        const STATUS_API_URL = "https://dev-ocpphalapi.transev.site/api/status";
         const STATUS_API_KEY = "J9YtyNYdbLD8N4qMwU2WQrr9XV2SJn4Q3qrCLEcHa8wwaZC34xhAd3RotuYdHwiB";
         
         console.log(`Fetching status for charger: ${chargerId}`);
@@ -206,9 +206,7 @@ const ChargerList = () => {
     };
   };
 
-  // Fetch all charger statuses with controlled concurrency
   const fetchAllChargerStatuses = async (chargerList) => {
-    // Limit concurrent requests to 3 at a time
     const CONCURRENT_LIMIT = 3;
     const results = new Array(chargerList.length).fill(null);
     
@@ -225,7 +223,7 @@ const ChargerList = () => {
       return Promise.all(batchPromises);
     };
     
-    // Process in batches
+
     for (let i = 0; i < chargerList.length; i += CONCURRENT_LIMIT) {
       const batchResults = await processBatch(i, CONCURRENT_LIMIT);
       batchResults.forEach(result => {
@@ -234,8 +232,7 @@ const ChargerList = () => {
         }
       });
     }
-    
-    // Update chargers with their statuses
+
     const updatedChargers = chargerList.map((charger, index) => {
       const result = results[index];
       let statusData = null;
@@ -357,34 +354,7 @@ const ChargerList = () => {
   const loadDemoChargers = async () => {
     console.log("Loading demo charger data...");
     const demoChargers = [
-      {
-        uid: "5t7env",
-        Chargerserialnum: "240100337",
-        ChargerName: "Transev 60kwh",
-        Chargerhost: "transev",
-        Segment: "public",
-        Subsegment: "parking",
-        Total_Capacity: "60kwh",
-        Chargertype: "DC charger - fast",
-        parking: "yes",
-        number_of_connectors: "2",
-        Connector_type: "CCS2",
-        connector_total_capacity: "60kwh",
-        lattitude: "22.5771494",
-        longitute: "88.4867072",
-        full_address: "Action Area III, Newtown, New Town, West Bengal 700135",
-        charger_use_type: "charging",
-        twenty_four_seven_open_status: "yes",
-        userId: "5mrv",
-        createdAt: "2025-06-27T11:04:25.880Z",
-        firstname: "Rajrup",
-        phonenumber: "9836487998",
-        chargerType: "DC",
-        capacity: 60,
-        protocol: "OCPP 1.6",
-        firmware: "v2.1.4",
-        uptime: "98%"
-      },
+      
       {
         uid: "5bvyd1",
         Chargerserialnum: "240100327",
@@ -413,34 +383,34 @@ const ChargerList = () => {
         firmware: "v1.8.2",
         uptime: "95%"
       },
-      {
-        uid: "wdmjwx",
-        Chargerserialnum: "2401003290",
-        ChargerName: "Transev 60kwh second",
-        Chargerhost: "transev",
-        Segment: "public",
-        Subsegment: "parking",
-        Total_Capacity: "60kwh",
-        Chargertype: "DC charger - fast",
-        parking: "yes",
-        number_of_connectors: "2",
-        Connector_type: "CCS2",
-        connector_total_capacity: "60kwh",
-        lattitude: "22.5771494",
-        longitute: "88.4867072",
-        full_address: "Action Area III, Newtown, New Town, West Bengal 700135",
-        charger_use_type: "charging",
-        twenty_four_seven_open_status: "yes",
-        userId: "5mrv",
-        createdAt: "2025-06-27T11:05:10.332Z",
-        firstname: "Rajrup",
-        phonenumber: "9836487998",
-        chargerType: "DC",
-        capacity: 60,
-        protocol: "OCPP 2.0",
-        firmware: "v3.0.1",
-        uptime: "92%"
-      },
+      // {
+      //   uid: "wdmjwx",
+      //   Chargerserialnum: "2401003290",
+      //   ChargerName: "Transev 60kwh second",
+      //   Chargerhost: "transev",
+      //   Segment: "public",
+      //   Subsegment: "parking",
+      //   Total_Capacity: "60kwh",
+      //   Chargertype: "DC charger - fast",
+      //   parking: "yes",
+      //   number_of_connectors: "2",
+      //   Connector_type: "CCS2",
+      //   connector_total_capacity: "60kwh",
+      //   lattitude: "22.5771494",
+      //   longitute: "88.4867072",
+      //   full_address: "Action Area III, Newtown, New Town, West Bengal 700135",
+      //   charger_use_type: "charging",
+      //   twenty_four_seven_open_status: "yes",
+      //   userId: "5mrv",
+      //   createdAt: "2025-06-27T11:05:10.332Z",
+      //   firstname: "Rajrup",
+      //   phonenumber: "9836487998",
+      //   chargerType: "DC",
+      //   capacity: 60,
+      //   protocol: "OCPP 2.0",
+      //   firmware: "v3.0.1",
+      //   uptime: "92%"
+      // },
     ];
     
     // Fetch real statuses for demo chargers
@@ -728,11 +698,11 @@ const ChargerList = () => {
               <div className="flex items-center gap-4 mt-3 text-sm">
                 {userDetails && (
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                    <span className="text-gray-400">
+                    {/* <div className="w-2 h-2 rounded-full bg-green-500"></div> */}
+                    {/* <span className="text-gray-400">
                       Logged in under <span className="text-white font-medium">{userDetails.firstname} {userDetails.lastname}</span>
                       <span className="text-blue-400 ml-2">({userDetails.role})</span>
-                    </span>
+                    </span> */}
                   </div>
                 )}
               </div>
