@@ -16,6 +16,7 @@ import BillManagement from './components/BillManagement';
 import Organization from './components/Organization/Organization';
 import ManageHub from './components/Hubs/Managehubs';
 import Addhub from './components/Hubs/Addhub';
+import HubwiseDetails from './components/Hubs/ViewHubwise';
 function App() {
   return (
     <Router>
@@ -37,6 +38,7 @@ function App() {
         <Route path="/organization" element={<Organization />} />
         <Route path="/manage-hubs" element={<ManageHub />} />
         <Route path="/add-hub" element={<Addhub />} />
+       <Route path="/hub-details/:hubId" element={< HubwiseDetails />} /> {/* Hub ID wise */}
       </Routes>
     </Router>
   );
