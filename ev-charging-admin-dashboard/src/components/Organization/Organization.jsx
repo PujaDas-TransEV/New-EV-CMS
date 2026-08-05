@@ -26,7 +26,19 @@ import {
   Loader2,
   Home,
   Menu,
-  Link as LinkIcon
+  Link as LinkIcon,
+  CreditCard,
+  Zap,
+  Award,
+  TrendingUp,
+  DollarSign,
+  Crown,
+  Star,
+  Calendar as CalendarIcon,
+  Check,
+  Sparkles,
+  Gift,
+  BadgeCheck
 } from 'lucide-react';
 import Sidebar from '../Sidebar/Sidebar';
 
@@ -41,6 +53,7 @@ console.log('CPO App ID:', CPO_APP_ID);
 // API Configuration
 const API_CONFIG = {
   ORGANIZATION_API: `${API_BASE_URL}/api/v1/cpo/organization`,
+  SUBSCRIPTION_API: `${API_BASE_URL}/api/v1/cpo/subscription`,
   LOGOUT_API: `${API_BASE_URL}/api/v1/auth/logout`,
   REFRESH_TOKEN_API: `${API_BASE_URL}/api/v1/auth/refresh`,
   USER_INFO_API: `${API_BASE_URL}/api/v1/auth/me`
@@ -99,7 +112,7 @@ const fetchWithTokenRefresh = async (url, options = {}, retryCount = 2) => {
     throw new Error('No token found');
   }
 
-  console.log('Fetching URL:', url); // Log the URL being called
+  console.log('Fetching URL:', url);
 
   try {
     const response = await fetch(url, {
@@ -120,6 +133,8 @@ const fetchWithTokenRefresh = async (url, options = {}, retryCount = 2) => {
       
       if (refreshResult.success) {
         const newToken = localStorage.getItem('token');
+        console.log('Token refreshed successfully, retrying request...');
+        
         const retryResponse = await fetch(url, {
           ...options,
           headers: {
@@ -136,7 +151,7 @@ const fetchWithTokenRefresh = async (url, options = {}, retryCount = 2) => {
           return fetchWithTokenRefresh(url, options, retryCount - 1);
         }
       } else {
-        // Refresh failed - clear storage and redirect to login
+        console.log('Refresh token failed, redirecting to login...');
         localStorage.removeItem('token');
         localStorage.removeItem('refresh_token');
         localStorage.removeItem('token_expiry');
@@ -167,6 +182,11 @@ const Organization = () => {
   const [orgLoading, setOrgLoading] = useState(false);
   const [orgError, setOrgError] = useState('');
   
+  // Subscription state
+  const [subscriptionData, setSubscriptionData] = useState(null);
+  const [subLoading, setSubLoading] = useState(false);
+  const [subError, setSubError] = useState('');
+  
   // Fetch user info and organization data
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -181,6 +201,7 @@ const Organization = () => {
     try {
       await fetchUserInfo();
       await fetchOrganizationData();
+      await fetchSubscriptionData();
     } catch (error) {
       console.error('Error loading data:', error);
       if (error.message && error.message.includes('Session expired')) {
@@ -239,6 +260,30 @@ const Organization = () => {
     }
   };
 
+  const fetchSubscriptionData = async () => {
+    setSubLoading(true);
+    setSubError('');
+    try {
+      const response = await fetchWithTokenRefresh(API_CONFIG.SUBSCRIPTION_API, {
+        method: 'GET'
+      });
+
+      const data = await response.json();
+      console.log('Subscription data:', data);
+
+      if (response.ok) {
+        setSubscriptionData(data);
+      } else {
+        setSubError(data.message || data.error?.message || 'Failed to fetch subscription data');
+      }
+    } catch (error) {
+      console.error('Error fetching subscription:', error);
+      setSubError(error.message || 'An error occurred while fetching subscription data');
+    } finally {
+      setSubLoading(false);
+    }
+  };
+
   const handleLogout = async () => {
     const token = localStorage.getItem('token');
     setLoggingOut(true);
@@ -289,7 +334,9 @@ const Organization = () => {
       'INACTIVE': 'bg-red-100 text-red-800 border-red-200',
       'SUSPENDED': 'bg-red-100 text-red-800 border-red-200',
       'APPROVED': 'bg-green-100 text-green-800 border-green-200',
-      'REJECTED': 'bg-red-100 text-red-800 border-red-200'
+      'REJECTED': 'bg-red-100 text-red-800 border-red-200',
+      'TRIAL': 'bg-blue-100 text-blue-800 border-blue-200',
+      'EXPIRED': 'bg-gray-100 text-gray-800 border-gray-200'
     };
     return colors[status] || 'bg-gray-100 text-gray-800 border-gray-200';
   };
@@ -304,6 +351,10 @@ const Organization = () => {
         return <Clock className="w-3 h-3" />;
       case 'INACTIVE':
       case 'REJECTED':
+        return <AlertCircle className="w-3 h-3" />;
+      case 'TRIAL':
+        return <Star className="w-3 h-3" />;
+      case 'EXPIRED':
         return <AlertCircle className="w-3 h-3" />;
       default:
         return <AlertCircle className="w-3 h-3" />;
@@ -345,16 +396,16 @@ const Organization = () => {
           <User size={16} className="text-gray-500" /> 
           <span>Profile</span>
         </button>
-          <button 
-                  onClick={() => {
-                    setShowSettingsMenu(false);
-                    navigate('/organization');
-                  }}
-                  className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition"
-                >
-                  <Building size={16} className="text-gray-500" /> 
-                  <span>Organization</span>
-                </button>
+        <button 
+          onClick={() => {
+            setShowSettingsMenu(false);
+            navigate('/organization');
+          }}
+          className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition"
+        >
+          <Building size={16} className="text-gray-500" /> 
+          <span>Organization</span>
+        </button>
         <div className="border-t border-gray-700 my-1"></div>
         <button 
           onClick={() => {
@@ -433,12 +484,8 @@ const Organization = () => {
                 <Menu className="w-5 h-5 text-gray-600" />
               </button>
               <div className="flex items-center gap-3">
-                {/* <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center shadow-lg shadow-green-500/25">
-                  <Building size={20} className="text-white" />
-                </div> */}
                 <div>
                   <h1 className="text-2xl font-bold text-gray-800">Settings</h1>
-                 
                 </div>
               </div>
             </div>
@@ -475,7 +522,7 @@ const Organization = () => {
           <div className="flex gap-0">
             <button
               onClick={() => {}} // Stay on current page
-              className={`px-6 py-3 text-sm font-medium border-b-2 transition-all duration-200 flex items-center gap-2 border-green-600 text-green-700 bg-green-50/50`}
+              className={`px-6 py-5 text-sm font-medium border-b-2 transition-all duration-200 flex items-center gap-2 border-green-600 text-green-700 bg-green-50/50`}
             >
               <Building size={16} />
               Organization
@@ -492,7 +539,8 @@ const Organization = () => {
 
         {/* Content - Organization Details */}
         <div className="p-6">
-          <div className="max-w-7xl mx-auto">
+          <div className="max-w-7xl mx-auto space-y-6">
+            {/* Organization Details Card */}
             {orgLoading ? (
               <div className="flex items-center justify-center h-64">
                 <div className="flex flex-col items-center gap-3">
@@ -610,33 +658,6 @@ const Organization = () => {
                     </div>
                   </div>
                 </div>
-
-                {/* Additional Info */}
-                <div className="p-4 border-t border-gray-200 bg-gray-50/50">
-                  <div className="flex items-center justify-between flex-wrap gap-2">
-                    <div className="flex items-center gap-4">
-                      <div>
-                        <p className="text-xs text-gray-500">Status Changed</p>
-                        <p className="text-xs font-medium text-gray-700">{formatDate(orgData.status_changed_at)}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Last Updated</p>
-                        <p className="text-xs font-medium text-gray-700">{formatDate(orgData.updated_at)}</p>
-                      </div>
-                    </div>
-                    {/* Terms and Conditions Link */}
-                    <a
-                      href="https://transev.site/terms-conditions/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-2 text-sm text-green-600 hover:text-green-700 hover:underline"
-                    >
-                      <FileText className="w-4 h-4" />
-                      Terms and Conditions
-                      <ExternalLink className="w-3 h-3" />
-                    </a>
-                  </div>
-                </div>
               </div>
             ) : (
               <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
@@ -644,6 +665,153 @@ const Organization = () => {
                 <p className="text-gray-500">No organization data found</p>
               </div>
             )}
+
+            {/* Subscription Details Card */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+              <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/20">
+                    <CreditCard className="w-8 h-8 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <h2 className="text-xl font-bold text-gray-900">Subscription Details</h2>
+                    <p className="text-sm text-gray-500">Manage your plan and billing information</p>
+                  </div>
+                </div>
+              </div>
+
+              {subLoading ? (
+                <div className="flex items-center justify-center h-48">
+                  <div className="flex flex-col items-center gap-3">
+                    <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+                    <p className="text-gray-500">Loading subscription details...</p>
+                  </div>
+                </div>
+              ) : subError ? (
+                <div className="p-6">
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-600 flex items-center gap-2">
+                    <AlertCircle className="w-5 h-5" />
+                    <span>{subError}</span>
+                  </div>
+                </div>
+              ) : subscriptionData ? (
+                <div className="p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Plan Information */}
+                    <div className="md:col-span-2 space-y-4">
+                      <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
+                        <Crown className="w-6 h-6 text-yellow-500 mt-0.5" />
+                        <div>
+                          <p className="text-sm text-gray-500">Current Plan</p>
+                          <p className="text-lg font-bold text-gray-900">
+                            {subscriptionData.plan_name || subscriptionData.name || 'Free Plan'}
+                          </p>
+                          {subscriptionData.description && (
+                            <p className="text-sm text-gray-600 mt-1">{subscriptionData.description}</p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
+                          <DollarSign className="w-5 h-5 text-green-600 mt-0.5" />
+                          <div>
+                            <p className="text-sm text-gray-500">Price</p>
+                            <p className="text-lg font-bold text-gray-900">
+                              ${subscriptionData.price || subscriptionData.amount || '0.00'}
+                              <span className="text-sm font-normal text-gray-500">
+                                /{subscriptionData.billing_period || 'month'}
+                              </span>
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
+                          <BadgeCheck className="w-5 h-5 text-blue-600 mt-0.5" />
+                          <div>
+                            <p className="text-sm text-gray-500">Status</p>
+                            <span className={`px-3 py-1 rounded-full text-xs font-medium border inline-flex items-center gap-1 ${getStatusColor(subscriptionData.status)}`}>
+                              {getStatusIcon(subscriptionData.status)}
+                              {subscriptionData.status || 'ACTIVE'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Dates & Features */}
+                    <div className="space-y-4">
+                      <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
+                        <CalendarIcon className="w-5 h-5 text-purple-600 mt-0.5" />
+                        <div>
+                          <p className="text-sm text-gray-500">Billing Cycle</p>
+                          <p className="text-sm font-medium text-gray-900">
+                            {subscriptionData.billing_cycle || 'Monthly'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
+                        <Clock className="w-5 h-5 text-orange-600 mt-0.5" />
+                        <div>
+                          <p className="text-sm text-gray-500">Valid Until</p>
+                          <p className="text-sm font-medium text-gray-900">
+                            {formatDate(subscriptionData.expires_at || subscriptionData.end_date)}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
+                        <Star className="w-5 h-5 text-yellow-500 mt-0.5" />
+                        <div>
+                          <p className="text-sm text-gray-500">Features</p>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {subscriptionData.features && Array.isArray(subscriptionData.features) ? (
+                              subscriptionData.features.map((feature, index) => (
+                                <span key={index} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs border border-blue-200">
+                                  <Check className="w-3 h-3" />
+                                  {feature}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-sm text-gray-600">Standard features included</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <CreditCard className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500">No subscription data found</p>
+                  <p className="text-sm text-gray-400 mt-1">Please contact support for assistance</p>
+                </div>
+              )}
+            </div>
+
+            {/* Additional Info */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <Sparkles className="w-4 h-4 text-blue-500" />
+                    <span>Everything is up to date</span>
+                  </div>
+                </div>
+                <a
+                  href="https://transev.site/terms-conditions/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-sm text-green-600 hover:text-green-700 hover:underline"
+                >
+                  <FileText className="w-4 h-4" />
+                  Terms and Conditions
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            </div>
           </div>
         </div>
       </div>

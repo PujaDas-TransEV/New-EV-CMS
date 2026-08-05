@@ -397,7 +397,7 @@ const Sidebar = ({ isDarkMode = false, onThemeToggle }) => {
   const menuItems = [
     { name: "Dashboard", icon: FaHome, path: "/dashboard" },
     { name: "Chargers & Sessions", icon: FaChargingStation, path: "/charger-session" },
-    { name: "Revenue Management", icon: FaWallet, path: "/revenue" },
+    { name: "Revenue Management", icon: FaWallet, path: "/revenue/overview" },
     { name: "Drivers & Vehicles", icon: FaUsers, path: "/drivers" },
     { name: "Load Balancing", icon: FaBalanceScale, path: "/load-balancing" },
     { name: "Operations & Maintenance", icon: FaTools, path: "/operations" },

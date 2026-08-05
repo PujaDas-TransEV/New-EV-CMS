@@ -1,5 +1,5 @@
 // src/pages/HubDetails.jsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   User,
@@ -206,104 +206,6 @@ const fetchWithTokenRefresh = async (url, options = {}, retryCount = 2) => {
   }
 };
 
-// Mock Data
-const mockHubData = {
-  id: "hub_001",
-  name: "TransEV Manicasadona",
-  sap_code: "SAP-2024-001",
-  load_limit: "150 KW",
-  load_limit_strategy: "Dynamic Load Balancing",
-  sanction_load: "120 KVA",
-  address: "Street Number 372, IIF, Newtown, Kolkata, West Bengal, 700160",
-  latitude: "22.5524",
-  longitude: "88.3521",
-  open_24_hours: true,
-  created_at: "2026-01-15T10:30:00Z",
-  updated_at: "2026-08-04T05:02:04.626Z",
-  status: "ACTIVE",
-  bill_details: {
-    name: "West Bengal State Electricity Distribution Company Limited",
-    state: "West Bengal",
-    bill_no: "1234566",
-    connection_type: "CCS2",
-    phone_number: "+91 7412365896"
-  },
-  bank_details: {
-    account_name: "TransEV Solutions Pvt Ltd",
-    account_no: "1234567890",
-    ifsc_code: "SBIN0001234"
-  }
-};
-
-const mockChargers = [
-  {
-    id: "chg_001",
-    charger_id: "CHG-001",
-    name: "Delta AC Charger 22KW",
-    status: "ACTIVE",
-    device_id: "DEV-001",
-    created_at: "2026-01-20T10:30:00Z",
-    last_active: "2026-08-04T05:00:00Z",
-    type: "AC",
-    power: "22KW"
-  },
-  {
-    id: "chg_002",
-    charger_id: "CHG-002",
-    name: "ABB DC Fast Charger 50KW",
-    status: "ACTIVE",
-    device_id: "DEV-002",
-    created_at: "2026-02-15T14:20:00Z",
-    last_active: "2026-08-04T04:45:00Z",
-    type: "DC",
-    power: "50KW"
-  },
-  {
-    id: "chg_003",
-    charger_id: "CHG-003",
-    name: "Siemens AC Charger 11KW",
-    status: "INACTIVE",
-    device_id: "DEV-003",
-    created_at: "2026-03-10T09:15:00Z",
-    last_active: "2026-07-28T12:00:00Z",
-    type: "AC",
-    power: "11KW"
-  }
-];
-
-const allAvailableChargers = [
-  {
-    id: "chg_004",
-    charger_id: "CHG-004",
-    name: "Delta AC Charger 7KW",
-    status: "ACTIVE",
-    device_id: "DEV-004",
-    created_at: "2026-04-01T11:00:00Z",
-    type: "AC",
-    power: "7KW"
-  },
-  {
-    id: "chg_005",
-    charger_id: "CHG-005",
-    name: "ABB DC Fast Charger 100KW",
-    status: "PENDING",
-    device_id: "DEV-005",
-    created_at: "2026-05-20T16:30:00Z",
-    type: "DC",
-    power: "100KW"
-  },
-  {
-    id: "chg_006",
-    charger_id: "CHG-006",
-    name: "Siemens AC Charger 22KW",
-    status: "ACTIVE",
-    device_id: "DEV-006",
-    created_at: "2026-06-10T08:45:00Z",
-    type: "AC",
-    power: "22KW"
-  }
-];
-
 const HubDetails = () => {
   const navigate = useNavigate();
   const { hubId } = useParams();
@@ -319,40 +221,43 @@ const HubDetails = () => {
   const [hubData, setHubData] = useState(null);
   const [hubLoading, setHubLoading] = useState(false);
   const [hubError, setHubError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // Chargers state
   const [chargers, setChargers] = useState([]);
   const [chargersLoading, setChargersLoading] = useState(false);
   const [chargerSearchTerm, setChargerSearchTerm] = useState('');
-  const [selectedChargers, setSelectedChargers] = useState([]);
+  
+  // Available chargers for adding
+  const [availableChargers, setAvailableChargers] = useState([]);
+  const [availableChargersLoading, setAvailableChargersLoading] = useState(false);
+  const [availableChargerPagination, setAvailableChargerPagination] = useState({
+    before: null,
+    before_id: null,
+    limit: 50,
+    has_more: false,
+    total: 0
+  });
+  const [loadingMoreAvailable, setLoadingMoreAvailable] = useState(false);
   
   // Modal states
   const [showEditHubModal, setShowEditHubModal] = useState(false);
-  const [showEditLocationModal, setShowEditLocationModal] = useState(false);
-  const [showEditBankModal, setShowEditBankModal] = useState(false);
   const [showAddChargersModal, setShowAddChargersModal] = useState(false);
   
   // Edit form states
   const [editFormData, setEditFormData] = useState({
     name: '',
-    sap_code: '',
-    load_type: 'KVA',
-    load_limit: '',
-    load_limit_strategy: '',
-    sanction_load: ''
-  });
-  
-  const [editLocationData, setEditLocationData] = useState({
+    address: '',
     latitude: '',
     longitude: '',
-    address: ''
+    open_24_hours: false,
+    sanction_load: ''
   });
-  
-  const [editBankData, setEditBankData] = useState({
-    account_name: '',
-    account_no: '',
-    ifsc_code: ''
-  });
+
+  // Refs to prevent double submission - using refs that persist across renders
+  const isUpdatingRef = useRef(false);
+  const isAddingChargersRef = useRef(false);
+  const isModalOpenRef = useRef(false);
 
   // Fetch user info
   useEffect(() => {
@@ -396,25 +301,30 @@ const HubDetails = () => {
     setHubLoading(true);
     setHubError('');
     try {
-      // Replace with actual API call
-      // const response = await fetchWithTokenRefresh(`${API_CONFIG.HUB_DETAILS_API}/${hubId}`, {
-      //   method: 'GET'
-      // });
-      // const data = await response.json();
-      // if (response.ok) {
-      //   setHubData(data.data || data);
-      // } else {
-      //   setHubError(data.message || 'Failed to fetch hub details');
-      // }
-      
-      // Using mock data
-      setTimeout(() => {
-        setHubData(mockHubData);
-        setHubLoading(false);
-      }, 500);
+      const response = await fetchWithTokenRefresh(`${API_CONFIG.HUB_DETAILS_API}/${hubId}`, {
+        method: 'GET'
+      });
+
+      const data = await response.json();
+      console.log('Hub details response:', data);
+
+      if (response.ok) {
+        setHubData(data);
+        setEditFormData({
+          name: data.name || '',
+          address: data.address || '',
+          latitude: data.latitude || '',
+          longitude: data.longitude || '',
+          open_24_hours: data.open_24_hours || false,
+          sanction_load: data.sanction_load || ''
+        });
+      } else {
+        setHubError(data.message || data.error?.message || 'Failed to fetch hub details');
+      }
     } catch (error) {
       console.error('Error fetching hub details:', error);
       setHubError(error.message || 'An error occurred');
+    } finally {
       setHubLoading(false);
     }
   };
@@ -422,25 +332,238 @@ const HubDetails = () => {
   const fetchHubChargers = async () => {
     setChargersLoading(true);
     try {
-      // Replace with actual API call
-      // const response = await fetchWithTokenRefresh(`${API_CONFIG.CHARGERS_API}?hub_id=${hubId}&limit=50`, {
-      //   method: 'GET'
-      // });
-      // const data = await response.json();
-      // if (response.ok) {
-      //   setChargers(data.data || data.chargers || []);
-      // }
-      
-      // Using mock data
-      setTimeout(() => {
-        setChargers(mockChargers);
-        setChargersLoading(false);
-      }, 500);
+      const response = await fetchWithTokenRefresh(`${API_CONFIG.HUB_DETAILS_API}/${hubId}/chargers?limit=50`, {
+        method: 'GET'
+      });
+
+      const data = await response.json();
+      console.log('Hub chargers response:', data);
+
+      if (response.ok) {
+        const chargersData = data.chargers || data.data || data || [];
+        setChargers(chargersData);
+      }
     } catch (error) {
-      console.error('Error fetching chargers:', error);
+      console.error('Error fetching hub chargers:', error);
+    } finally {
       setChargersLoading(false);
     }
   };
+
+  const fetchAvailableChargers = useCallback(async (before = null, before_id = null) => {
+    if (availableChargersLoading) return;
+    
+    setAvailableChargersLoading(true);
+    
+    try {
+      let url = `${API_CONFIG.CHARGERS_API}?limit=${availableChargerPagination.limit}`;
+      if (before) {
+        url += `&before=${before}`;
+      }
+      if (before_id) {
+        url += `&before_id=${before_id}`;
+      }
+
+      const response = await fetchWithTokenRefresh(url, {
+        method: 'GET'
+      });
+
+      const data = await response.json();
+      console.log('Available chargers response:', data);
+
+      if (response.ok) {
+        const chargersData = data.chargers || data.data || data || [];
+        const existingChargerIds = chargers.map(c => c.id);
+        const filteredChargers = chargersData.filter(c => !existingChargerIds.includes(c.id));
+        
+        const hasMore = data.has_more || false;
+        const nextBefore = data.next_before || null;
+        const nextBeforeId = data.next_before_id || null;
+        const total = data.total || chargersData.length;
+
+        setAvailableChargers(prev => before ? [...prev, ...filteredChargers] : filteredChargers);
+        setAvailableChargerPagination({
+          before: nextBefore,
+          before_id: nextBeforeId,
+          has_more: hasMore,
+          total: total,
+          limit: availableChargerPagination.limit
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching available chargers:', error);
+    } finally {
+      setAvailableChargersLoading(false);
+      setLoadingMoreAvailable(false);
+    }
+  }, [availableChargerPagination.limit, chargers]);
+
+  const loadMoreAvailableChargers = () => {
+    if (availableChargerPagination.has_more && !loadingMoreAvailable && !availableChargersLoading) {
+      setLoadingMoreAvailable(true);
+      fetchAvailableChargers(availableChargerPagination.before, availableChargerPagination.before_id);
+    }
+  };
+
+  // FIXED: Update hub using PATCH method with proper form data handling
+  const handleUpdateHub = useCallback(async (formData) => {
+    // CRITICAL: Check if already updating
+    if (isUpdatingRef.current) {
+      console.log('Update already in progress, skipping...');
+      return;
+    }
+    
+    // Set the ref immediately to prevent any other clicks
+    isUpdatingRef.current = true;
+    setIsSubmitting(true);
+    setHubError('');
+    
+    // Build payload from the passed formData
+    const payload = {};
+    
+    if (formData.name !== hubData?.name) {
+      payload.name = formData.name;
+    }
+    if (formData.address !== hubData?.address) {
+      payload.address = formData.address;
+    }
+    if (formData.latitude && parseFloat(formData.latitude) !== hubData?.latitude) {
+      payload.latitude = parseFloat(formData.latitude);
+    }
+    if (formData.longitude && parseFloat(formData.longitude) !== hubData?.longitude) {
+      payload.longitude = parseFloat(formData.longitude);
+    }
+    if (formData.open_24_hours !== hubData?.open_24_hours) {
+      payload.open_24_hours = formData.open_24_hours;
+    }
+    if (formData.sanction_load && parseFloat(formData.sanction_load) !== hubData?.sanction_load) {
+      payload.sanction_load = parseFloat(formData.sanction_load);
+    }
+
+    // If no changes, close modal and reset
+    if (Object.keys(payload).length === 0) {
+      setShowEditHubModal(false);
+      setIsSubmitting(false);
+      isUpdatingRef.current = false;
+      return;
+    }
+
+    console.log('Updating hub with payload:', payload);
+
+    try {
+      const response = await fetchWithTokenRefresh(`${API_CONFIG.HUB_DETAILS_API}/${hubId}`, {
+        method: 'PATCH',
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+      console.log('Update hub response:', data);
+
+      if (response.ok) {
+        // Update hub data with response
+        setHubData(data);
+        setEditFormData({
+          name: data.name || '',
+          address: data.address || '',
+          latitude: data.latitude || '',
+          longitude: data.longitude || '',
+          open_24_hours: data.open_24_hours || false,
+          sanction_load: data.sanction_load || ''
+        });
+        setShowEditHubModal(false);
+        await fetchHubChargers();
+        // Reset ref on success
+        isUpdatingRef.current = false;
+      } else {
+        setHubError(data.message || data.error?.message || 'Failed to update hub');
+        // Reset ref on error so user can retry
+        isUpdatingRef.current = false;
+      }
+    } catch (error) {
+      console.error('Error updating hub:', error);
+      setHubError(error.message || 'An error occurred');
+      // Reset ref on error so user can retry
+      isUpdatingRef.current = false;
+    } finally {
+      setIsSubmitting(false);
+    }
+  }, [hubData, hubId, fetchHubChargers]);
+
+  // Add chargers to hub - with prevent double submission
+  const handleAddChargers = useCallback(async (selectedChargerIds) => {
+    if (selectedChargerIds.length === 0) return;
+    if (isAddingChargersRef.current) return;
+    isAddingChargersRef.current = true;
+
+    setIsSubmitting(true);
+    setHubError('');
+
+    try {
+      for (const chargerId of selectedChargerIds) {
+        const response = await fetchWithTokenRefresh(`${API_CONFIG.HUB_DETAILS_API}/${hubId}/chargers`, {
+          method: 'POST',
+          body: JSON.stringify({ charger_id: chargerId })
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.message || data.error?.message || 'Failed to add charger');
+        }
+      }
+
+      await fetchHubChargers();
+      setShowAddChargersModal(false);
+      setAvailableChargers([]);
+      setAvailableChargerPagination({
+        before: null,
+        before_id: null,
+        limit: 50,
+        has_more: false,
+        total: 0
+      });
+    } catch (error) {
+      console.error('Error adding chargers:', error);
+      setHubError(error.message || 'An error occurred while adding chargers');
+    } finally {
+      setIsSubmitting(false);
+      isAddingChargersRef.current = false;
+    }
+  }, [hubId]);
+
+  // Remove charger from hub
+  const handleRemoveCharger = useCallback(async (chargerId) => {
+    if (!window.confirm('Are you sure you want to remove this charger from the hub?')) return;
+
+    setChargersLoading(true);
+    try {
+      const response = await fetchWithTokenRefresh(`${API_CONFIG.HUB_DETAILS_API}/${hubId}/chargers/${chargerId}`, {
+        method: 'DELETE'
+      });
+
+      if (response.ok) {
+        setChargers(prev => prev.filter(c => c.id !== chargerId));
+        if (showAddChargersModal) {
+          setAvailableChargers([]);
+          setAvailableChargerPagination({
+            before: null,
+            before_id: null,
+            limit: 50,
+            has_more: false,
+            total: 0
+          });
+          fetchAvailableChargers();
+        }
+      } else {
+        const data = await response.json();
+        alert(data.message || data.error?.message || 'Failed to remove charger');
+      }
+    } catch (error) {
+      console.error('Error removing charger:', error);
+      alert('An error occurred while removing charger');
+    } finally {
+      setChargersLoading(false);
+    }
+  }, [hubId, showAddChargersModal, fetchAvailableChargers]);
 
   const handleLogout = async () => {
     const token = localStorage.getItem('token');
@@ -488,9 +611,11 @@ const HubDetails = () => {
       'ACTIVE': 'bg-green-100 text-green-800 border-green-200',
       'PENDING': 'bg-yellow-100 text-yellow-800 border-yellow-200',
       'INACTIVE': 'bg-red-100 text-red-800 border-red-200',
+      'OFFLINE': 'bg-gray-100 text-gray-800 border-gray-200',
       'active': 'bg-green-100 text-green-800 border-green-200',
       'inactive': 'bg-red-100 text-red-800 border-red-200',
-      'pending': 'bg-yellow-100 text-yellow-800 border-yellow-200'
+      'pending': 'bg-yellow-100 text-yellow-800 border-yellow-200',
+      'offline': 'bg-gray-100 text-gray-800 border-gray-200'
     };
     return colors[status] || 'bg-gray-100 text-gray-800 border-gray-200';
   };
@@ -594,26 +719,35 @@ const HubDetails = () => {
     </div>
   );
 
-  // Edit Hub Modal
+  // FIXED: Edit Hub Modal with proper save handler
   const EditHubModal = () => {
     const [localFormData, setLocalFormData] = useState({
       name: hubData?.name || '',
-      sap_code: hubData?.sap_code || '',
-      load_type: hubData?.load_type || 'KVA',
-      load_limit: hubData?.load_limit || '',
-      load_limit_strategy: hubData?.load_limit_strategy || '',
+      address: hubData?.address || '',
+      latitude: hubData?.latitude || '',
+      longitude: hubData?.longitude || '',
+      open_24_hours: hubData?.open_24_hours || false,
       sanction_load: hubData?.sanction_load || ''
     });
 
     const handleLocalChange = (e) => {
-      const { name, value } = e.target;
-      setLocalFormData(prev => ({ ...prev, [name]: value }));
+      const { name, value, type, checked } = e.target;
+      setLocalFormData(prev => ({
+        ...prev,
+        [name]: type === 'checkbox' ? checked : value
+      }));
     };
 
-    const handleSubmit = () => {
-      // Update hub data
-      setHubData(prev => ({ ...prev, ...localFormData }));
-      setShowEditHubModal(false);
+    // FIXED: Save handler that directly calls update with local data
+    const handleSave = () => {
+      // Prevent multiple clicks using ref
+      if (isUpdatingRef.current) {
+        console.log('Save already in progress');
+        return;
+      }
+      
+      // Directly call handleUpdateHub with localFormData
+      handleUpdateHub(localFormData);
     };
 
     return (
@@ -635,172 +769,44 @@ const HubDetails = () => {
               <form className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Hub Name <span className="text-red-500">*</span>
+                    Hub Name
                   </label>
                   <input
                     type="text"
                     name="name"
                     value={localFormData.name}
                     onChange={handleLocalChange}
+                    placeholder="Enter hub name"
                     className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   />
                 </div>
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Hub SAP Code
+                    Address
                   </label>
-                  <input
-                    type="text"
-                    name="sap_code"
-                    value={localFormData.sap_code}
-                    onChange={handleLocalChange}
-                    placeholder="Enter SAP code"
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      Load Type
-                    </label>
-                    <select
-                      name="load_type"
-                      value={localFormData.load_type}
-                      onChange={handleLocalChange}
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    >
-                      <option value="KVA">KVA</option>
-                      <option value="KW">KW</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      Load Limit
-                    </label>
+                  <div className="relative">
+                    <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input
                       type="text"
-                      name="load_limit"
-                      value={localFormData.load_limit}
+                      name="address"
+                      value={localFormData.address}
                       onChange={handleLocalChange}
-                      placeholder="Enter load limit"
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      placeholder="Enter address"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                     />
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Load Limit Strategy
-                  </label>
-                  <input
-                    type="text"
-                    name="load_limit_strategy"
-                    value={localFormData.load_limit_strategy}
-                    onChange={handleLocalChange}
-                    placeholder="Enter load limit strategy"
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Sanction Load
-                  </label>
-                  <input
-                    type="text"
-                    name="sanction_load"
-                    value={localFormData.sanction_load}
-                    onChange={handleLocalChange}
-                    placeholder="Enter sanction load"
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={handleSubmit}
-                    className="flex-1 px-6 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                  >
-                    Save Changes
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowEditHubModal(false)}
-                    className="px-6 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // Edit Location Modal
-  const EditLocationModal = () => {
-    const [localLocationData, setLocalLocationData] = useState({
-      latitude: hubData?.latitude || '',
-      longitude: hubData?.longitude || '',
-      address: hubData?.address || ''
-    });
-
-    const handleLocalChange = (e) => {
-      const { name, value } = e.target;
-      setLocalLocationData(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleSubmit = () => {
-      setHubData(prev => ({ ...prev, ...localLocationData }));
-      setShowEditLocationModal(false);
-    };
-
-    return (
-      <div className="fixed inset-0 z-50 overflow-hidden">
-        <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setShowEditLocationModal(false)} />
-        <div className="absolute inset-y-0 right-0 max-w-full flex">
-          <div className="relative w-full max-w-2xl bg-white shadow-xl">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h2 className="text-xl font-semibold text-gray-900">Edit Hub Location</h2>
-              <button
-                onClick={() => setShowEditLocationModal(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 130px)' }}>
-              <form className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Get Coordinates
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => window.open('https://www.latlong.net/', '_blank')}
-                    className="text-blue-600 hover:text-blue-700 font-medium flex items-center gap-2 transition"
-                  >
-                    <Compass className="w-4 h-4" />
-                    Get Coordinates
-                    <ExternalLink className="w-3 h-3" />
-                  </button>
-                </div>
-
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      Latitude <span className="text-red-500">*</span>
+                      Latitude
                     </label>
                     <input
                       type="text"
                       name="latitude"
-                      value={localLocationData.latitude}
+                      value={localFormData.latitude}
                       onChange={handleLocalChange}
                       placeholder="Enter latitude"
                       className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
@@ -808,12 +814,12 @@ const HubDetails = () => {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      Longitude <span className="text-red-500">*</span>
+                      Longitude
                     </label>
                     <input
                       type="text"
                       name="longitude"
-                      value={localLocationData.longitude}
+                      value={localFormData.longitude}
                       onChange={handleLocalChange}
                       placeholder="Enter longitude"
                       className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
@@ -823,136 +829,61 @@ const HubDetails = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Address <span className="text-red-500">*</span>
+                    Sanction Load
                   </label>
-                  <div className="relative">
-                    <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="text"
-                      name="address"
-                      value={localLocationData.address}
-                      onChange={handleLocalChange}
-                      placeholder="Enter address"
-                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    />
+                  <input
+                    type="number"
+                    name="sanction_load"
+                    value={localFormData.sanction_load}
+                    onChange={handleLocalChange}
+                    step="any"
+                    placeholder="Enter sanction load"
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    name="open_24_hours"
+                    id="edit_open_24_hours"
+                    checked={localFormData.open_24_hours}
+                    onChange={handleLocalChange}
+                    className="w-5 h-5 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                  />
+                  <label htmlFor="edit_open_24_hours" className="text-sm font-medium text-gray-700">
+                    Open 24/7
+                  </label>
+                </div>
+
+                {hubError && (
+                  <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                    {hubError}
                   </div>
-                </div>
+                )}
 
                 <div className="flex gap-3 pt-4">
                   <button
                     type="button"
-                    onClick={handleSubmit}
-                    className="flex-1 px-6 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                    onClick={handleSave}
+                    disabled={isUpdatingRef.current || isSubmitting}
+                    className="flex-1 px-6 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    Save Changes
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      'Save Changes'
+                    )}
                   </button>
                   <button
                     type="button"
-                    onClick={() => setShowEditLocationModal(false)}
-                    className="px-6 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // Edit Bank Modal
-  const EditBankModal = () => {
-    const [localBankData, setLocalBankData] = useState({
-      account_name: hubData?.bank_details?.account_name || '',
-      account_no: hubData?.bank_details?.account_no || '',
-      ifsc_code: hubData?.bank_details?.ifsc_code || ''
-    });
-
-    const handleLocalChange = (e) => {
-      const { name, value } = e.target;
-      setLocalBankData(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleSubmit = () => {
-      setHubData(prev => ({
-        ...prev,
-        bank_details: { ...localBankData }
-      }));
-      setShowEditBankModal(false);
-    };
-
-    return (
-      <div className="fixed inset-0 z-50 overflow-hidden">
-        <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setShowEditBankModal(false)} />
-        <div className="absolute inset-y-0 right-0 max-w-full flex">
-          <div className="relative w-full max-w-2xl bg-white shadow-xl">
-            <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h2 className="text-xl font-semibold text-gray-900">Edit Hub Bank Details</h2>
-              <button
-                onClick={() => setShowEditBankModal(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 130px)' }}>
-              <form className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Account Name <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    name="account_name"
-                    value={localBankData.account_name}
-                    onChange={handleLocalChange}
-                    placeholder="Enter Account Name"
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Account No <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    name="account_no"
-                    value={localBankData.account_no}
-                    onChange={handleLocalChange}
-                    placeholder="Enter Account No"
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                    Account IFSC Code <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    name="ifsc_code"
-                    value={localBankData.ifsc_code}
-                    onChange={handleLocalChange}
-                    placeholder="Enter Account IFSC Code"
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <button
-                    type="button"
-                    onClick={handleSubmit}
-                    className="flex-1 px-6 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                  >
-                    Save Changes
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowEditBankModal(false)}
+                    onClick={() => {
+                      setShowEditHubModal(false);
+                      setHubError('');
+                    }}
                     className="px-6 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                   >
                     Cancel
@@ -970,7 +901,27 @@ const HubDetails = () => {
   const AddChargersModal = () => {
     const [selectedChargerIds, setSelectedChargerIds] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
-    const [availableChargers, setAvailableChargers] = useState(allAvailableChargers);
+    const [isAdding, setIsAdding] = useState(false);
+
+    useEffect(() => {
+      if (showAddChargersModal && !isModalOpenRef.current) {
+        isModalOpenRef.current = true;
+        setAvailableChargers([]);
+        setAvailableChargerPagination({
+          before: null,
+          before_id: null,
+          limit: 50,
+          has_more: false,
+          total: 0
+        });
+        fetchAvailableChargers();
+      }
+      return () => {
+        if (!showAddChargersModal) {
+          isModalOpenRef.current = false;
+        }
+      };
+    }, [showAddChargersModal, fetchAvailableChargers]);
 
     const toggleChargerSelection = (chargerId) => {
       setSelectedChargerIds(prev => {
@@ -982,35 +933,43 @@ const HubDetails = () => {
       });
     };
 
-    const handleAddChargers = () => {
-      // Add selected chargers to hub
-      const newChargers = availableChargers.filter(c => selectedChargerIds.includes(c.id));
-      setChargers(prev => [...prev, ...newChargers]);
-      setShowAddChargersModal(false);
+    const handleAddSelectedChargers = async () => {
+      if (selectedChargerIds.length === 0) return;
+      if (isAdding || isSubmitting || isAddingChargersRef.current) return;
+      setIsAdding(true);
+      await handleAddChargers(selectedChargerIds);
+      setIsAdding(false);
+      setSelectedChargerIds([]);
     };
 
-    const filteredChargers = availableChargers.filter(charger =>
+    const filteredAvailableChargers = availableChargers.filter(charger =>
       charger.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       charger.charger_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      charger.device_id?.toLowerCase().includes(searchTerm.toLowerCase())
+      charger.id?.toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     return (
       <div className="fixed inset-0 z-50 overflow-hidden">
-        <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => setShowAddChargersModal(false)} />
+        <div className="absolute inset-0 bg-black bg-opacity-50" onClick={() => {
+          setShowAddChargersModal(false);
+          isModalOpenRef.current = false;
+        }} />
         <div className="absolute inset-y-0 right-0 max-w-full flex">
           <div className="relative w-full max-w-3xl bg-white shadow-xl">
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <div>
                 <h2 className="text-xl font-semibold text-gray-900">
-                  Add Chargers in <span className="text-green-600">{hubData?.name}</span>
+                  Add Chargers to <span className="text-green-600">{hubData?.name}</span>
                 </h2>
                 <p className="text-sm text-gray-500 mt-1">
-                  Note: Selected chargers location will be changed to -- {hubData?.address}
+                  Select chargers to associate with this hub
                 </p>
               </div>
               <button
-                onClick={() => setShowAddChargersModal(false)}
+                onClick={() => {
+                  setShowAddChargersModal(false);
+                  isModalOpenRef.current = false;
+                }}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <X className="w-6 h-6" />
@@ -1018,32 +977,49 @@ const HubDetails = () => {
             </div>
 
             <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(100vh - 180px)' }}>
-              {/* Search */}
               <div className="relative mb-4">
                 <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Search by charger name, ID or device ID..."
+                  placeholder="Search by charger name or ID..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                 />
               </div>
 
-              {/* Chargers List */}
-              {filteredChargers.length === 0 ? (
+              {availableChargersLoading && availableChargers.length === 0 ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
+                </div>
+              ) : filteredAvailableChargers.length === 0 ? (
                 <div className="text-center py-12">
-                  <AlertTriangle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                  <p className="text-gray-500">No chargers available</p>
+                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Zap className="w-8 h-8 text-gray-400" />
+                  </div>
+                  <p className="text-gray-500 font-medium">No Chargers Found</p>
+                  <p className="text-sm text-gray-400 mt-1">All chargers are already assigned to this hub</p>
+                  <button
+                    onClick={() => {
+                      setShowAddChargersModal(false);
+                      isModalOpenRef.current = false;
+                      navigate('/add-charger');
+                    }}
+                    className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add New Charger
+                  </button>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 gap-3 max-h-96 overflow-y-auto pr-2">
-                  {filteredChargers.map((charger) => {
-                    const isSelected = selectedChargerIds.includes(charger.id);
+                  {filteredAvailableChargers.map((charger) => {
+                    const chargerId = charger.id || charger.charger_id;
+                    const isSelected = selectedChargerIds.includes(chargerId);
                     return (
                       <div
-                        key={charger.id}
-                        onClick={() => toggleChargerSelection(charger.id)}
+                        key={chargerId}
+                        onClick={() => toggleChargerSelection(chargerId)}
                         className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
                           isSelected
                             ? 'border-green-500 bg-green-50 shadow-sm shadow-green-100'
@@ -1058,14 +1034,15 @@ const HubDetails = () => {
                               }`}>
                                 {isSelected && <Check className="w-3 h-3 text-white" />}
                               </div>
-                              <h4 className="font-medium text-gray-900">{charger.name}</h4>
+                              <h4 className="font-medium text-gray-900">{charger.name || 'Unnamed Charger'}</h4>
                             </div>
                             <div className="ml-7 mt-1 space-y-1">
-                              <p className="text-xs text-gray-500">ID: {charger.charger_id}</p>
-                              <p className="text-xs text-gray-500">Device: {charger.device_id}</p>
-                              <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(charger.status)}`}>
-                                {charger.status}
-                              </span>
+                              <p className="text-xs text-gray-500">ID: {charger.charger_id || charger.id}</p>
+                              {charger.status && (
+                                <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(charger.status)}`}>
+                                  {charger.status || 'PENDING'}
+                                </span>
+                              )}
                             </div>
                           </div>
                           {isSelected && (
@@ -1078,23 +1055,47 @@ const HubDetails = () => {
                 </div>
               )}
 
-              <div className="flex gap-3 pt-6 mt-4 border-t border-gray-200">
-                <button
-                  type="button"
-                  onClick={handleAddChargers}
-                  disabled={selectedChargerIds.length === 0}
-                  className="flex-1 px-6 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Add Selected Chargers ({selectedChargerIds.length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowAddChargersModal(false)}
-                  className="px-6 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
+              {availableChargerPagination.has_more && filteredAvailableChargers.length > 0 && (
+                <div className="text-center pt-2">
+                  <button
+                    onClick={loadMoreAvailableChargers}
+                    disabled={loadingMoreAvailable || availableChargersLoading}
+                    className="text-sm text-green-600 hover:text-green-700 font-medium disabled:opacity-50"
+                  >
+                    {loadingMoreAvailable ? 'Loading...' : 'Load More Chargers'}
+                  </button>
+                </div>
+              )}
+
+              {filteredAvailableChargers.length > 0 && (
+                <div className="flex gap-3 pt-6 mt-4 border-t border-gray-200">
+                  <button
+                    type="button"
+                    onClick={handleAddSelectedChargers}
+                    disabled={selectedChargerIds.length === 0 || isAdding || isSubmitting || isAddingChargersRef.current}
+                    className="flex-1 px-6 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {isAdding || isSubmitting ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Adding...
+                      </>
+                    ) : (
+                      `Add Selected Chargers (${selectedChargerIds.length})`
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowAddChargersModal(false);
+                      isModalOpenRef.current = false;
+                    }}
+                    className="px-6 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -1202,7 +1203,10 @@ const HubDetails = () => {
             <span className="font-medium">Back</span>
           </button>
           <button
-            onClick={() => setShowAddChargersModal(true)}
+            onClick={() => {
+              setShowAddChargersModal(true);
+              isModalOpenRef.current = false;
+            }}
             className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
           >
             <Plus size={18} />
@@ -1227,104 +1231,53 @@ const HubDetails = () => {
                         <p className="text-sm text-gray-500">Complete information about the hub</p>
                       </div>
                     </div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-medium border flex items-center gap-1 ${getStatusColor(hubData?.status)}`}>
-                      {getStatusIcon(hubData?.status)}
-                      {hubData?.status || 'PENDING'}
-                    </span>
+                    <button
+                      onClick={() => setShowEditHubModal(true)}
+                      className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition"
+                      title="Edit Hub"
+                    >
+                      <Edit size={18} />
+                    </button>
                   </div>
                 </div>
 
                 <div className="p-6 space-y-6">
-                  {/* Hub Name */}
                   <div>
                     <p className="text-xs text-gray-500">Hub Name</p>
                     <p className="text-base font-semibold text-gray-900">{hubData?.name}</p>
                   </div>
 
-                  {/* Hub SAP Code */}
                   <div>
-                    <p className="text-xs text-gray-500">Hub SAP Code</p>
-                    <p className="text-base font-semibold text-gray-900">{hubData?.sap_code || '----'}</p>
+                    <p className="text-xs text-gray-500">Address</p>
+                    <p className="text-base font-semibold text-gray-900">{hubData?.address || 'N/A'}</p>
                   </div>
 
-                  {/* Load Details */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-xs text-gray-500">Load Limit</p>
-                      <p className="text-base font-semibold text-gray-900">{hubData?.load_limit || '----'}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500">Load Limit Strategy</p>
-                      <p className="text-base font-semibold text-gray-900">{hubData?.load_limit_strategy || '----'}</p>
+                  <div>
+                    <p className="text-xs text-gray-500">Location</p>
+                    <div className="flex items-center gap-4 text-sm">
+                      <span className="font-medium text-gray-900">Lat: {hubData?.latitude || 'N/A'}</span>
+                      <span className="font-medium text-gray-900">Lng: {hubData?.longitude || 'N/A'}</span>
                     </div>
                   </div>
 
-                  {/* Sanction Load */}
                   <div>
                     <p className="text-xs text-gray-500">Sanction Load</p>
-                    <p className="text-base font-semibold text-gray-900">{hubData?.sanction_load || '----'}</p>
+                    <p className="text-base font-semibold text-gray-900">{hubData?.sanction_load || 0} kW</p>
                   </div>
 
-                  {/* Hub Location */}
                   <div>
-                    <p className="text-xs text-gray-500">Hub Location</p>
-                    <p className="text-base font-semibold text-gray-900">{hubData?.address}</p>
-                    <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
-                      <span>Lat: {hubData?.latitude}</span>
-                      <span>Lng: {hubData?.longitude}</span>
-                    </div>
+                    <p className="text-xs text-gray-500">Open 24/7</p>
+                    <p className="text-base font-semibold text-gray-900">{hubData?.open_24_hours ? 'Yes' : 'No'}</p>
                   </div>
 
-                  {/* Hub Bill Detail */}
-                  <div className="border-t border-gray-200 pt-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <FileText className="w-4 h-4 text-green-600" />
-                      <h4 className="font-semibold text-gray-900">Hub Bill Detail</h4>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-xs text-gray-500">Name</p>
-                        <p className="text-sm font-medium text-gray-900">{hubData?.bill_details?.name}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">State</p>
-                        <p className="text-sm font-medium text-gray-900">{hubData?.bill_details?.state}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Bill No</p>
-                        <p className="text-sm font-medium text-gray-900">{hubData?.bill_details?.bill_no}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Connection Type</p>
-                        <p className="text-sm font-medium text-gray-900">{hubData?.bill_details?.connection_type}</p>
-                      </div>
-                      <div className="col-span-2">
-                        <p className="text-xs text-gray-500">Phone Number</p>
-                        <p className="text-sm font-medium text-gray-900">{hubData?.bill_details?.phone_number}</p>
-                      </div>
-                    </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Created At</p>
+                    <p className="text-base font-semibold text-gray-900">{formatDate(hubData?.created_at)}</p>
                   </div>
 
-                  {/* Hub Bank Detail */}
-                  <div className="border-t border-gray-200 pt-4">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Banknote className="w-4 h-4 text-green-600" />
-                      <h4 className="font-semibold text-gray-900">Hub Bank Detail</h4>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <p className="text-xs text-gray-500">Account Name</p>
-                        <p className="text-sm font-medium text-gray-900">{hubData?.bank_details?.account_name || '----'}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-gray-500">Account No</p>
-                        <p className="text-sm font-medium text-gray-900">{hubData?.bank_details?.account_no || '----'}</p>
-                      </div>
-                      <div className="col-span-2">
-                        <p className="text-xs text-gray-500">Account IFSC Code</p>
-                        <p className="text-sm font-medium text-gray-900">{hubData?.bank_details?.ifsc_code || '----'}</p>
-                      </div>
-                    </div>
+                  <div>
+                    <p className="text-xs text-gray-500">Last Updated</p>
+                    <p className="text-base font-semibold text-gray-900">{formatDate(hubData?.updated_at)}</p>
                   </div>
                 </div>
               </div>
@@ -1344,12 +1297,11 @@ const HubDetails = () => {
                 </div>
 
                 <div className="p-4">
-                  {/* Search */}
                   <div className="relative mb-4">
                     <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input
                       type="text"
-                      placeholder="Search by ID..."
+                      placeholder="Search by ID or name..."
                       value={chargerSearchTerm}
                       onChange={(e) => setChargerSearchTerm(e.target.value)}
                       className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
@@ -1362,29 +1314,51 @@ const HubDetails = () => {
                     </div>
                   ) : chargers.filter(c => 
                     c.charger_id?.toLowerCase().includes(chargerSearchTerm.toLowerCase()) ||
-                    c.name?.toLowerCase().includes(chargerSearchTerm.toLowerCase())
+                    c.name?.toLowerCase().includes(chargerSearchTerm.toLowerCase()) ||
+                    c.id?.toLowerCase().includes(chargerSearchTerm.toLowerCase())
                   ).length === 0 ? (
                     <div className="text-center py-8">
                       <Zap className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-                      <p className="text-sm text-gray-500">No chargers found</p>
+                      <p className="text-sm text-gray-500">No chargers in this hub</p>
+                      <button
+                        onClick={() => {
+                          setShowAddChargersModal(true);
+                          isModalOpenRef.current = false;
+                        }}
+                        className="mt-2 text-sm text-green-600 hover:text-green-700 font-medium"
+                      >
+                        Add chargers
+                      </button>
                     </div>
                   ) : (
                     <div className="space-y-2 max-h-96 overflow-y-auto">
                       {chargers
                         .filter(c => 
                           c.charger_id?.toLowerCase().includes(chargerSearchTerm.toLowerCase()) ||
-                          c.name?.toLowerCase().includes(chargerSearchTerm.toLowerCase())
+                          c.name?.toLowerCase().includes(chargerSearchTerm.toLowerCase()) ||
+                          c.id?.toLowerCase().includes(chargerSearchTerm.toLowerCase())
                         )
                         .map((charger) => (
-                          <div key={charger.id} className="p-3 rounded-lg border border-gray-200 hover:border-gray-300 transition">
+                          <div key={charger.id} className="p-3 rounded-lg border border-gray-200 hover:border-gray-300 transition group">
                             <div className="flex items-center justify-between">
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-gray-900 truncate">{charger.name}</p>
-                                <p className="text-xs text-gray-500">ID: {charger.charger_id}</p>
+                                <p className="text-sm font-medium text-gray-900 truncate">{charger.name || 'Unnamed Charger'}</p>
+                                <p className="text-xs text-gray-500">ID: {charger.charger_id || charger.id}</p>
                               </div>
-                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(charger.status)}`}>
-                                {charger.status}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                {charger.status && (
+                                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(charger.status)}`}>
+                                    {charger.status || 'PENDING'}
+                                  </span>
+                                )}
+                                <button
+                                  onClick={() => handleRemoveCharger(charger.id)}
+                                  className="opacity-0 group-hover:opacity-100 p-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded transition"
+                                  title="Remove from hub"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
                             </div>
                           </div>
                         ))}
@@ -1399,8 +1373,6 @@ const HubDetails = () => {
 
       {/* Modals */}
       {showEditHubModal && <EditHubModal />}
-      {showEditLocationModal && <EditLocationModal />}
-      {showEditBankModal && <EditBankModal />}
       {showAddChargersModal && <AddChargersModal />}
     </div>
   );

@@ -1,5 +1,5 @@
 // src/pages/AddHub.jsx
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   User,
@@ -211,7 +211,7 @@ const getAddressFromCoordinates = async (lat, lng) => {
   }
 };
 
-// Step 1: Basic Details Component - Moved outside to prevent re-rendering issues
+// Step 1: Basic Details Component
 const BasicDetailsStep = React.memo(({ formData, handleFormChange, handleGetAddress, gettingAddress, addressError }) => (
   <div className="space-y-6">
     {/* Hub Name with Red Star */}
@@ -236,7 +236,7 @@ const BasicDetailsStep = React.memo(({ formData, handleFormChange, handleGetAddr
     {/* Hub Location */}
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1.5">
-        Hub Location 
+        Hub Location <span className="text-red-500 text-lg">*</span>
       </label>
       
       {/* Get Coordinates as Blue Text Link */}
@@ -291,7 +291,7 @@ const BasicDetailsStep = React.memo(({ formData, handleFormChange, handleGetAddr
     {/* Address with Get Address Button */}
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1.5">
-        Address 
+        Address <span className="text-red-500 text-lg">*</span>
       </label>
       <div className="relative">
         <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -398,7 +398,7 @@ const BasicDetailsStep = React.memo(({ formData, handleFormChange, handleGetAddr
   </div>
 ));
 
-// Step 2: Select Chargers Component - Moved outside to prevent re-rendering issues
+// Step 2: Select Chargers Component
 const SelectChargersStep = React.memo(({ 
   chargers, 
   chargersLoading, 
@@ -410,12 +410,12 @@ const SelectChargersStep = React.memo(({
   loadingMoreChargers,
   toggleChargerSelection,
   formatDate,
-  getStatusColor,
-  navigate
+  getStatusColor
 }) => {
   const filteredChargers = chargers.filter(charger =>
     charger.name?.toLowerCase().includes(chargerSearchTerm.toLowerCase()) ||
-    charger.charger_id?.toLowerCase().includes(chargerSearchTerm.toLowerCase())
+    charger.charger_id?.toLowerCase().includes(chargerSearchTerm.toLowerCase()) ||
+    charger.id?.toLowerCase().includes(chargerSearchTerm.toLowerCase())
   );
 
   return (
@@ -450,13 +450,6 @@ const SelectChargersStep = React.memo(({
           <AlertTriangle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
           <p className="text-gray-500 font-medium">No Chargers Found</p>
           <p className="text-sm text-gray-400 mt-1">You haven't added any chargers yet</p>
-          {/* <button
-            onClick={() => navigate('/add-charger')}
-            className="mt-4 inline-flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
-          >
-            <Plus className="w-4 h-4" />
-            Add Charger
-          </button> */}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-2">
@@ -488,7 +481,7 @@ const SelectChargersStep = React.memo(({
                     </div>
                     <div className="ml-7 mt-1 space-y-1">
                       <p className="text-xs text-gray-500">
-                        ID: {chargerId}
+                        ID: {charger.charger_id || charger.id}
                       </p>
                       {charger.status && (
                         <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(charger.status)}`}>
@@ -629,6 +622,8 @@ const AddHub = () => {
         url += `&before_id=${before_id}`;
       }
 
+      console.log('Fetching chargers URL:', url);
+
       const response = await fetchWithTokenRefresh(url, {
         method: 'GET'
       });
@@ -637,6 +632,7 @@ const AddHub = () => {
       console.log('Chargers response:', data);
 
       if (response.ok) {
+        // Extract chargers data from response
         const chargersData = data.data || data.chargers || data || [];
         const hasMore = data.has_more || false;
         const nextBefore = data.next_before || null;
@@ -651,6 +647,8 @@ const AddHub = () => {
           total: total,
           limit: chargerPagination.limit
         });
+      } else {
+        console.error('Failed to fetch chargers:', data);
       }
     } catch (error) {
       console.error('Error fetching chargers:', error);
@@ -667,7 +665,6 @@ const AddHub = () => {
     }
   };
 
-  // Use useCallback to prevent function recreation on each render
   const handleFormChange = useCallback((e) => {
     const { name, value, type, checked } = e.target;
     setFormData(prev => ({
@@ -676,7 +673,6 @@ const AddHub = () => {
     }));
   }, []);
 
-  // Get address from coordinates - use useCallback
   const handleGetAddress = useCallback(async () => {
     if (!formData.latitude || !formData.longitude) {
       setAddressError('Please enter both latitude and longitude');
@@ -726,6 +722,7 @@ const AddHub = () => {
     setSubmitError('');
     setSubmitSuccess(false);
 
+    // Validate required fields
     if (!formData.name.trim()) {
       setSubmitError('Hub name is required');
       setSubmitting(false);
@@ -750,6 +747,7 @@ const AddHub = () => {
       return;
     }
 
+    // Build payload according to backend expectations
     const payload = {
       name: formData.name,
       address: formData.address,
@@ -758,13 +756,12 @@ const AddHub = () => {
       open_24_hours: formData.open_24_hours
     };
 
-    if (formData.sanction_load) {
-      payload.sanction_load = {
-        value: parseFloat(formData.sanction_load),
-        unit: formData.load_type
-      };
+    // Add sanction_load as a number (not object) - backend expects float64
+    if (formData.sanction_load && !isNaN(parseFloat(formData.sanction_load))) {
+      payload.sanction_load = parseFloat(formData.sanction_load);
     }
 
+    // Add charger IDs if selected
     if (selectedChargers.length > 0) {
       payload.charger_ids = selectedChargers;
     }
@@ -840,9 +837,11 @@ const AddHub = () => {
       'ACTIVE': 'bg-green-100 text-green-800',
       'PENDING': 'bg-yellow-100 text-yellow-800',
       'INACTIVE': 'bg-red-100 text-red-800',
+      'OFFLINE': 'bg-gray-100 text-gray-800',
       'active': 'bg-green-100 text-green-800',
       'inactive': 'bg-red-100 text-red-800',
-      'pending': 'bg-yellow-100 text-yellow-800'
+      'pending': 'bg-yellow-100 text-yellow-800',
+      'offline': 'bg-gray-100 text-gray-800'
     };
     return colors[status] || 'bg-gray-100 text-gray-800';
   };
@@ -959,7 +958,7 @@ const AddHub = () => {
 
       <div className="flex-1 min-w-0">
         {/* HEADER */}
-        <header className="bg-white border-b-2 border-gray-200 px-6 py-6 sticky top-0 z-30 shadow-sm">
+        <header className="bg-white border-b-2 border-gray-200 px-6 py-4 sticky top-0 z-30 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <button
@@ -1156,7 +1155,6 @@ const AddHub = () => {
                       toggleChargerSelection={toggleChargerSelection}
                       formatDate={formatDate}
                       getStatusColor={getStatusColor}
-                      navigate={navigate}
                     />
                   )}
 
