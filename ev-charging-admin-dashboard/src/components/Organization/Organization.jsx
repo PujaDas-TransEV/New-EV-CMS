@@ -38,7 +38,14 @@ import {
   Check,
   Sparkles,
   Gift,
-  BadgeCheck
+  BadgeCheck,
+  RefreshCw,
+  Timer,
+  Infinity,
+  Package,
+  IndianRupee,
+  Repeat,
+  CalendarDays
 } from 'lucide-react';
 import Sidebar from '../Sidebar/Sidebar';
 
@@ -105,7 +112,7 @@ const refreshAccessToken = async () => {
   }
 };
 
-const fetchWithTokenRefresh = async (url, options = {}, retryCount = 2) => {
+const fetchWithTokenRefresh = async (url, options = {}, retryCount = 3) => {
   const token = localStorage.getItem('token');
   
   if (!token) {
@@ -125,7 +132,6 @@ const fetchWithTokenRefresh = async (url, options = {}, retryCount = 2) => {
       }
     });
 
-    // Check if token expired (401)
     if (response.status === 401 && retryCount > 0) {
       console.log(`Received 401, attempting token refresh (${retryCount} retries left)...`);
       
@@ -151,12 +157,8 @@ const fetchWithTokenRefresh = async (url, options = {}, retryCount = 2) => {
           return fetchWithTokenRefresh(url, options, retryCount - 1);
         }
       } else {
-        console.log('Refresh token failed, redirecting to login...');
-        localStorage.removeItem('token');
-        localStorage.removeItem('refresh_token');
-        localStorage.removeItem('token_expiry');
-        localStorage.removeItem('userInfo');
-        throw new Error('Session expired. Please login again.');
+        console.log('Refresh token failed, but we will try to continue...');
+        throw new Error('REFRESH_TOKEN_FAILED');
       }
     }
 
@@ -186,6 +188,7 @@ const Organization = () => {
   const [subscriptionData, setSubscriptionData] = useState(null);
   const [subLoading, setSubLoading] = useState(false);
   const [subError, setSubError] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   // Fetch user info and organization data
   useEffect(() => {
@@ -204,8 +207,9 @@ const Organization = () => {
       await fetchSubscriptionData();
     } catch (error) {
       console.error('Error loading data:', error);
-      if (error.message && error.message.includes('Session expired')) {
-        navigate('/signin');
+      if (error.message === 'REFRESH_TOKEN_FAILED') {
+        setOrgError('Session expired. Please refresh the page to continue.');
+        setSubError('Session expired. Please refresh the page to continue.');
       }
     } finally {
       setLoading(false);
@@ -233,6 +237,9 @@ const Organization = () => {
       }
     } catch (error) {
       console.error('Error fetching user info:', error);
+      if (error.message === 'REFRESH_TOKEN_FAILED') {
+        throw error;
+      }
     }
   };
 
@@ -254,7 +261,11 @@ const Organization = () => {
       }
     } catch (error) {
       console.error('Error fetching organization:', error);
-      setOrgError(error.message || 'An error occurred while fetching organization data');
+      if (error.message === 'REFRESH_TOKEN_FAILED') {
+        setOrgError('Session expired. Please refresh the page or login again.');
+      } else {
+        setOrgError(error.message || 'An error occurred while fetching organization data');
+      }
     } finally {
       setOrgLoading(false);
     }
@@ -278,9 +289,33 @@ const Organization = () => {
       }
     } catch (error) {
       console.error('Error fetching subscription:', error);
-      setSubError(error.message || 'An error occurred while fetching subscription data');
+      if (error.message === 'REFRESH_TOKEN_FAILED') {
+        setSubError('Session expired. Please refresh the page or login again.');
+      } else {
+        setSubError(error.message || 'An error occurred while fetching subscription data');
+      }
     } finally {
       setSubLoading(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    setOrgError('');
+    setSubError('');
+    try {
+      const refreshResult = await refreshAccessToken();
+      if (refreshResult.success) {
+        await loadData();
+      } else {
+        setOrgError('Unable to refresh session. Please login again.');
+        setSubError('Unable to refresh session. Please login again.');
+      }
+    } catch (error) {
+      console.error('Refresh error:', error);
+      setOrgError('Failed to refresh session. Please login again.');
+    } finally {
+      setIsRefreshing(false);
     }
   };
 
@@ -323,6 +358,17 @@ const Organization = () => {
       year: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
+    });
+  };
+
+  // Format date for subscription display
+  const formatDateShort = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
     });
   };
 
@@ -476,7 +522,6 @@ const Organization = () => {
         <header className="bg-white border-b-2 border-gray-200 px-6 py-6 sticky top-0 z-30 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              {/* Mobile menu button */}
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
                 className="lg:hidden p-2 hover:bg-gray-100 rounded-lg"
@@ -491,7 +536,6 @@ const Organization = () => {
             </div>
             
             <div className="flex items-center gap-2 relative">
-              {/* Settings Icon */}
               <div className="relative">
                 <button
                   onClick={() => setShowSettingsMenu(!showSettingsMenu)}
@@ -503,7 +547,6 @@ const Organization = () => {
                 {showSettingsMenu && <SettingsMenu />}
               </div>
 
-              {/* Add Button */}
               <div className="relative">
                 <button
                   onClick={() => setShowAddMenu(!showAddMenu)}
@@ -521,7 +564,7 @@ const Organization = () => {
         <div className="border-b border-gray-200 bg-white px-6">
           <div className="flex gap-0">
             <button
-              onClick={() => {}} // Stay on current page
+              onClick={() => {}}
               className={`px-6 py-5 text-sm font-medium border-b-2 transition-all duration-200 flex items-center gap-2 border-green-600 text-green-700 bg-green-50/50`}
             >
               <Building size={16} />
@@ -537,9 +580,36 @@ const Organization = () => {
           </div>
         </div>
 
-        {/* Content - Organization Details */}
+        {/* Content */}
         <div className="p-6">
           <div className="max-w-7xl mx-auto space-y-6">
+            {/* Session Expired Banner */}
+            {(orgError?.includes('Session expired') || subError?.includes('Session expired')) && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <AlertCircle className="w-5 h-5 text-yellow-600" />
+                  <span className="text-yellow-800">Session expired. Please refresh to continue.</span>
+                </div>
+                <button
+                  onClick={handleRefresh}
+                  disabled={isRefreshing}
+                  className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition flex items-center gap-2"
+                >
+                  {isRefreshing ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Refreshing...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="w-4 h-4" />
+                      Refresh Session
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
             {/* Organization Details Card */}
             {orgLoading ? (
               <div className="flex items-center justify-center h-64">
@@ -548,14 +618,13 @@ const Organization = () => {
                   <p className="text-gray-500">Loading organization data...</p>
                 </div>
               </div>
-            ) : orgError ? (
+            ) : orgError && !orgError.includes('Session expired') ? (
               <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-600 flex items-center gap-2">
                 <AlertCircle className="w-5 h-5" />
                 <span>{orgError}</span>
               </div>
             ) : orgData ? (
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                {/* Card Header with Logo */}
                 <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-green-50 to-emerald-50">
                   <div className="flex items-center gap-4">
                     <div className="w-20 h-20 bg-green-600 rounded-2xl flex items-center justify-center shadow-lg shadow-green-600/20">
@@ -568,20 +637,14 @@ const Organization = () => {
                           {getStatusIcon(orgData.status)}
                           {orgData.status || 'PENDING'}
                         </span>
-                        <span className="text-sm text-gray-500">
-                          ID: {orgData.slug || 'N/A'}
-                        </span>
-                        <span className="text-sm text-gray-500">
-                          Type: {orgData.company_type || 'N/A'}
-                        </span>
+                        <span className="text-sm text-gray-500">ID: {orgData.slug || 'N/A'}</span>
+                        <span className="text-sm text-gray-500">Type: {orgData.company_type || 'N/A'}</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Details Grid */}
                 <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Left Column */}
                   <div className="space-y-4">
                     <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                       <Mail className="w-5 h-5 text-green-600 mt-0.5" />
@@ -590,7 +653,6 @@ const Organization = () => {
                         <p className="text-sm font-medium text-gray-900">{userData?.user?.email || 'info@transev.com'}</p>
                       </div>
                     </div>
-
                     <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                       <Shield className="w-5 h-5 text-green-600 mt-0.5" />
                       <div>
@@ -598,22 +660,17 @@ const Organization = () => {
                         <p className="text-sm font-medium text-gray-900 font-mono">{orgData.gstin || 'N/A'}</p>
                       </div>
                     </div>
-
                     <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                       <Globe className="w-5 h-5 text-green-600 mt-0.5" />
                       <div>
                         <p className="text-sm text-gray-500">Location</p>
                         <p className="text-sm font-medium text-gray-900">
-                          {orgData.city && orgData.state 
-                            ? `${orgData.city}, ${orgData.state}` 
-                            : 'N/A'}
+                          {orgData.city && orgData.state ? `${orgData.city}, ${orgData.state}` : 'N/A'}
                           {orgData.pincode && ` - ${orgData.pincode}`}
                         </p>
                       </div>
                     </div>
                   </div>
-
-                  {/* Right Column */}
                   <div className="space-y-4">
                     <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                       <Hash className="w-5 h-5 text-green-600 mt-0.5" />
@@ -622,7 +679,6 @@ const Organization = () => {
                         <p className="text-sm font-medium text-gray-900 font-mono">{orgData.app_id || 'N/A'}</p>
                       </div>
                     </div>
-
                     <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                       <Clock className="w-5 h-5 text-green-600 mt-0.5" />
                       <div>
@@ -630,7 +686,6 @@ const Organization = () => {
                         <p className="text-sm font-medium text-gray-900">{orgData.app_id_mode || 'N/A'}</p>
                       </div>
                     </div>
-
                     <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                       <Calendar className="w-5 h-5 text-green-600 mt-0.5" />
                       <div>
@@ -641,7 +696,6 @@ const Organization = () => {
                   </div>
                 </div>
 
-                {/* Address Section */}
                 <div className="p-6 border-t border-gray-200 bg-gray-50">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
@@ -666,7 +720,7 @@ const Organization = () => {
               </div>
             )}
 
-            {/* Subscription Details Card */}
+            {/* Subscription Details Card - UPDATED with modern design */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
                 <div className="flex items-center gap-4">
@@ -681,13 +735,13 @@ const Organization = () => {
               </div>
 
               {subLoading ? (
-                <div className="flex items-center justify-center h-48">
+                <div className="flex items-center justify-center h-64">
                   <div className="flex flex-col items-center gap-3">
                     <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
                     <p className="text-gray-500">Loading subscription details...</p>
                   </div>
                 </div>
-              ) : subError ? (
+              ) : subError && !subError.includes('Session expired') ? (
                 <div className="p-6">
                   <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-600 flex items-center gap-2">
                     <AlertCircle className="w-5 h-5" />
@@ -696,91 +750,128 @@ const Organization = () => {
                 </div>
               ) : subscriptionData ? (
                 <div className="p-6">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    {/* Plan Information */}
-                    <div className="md:col-span-2 space-y-4">
-                      <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
-                        <Crown className="w-6 h-6 text-yellow-500 mt-0.5" />
-                        <div>
-                          <p className="text-sm text-gray-500">Current Plan</p>
-                          <p className="text-lg font-bold text-gray-900">
-                            {subscriptionData.plan_name || subscriptionData.name || 'Free Plan'}
-                          </p>
-                          {subscriptionData.description && (
-                            <p className="text-sm text-gray-600 mt-1">{subscriptionData.description}</p>
-                          )}
+                  {/* Plan Header */}
+                  <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-6 mb-6 text-white">
+                    <div className="flex items-center justify-between flex-wrap gap-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Crown className="w-6 h-6 text-yellow-300" />
+                          <span className="text-sm font-medium text-blue-200">Current Plan</span>
                         </div>
+                        <h3 className="text-2xl font-bold mt-1">{subscriptionData.plan?.name || 'Base Plan'}</h3>
+                        {subscriptionData.plan?.description && (
+                          <p className="text-blue-200 text-sm mt-1">{subscriptionData.plan.description}</p>
+                        )}
                       </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
-                          <DollarSign className="w-5 h-5 text-green-600 mt-0.5" />
-                          <div>
-                            <p className="text-sm text-gray-500">Price</p>
-                            <p className="text-lg font-bold text-gray-900">
-                              ${subscriptionData.price || subscriptionData.amount || '0.00'}
-                              <span className="text-sm font-normal text-gray-500">
-                                /{subscriptionData.billing_period || 'month'}
-                              </span>
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
-                          <BadgeCheck className="w-5 h-5 text-blue-600 mt-0.5" />
-                          <div>
-                            <p className="text-sm text-gray-500">Status</p>
-                            <span className={`px-3 py-1 rounded-full text-xs font-medium border inline-flex items-center gap-1 ${getStatusColor(subscriptionData.status)}`}>
-                              {getStatusIcon(subscriptionData.status)}
-                              {subscriptionData.status || 'ACTIVE'}
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <p className="text-sm text-blue-200">Price</p>
+                          <p className="text-2xl font-bold flex items-center gap-1">
+                            <IndianRupee className="w-5 h-5" />
+                            {(subscriptionData.plan?.price_minor / 100).toLocaleString('en-IN')}
+                            <span className="text-sm font-normal text-blue-200">
+                              /{subscriptionData.plan?.billing_interval?.toLowerCase() || 'month'}
                             </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Dates & Features */}
-                    <div className="space-y-4">
-                      <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
-                        <CalendarIcon className="w-5 h-5 text-purple-600 mt-0.5" />
-                        <div>
-                          <p className="text-sm text-gray-500">Billing Cycle</p>
-                          <p className="text-sm font-medium text-gray-900">
-                            {subscriptionData.billing_cycle || 'Monthly'}
                           </p>
                         </div>
-                      </div>
-
-                      <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
-                        <Clock className="w-5 h-5 text-orange-600 mt-0.5" />
-                        <div>
-                          <p className="text-sm text-gray-500">Valid Until</p>
-                          <p className="text-sm font-medium text-gray-900">
-                            {formatDate(subscriptionData.expires_at || subscriptionData.end_date)}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
-                        <Star className="w-5 h-5 text-yellow-500 mt-0.5" />
-                        <div>
-                          <p className="text-sm text-gray-500">Features</p>
-                          <div className="flex flex-wrap gap-1 mt-1">
-                            {subscriptionData.features && Array.isArray(subscriptionData.features) ? (
-                              subscriptionData.features.map((feature, index) => (
-                                <span key={index} className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full text-xs border border-blue-200">
-                                  <Check className="w-3 h-3" />
-                                  {feature}
-                                </span>
-                              ))
-                            ) : (
-                              <span className="text-sm text-gray-600">Standard features included</span>
-                            )}
-                          </div>
-                        </div>
+                        <span className={`px-4 py-2 rounded-full text-sm font-medium border ${getStatusColor(subscriptionData.status)}`}>
+                          {getStatusIcon(subscriptionData.status)}
+                          {subscriptionData.status || 'ACTIVE'}
+                        </span>
                       </div>
                     </div>
                   </div>
+
+                  {/* Plan Details Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                    <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Package className="w-4 h-4 text-blue-600" />
+                        <span className="text-xs text-gray-500">Plan</span>
+                      </div>
+                      <p className="font-semibold text-gray-900">{subscriptionData.plan?.name || 'Base'}</p>
+                      <p className="text-xs text-gray-500 mt-1">{subscriptionData.plan?.description || 'Standard plan'}</p>
+                    </div>
+
+                    <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Repeat className="w-4 h-4 text-blue-600" />
+                        <span className="text-xs text-gray-500">Billing</span>
+                      </div>
+                      <p className="font-semibold text-gray-900">
+                        {subscriptionData.plan?.billing_interval || 'MONTHLY'}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Every {subscriptionData.plan?.interval_count || 1} {subscriptionData.plan?.billing_interval?.toLowerCase() || 'month(s)'}
+                      </p>
+                    </div>
+
+                    <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Timer className="w-4 h-4 text-blue-600" />
+                        <span className="text-xs text-gray-500">Trial Period</span>
+                      </div>
+                      <p className="font-semibold text-gray-900">
+                        {subscriptionData.trial_ends_at ? `${subscriptionData.plan?.trial_days || 30} days` : 'No trial'}
+                      </p>
+                      {subscriptionData.trial_ends_at && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Ends: {formatDateShort(subscriptionData.trial_ends_at)}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                      <div className="flex items-center gap-2 mb-1">
+                        <CalendarDays className="w-4 h-4 text-blue-600" />
+                        <span className="text-xs text-gray-500">Current Period</span>
+                      </div>
+                      <p className="font-semibold text-gray-900 text-sm">
+                        {formatDateShort(subscriptionData.current_period_starts_at)}
+                        <span className="text-gray-400 mx-1">→</span>
+                        {formatDateShort(subscriptionData.current_period_ends_at)}
+                      </p>
+                      <p className="text-xs text-gray-500 mt-1">
+                        {subscriptionData.cancel_at_period_end ? 'Cancels at period end' : 'Auto-renew'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Additional Info */}
+                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <p className="text-xs text-gray-500">Subscription ID</p>
+                        <p className="text-sm font-mono text-gray-700 truncate">{subscriptionData.id || 'N/A'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Currency</p>
+                        <p className="text-sm font-medium text-gray-900">{subscriptionData.plan?.currency || 'INR'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Started On</p>
+                        <p className="text-sm font-medium text-gray-900">{formatDateShort(subscriptionData.starts_at)}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Features */}
+                  {subscriptionData.plan?.features && subscriptionData.plan.features.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                      <p className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                        <Star className="w-4 h-4 text-yellow-500" />
+                        Plan Features
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {subscriptionData.plan.features.map((feature, index) => (
+                          <span key={index} className="inline-flex items-center gap-1 px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs border border-blue-200">
+                            <Check className="w-3 h-3" />
+                            {feature}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="text-center py-12">

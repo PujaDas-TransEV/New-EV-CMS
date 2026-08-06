@@ -252,7 +252,10 @@ const ForgotPassword = () => {
               <div className="p-2.5 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl shadow-lg shadow-purple-500/30">
                 <Zap className="w-8 h-8 text-white" />
               </div>
-              <span className="text-2xl font-bold text-white">TransEV</span>
+             <span className="text-2xl font-bold">
+  <span className="text-orange-500">Trans</span>
+  <span className="text-green-600">EV</span>
+</span>
             </div>
 
             <div className="mb-4">

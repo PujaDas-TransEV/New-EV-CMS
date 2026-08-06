@@ -19,6 +19,7 @@ import Addhub from './components/Hubs/Addhub';
 import HubwiseDetails from './components/Hubs/ViewHubwise';
 import RevenueOverview from './components/Revenue/Overview';
 import HelpandSupportPage from './components/HelpAndSupport/Help';
+import PaymentIntegration from './components/PaymentIntegration/Payment';
 function App() {
   return (
     <Router>
@@ -42,7 +43,8 @@ function App() {
         <Route path="/add-hub" element={<Addhub />} />
         <Route path="/hub-details/:hubId" element={<HubwiseDetails />} /> {/* Hub ID wise */}
         <Route path="/revenue/overview" element={<RevenueOverview />} />
-         <Route path="/help-support" element={<HelpandSupportPage />} />
+        <Route path="/help-support" element={<HelpandSupportPage />} />
+        <Route path="/payment-integration" element={<PaymentIntegration />} />
       </Routes>
     </Router>
   );
