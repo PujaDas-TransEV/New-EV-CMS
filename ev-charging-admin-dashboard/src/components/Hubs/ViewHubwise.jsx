@@ -1,4 +1,3 @@
-// src/pages/HubDetails.jsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -92,7 +91,10 @@ import {
   Battery,
   Cpu,
   Gauge as GaugeIcon,
-  RadioTower
+  RadioTower,
+  EyeOff,
+  ToggleLeft,
+  ToggleRight
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import Sidebar from '../Sidebar/Sidebar';
@@ -103,6 +105,9 @@ const CPO_APP_ID = process.env.REACT_APP_CPO_APP_ID || 'cpo_dummy_5f75674f57829d
 
 const API_CONFIG = {
   HUB_DETAILS_API: `${API_BASE_URL}/api/v1/cpo/hubs`,
+  HUB_CHARGERS_API: (hubId) => `${API_BASE_URL}/api/v1/cpo/hubs/${hubId}/chargers`,
+  CHARGER_STATUS_API: (chargerId) => `${API_BASE_URL}/api/v1/cpo/chargers/${chargerId}/status`,
+  HUB_VISIBILITY_API: (hubId) => `${API_BASE_URL}/api/v1/cpo/hubs/${hubId}/customer-visibility`,
   CHARGERS_API: `${API_BASE_URL}/api/v1/cpo/chargers`,
   LOGOUT_API: `${API_BASE_URL}/api/v1/auth/logout`,
   REFRESH_TOKEN_API: `${API_BASE_URL}/api/v1/auth/refresh`,
@@ -224,6 +229,9 @@ const HubDetails = () => {
   const [hubLoading, setHubLoading] = useState(false);
   const [hubError, setHubError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isTogglingVisibility, setIsTogglingVisibility] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   
   // Chargers state
   const [chargers, setChargers] = useState([]);
@@ -236,10 +244,9 @@ const HubDetails = () => {
   const [showChargerModal, setShowChargerModal] = useState(false);
   const [selectedCharger, setSelectedCharger] = useState(null);
   
-  // All chargers for assignment
+  // All chargers for assignment (only unassigned)
   const [allChargers, setAllChargers] = useState([]);
   const [allChargersLoading, setAllChargersLoading] = useState(false);
-  const [allChargersSearchTerm, setAllChargersSearchTerm] = useState('');
   const [allChargersPagination, setAllChargersPagination] = useState({
     before: null,
     before_id: null,
@@ -318,12 +325,33 @@ const HubDetails = () => {
         setHubData(data);
         // Extract chargers from the response
         if (data.chargers && data.chargers.chargers) {
-          setChargers(data.chargers.chargers);
-          setSelectedChargerIds(data.chargers.chargers.map(c => c.id));
+          const hubChargers = data.chargers.chargers;
+          setChargers(hubChargers);
+          setSelectedChargerIds(hubChargers.map(c => c.id));
+          
+          // Update assigned status in the allChargers list
+          setAllChargers(prev => 
+            prev.map(c => {
+              if (hubChargers.some(hc => hc.id === c.id)) {
+                return { ...c, assigned: true };
+              }
+              return c;
+            })
+          );
         } else if (data.chargers) {
           const chargerList = Array.isArray(data.chargers) ? data.chargers : [];
           setChargers(chargerList);
           setSelectedChargerIds(chargerList.map(c => c.id));
+          
+          // Update assigned status
+          setAllChargers(prev => 
+            prev.map(c => {
+              if (chargerList.some(hc => hc.id === c.id)) {
+                return { ...c, assigned: true };
+              }
+              return c;
+            })
+          );
         }
         setEditFormData({
           name: data.name || '',
@@ -344,6 +372,7 @@ const HubDetails = () => {
     }
   };
 
+  // Fetch ONLY unassigned chargers (assigned=false)
   const fetchAllChargers = useCallback(async (before = null, before_id = null) => {
     if (allChargersLoading) return;
     
@@ -365,7 +394,10 @@ const HubDetails = () => {
       const data = await response.json();
 
       if (response.ok) {
-        const chargersData = data.chargers || data.data || data || [];
+        let chargersData = data.chargers || data.data || data || [];
+        
+        // Filter to only show unassigned chargers
+        chargersData = chargersData.filter(charger => charger.assigned === false);
         
         const hasMore = data.has_more || false;
         const nextBefore = data.next_before || null;
@@ -382,7 +414,7 @@ const HubDetails = () => {
         });
       }
     } catch (error) {
-      console.error('Error fetching all chargers:', error);
+      console.error('Error fetching unassigned chargers:', error);
     } finally {
       setAllChargersLoading(false);
       setLoadingMoreAllChargers(false);
@@ -407,48 +439,83 @@ const HubDetails = () => {
     });
   };
 
-  // Assign/Unassign chargers to hub
-  const handleAssignChargers = async () => {
-    if (isAssigningRef.current) return;
+  // Assign chargers to hub using POST /api/v1/cpo/hubs/{hub_id}/chargers
+  const handleAssignChargers = async (chargerIdsToAssign) => {
+    // Prevent multiple simultaneous calls
+    if (isAssigningRef.current) {
+      console.log('⚠️ Assignment already in progress');
+      return;
+    }
+    
     isAssigningRef.current = true;
     setIsAssigning(true);
     setHubError('');
 
     try {
-      const currentChargerIds = chargers.map(c => c.id);
-      const chargersToAdd = selectedChargerIds.filter(id => !currentChargerIds.includes(id));
-      const chargersToRemove = currentChargerIds.filter(id => !selectedChargerIds.includes(id));
-
-      for (const chargerId of chargersToRemove) {
-        const response = await fetchWithTokenRefresh(`${API_CONFIG.HUB_DETAILS_API}/${hubId}/chargers/${chargerId}`, {
-          method: 'DELETE'
-        });
-
-        if (!response.ok) {
-          const data = await response.json();
-          throw new Error(data.message || data.error?.message || 'Failed to remove charger');
-        }
-      }
-
-      for (const chargerId of chargersToAdd) {
-        const response = await fetchWithTokenRefresh(`${API_CONFIG.HUB_DETAILS_API}/${hubId}/chargers`, {
-          method: 'POST',
-          body: JSON.stringify({ charger_id: chargerId })
-        });
-
-        if (!response.ok) {
-          const data = await response.json();
-          throw new Error(data.message || data.error?.message || 'Failed to add charger');
-        }
-      }
-
-      await fetchHubDetails();
-      await fetchAllChargers();
+      // Use the passed parameter or fallback to state
+      const chargerIds = chargerIdsToAssign || selectedChargerIds;
       
+      // Get current charger IDs from the hub
+      const currentChargerIds = chargers.map(c => c.id);
+      
+      // Only find chargers to add - those selected but not already in the hub
+      const chargersToAdd = chargerIds.filter(id => !currentChargerIds.includes(id));
+
+      console.log('=== Charger Assignment Started ===');
+      console.log('📊 Hub ID:', hubId);
+      console.log('📊 Current chargers in hub:', currentChargerIds);
+      console.log('📊 Selected charger IDs:', chargerIds);
+      console.log('📊 Chargers to ADD:', chargersToAdd);
+
+      if (chargersToAdd.length === 0) {
+        console.log('ℹ️ No new chargers to add. All selected chargers are already in the hub.');
+        setShowAssignChargersModal(false);
+        setIsAssigning(false);
+        isAssigningRef.current = false;
+        return;
+      }
+
+      // Add new chargers using POST
+      for (const chargerId of chargersToAdd) {
+        console.log(`➕ Adding charger ${chargerId} to hub ${hubId}`);
+        const postUrl = API_CONFIG.HUB_CHARGERS_API(hubId);
+        const payload = { charger_id: chargerId };
+        console.log(`📤 POST ${postUrl}`);
+        console.log(`📦 Payload:`, payload);
+        
+        const response = await fetchWithTokenRefresh(postUrl, {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          // If it's 409 conflict, the charger is already in the hub
+          if (response.status === 409) {
+            console.log(`⚠️ Charger ${chargerId} is already in the hub, skipping...`);
+            continue;
+          }
+          throw new Error(data.message || data.error?.message || `Failed to add charger ${chargerId}`);
+        }
+        console.log(`✅ Successfully added charger ${chargerId}`);
+      }
+
+      // Refresh both lists to get updated data
+      console.log('🔄 Refreshing hub details and charger lists...');
+      await fetchHubDetails();
+      // Refresh the unassigned chargers list
+      setAllChargers([]); // Clear current list
+      await fetchAllChargers(); // Fetch fresh list of unassigned chargers
+      
+      // Close modal and reset selection
       setShowAssignChargersModal(false);
       setSelectedChargerIds([]);
+      
+      console.log('=== ✅ Charger Assignment Completed ===');
+      console.log(`✅ Successfully added ${chargersToAdd.length} new charger(s) to the hub`);
+      
     } catch (error) {
-      console.error('Error assigning chargers:', error);
+      console.error('❌ Error assigning chargers:', error);
       setHubError(error.message || 'An error occurred while assigning chargers');
     } finally {
       setIsAssigning(false);
@@ -456,15 +523,16 @@ const HubDetails = () => {
     }
   };
 
-  // Update charger status
+  // Update charger status using PUT /api/v1/cpo/chargers/{charger_id}/status
   const handleUpdateChargerStatus = useCallback(async (chargerId, newStatus) => {
     try {
-      const response = await fetchWithTokenRefresh(`${API_CONFIG.CHARGERS_API}/${chargerId}`, {
-        method: 'PATCH',
+      const response = await fetchWithTokenRefresh(API_CONFIG.CHARGER_STATUS_API(chargerId), {
+        method: 'PUT',
         body: JSON.stringify({ status: newStatus })
       });
 
       if (response.ok) {
+        const data = await response.json();
         setChargers(prev => 
           prev.map(c => 
             c.id === chargerId ? { ...c, status: newStatus } : c
@@ -485,6 +553,60 @@ const HubDetails = () => {
       return false;
     }
   }, [selectedCharger]);
+
+  // Update hub customer visibility using PUT /api/v1/cpo/hubs/{hub_id}/customer-visibility
+  const handleToggleVisibility = useCallback(async () => {
+    if (isTogglingVisibility) return;
+    setIsTogglingVisibility(true);
+    
+    try {
+      const newVisibility = !hubData?.customer_visible;
+      const response = await fetchWithTokenRefresh(API_CONFIG.HUB_VISIBILITY_API(hubId), {
+        method: 'PUT',
+        body: JSON.stringify({ customer_visible: newVisibility })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setHubData(prev => ({ ...prev, customer_visible: data.customer_visible }));
+        setHubError('');
+      } else {
+        const data = await response.json();
+        setHubError(data.message || data.error?.message || 'Failed to update visibility');
+      }
+    } catch (error) {
+      console.error('Error toggling visibility:', error);
+      setHubError(error.message || 'An error occurred');
+    } finally {
+      setIsTogglingVisibility(false);
+    }
+  }, [hubId, hubData, isTogglingVisibility]);
+
+  // Delete hub
+  const handleDeleteHub = useCallback(async () => {
+    if (isDeleting) return;
+    setIsDeleting(true);
+    setHubError('');
+
+    try {
+      const response = await fetchWithTokenRefresh(`${API_CONFIG.HUB_DETAILS_API}/${hubId}`, {
+        method: 'DELETE'
+      });
+
+      if (response.status === 204) {
+        navigate('/manage-hubs');
+      } else {
+        const data = await response.json();
+        setHubError(data.message || data.error?.message || 'Failed to delete hub');
+        setShowDeleteConfirm(false);
+      }
+    } catch (error) {
+      console.error('Error deleting hub:', error);
+      setHubError(error.message || 'An error occurred');
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [hubId, navigate]);
 
   // Update hub
   const handleUpdateHub = useCallback(async (formData) => {
@@ -604,7 +726,6 @@ const HubDetails = () => {
       'FAULTED': 'bg-red-100 text-red-800 border-red-200',
       'OFFLINE': 'bg-gray-100 text-gray-800 border-gray-200',
       'ACTIVE': 'bg-green-100 text-green-800 border-green-200',
-      'PENDING': 'bg-yellow-100 text-yellow-800 border-yellow-200',
       'INACTIVE': 'bg-red-100 text-red-800 border-red-200',
       'UNDER_MAINTENANCE': 'bg-orange-100 text-orange-800 border-orange-200',
     };
@@ -630,17 +751,10 @@ const HubDetails = () => {
     }
   };
 
+  // Status options - Only Active, Inactive, Under Maintenance
   const statusOptions = [
-    { value: 'AVAILABLE', label: 'Available' },
-    { value: 'CHARGING', label: 'Charging' },
-    { value: 'PREPARING', label: 'Preparing' },
-    { value: 'SUSPENDED_EV', label: 'Suspended EV' },
-    { value: 'SUSPENDED_EVSE', label: 'Suspended EVSE' },
-    { value: 'FINISHING', label: 'Finishing' },
-    { value: 'RESERVED', label: 'Reserved' },
-    { value: 'UNAVAILABLE', label: 'Unavailable' },
-    { value: 'FAULTED', label: 'Faulted' },
-    { value: 'OFFLINE', label: 'Offline' },
+    { value: 'ACTIVE', label: 'Active' },
+    { value: 'INACTIVE', label: 'Inactive' },
     { value: 'UNDER_MAINTENANCE', label: 'Under Maintenance' },
   ];
 
@@ -809,7 +923,9 @@ const HubDetails = () => {
                 <div>
                   <h2 className="text-2xl font-bold text-gray-900">{selectedCharger.charger_name || 'Unnamed Charger'}</h2>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="font-mono text-sm text-gray-500">ID: {selectedCharger.charger_id || 'N/A'}</span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono bg-blue-50 text-blue-700 border border-blue-200">
+                      Charger ID: {selectedCharger.charger_id || 'N/A'}
+                    </span>
                     <span className="w-1 h-1 bg-gray-300 rounded-full"></span>
                     <span className={`inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full text-xs font-medium ${getStatusColor(selectedCharger.status)}`}>
                       {getStatusIcon(selectedCharger.status)}
@@ -832,7 +948,7 @@ const HubDetails = () => {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Left Column - Details */}
               <div className="lg:col-span-2 space-y-4">
-                {/* Status Update */}
+                {/* Status Update - Only Active, Inactive, Under Maintenance */}
                 <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-200">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
@@ -1180,18 +1296,79 @@ const HubDetails = () => {
     );
   };
 
-  // Assign Chargers Modal
+  // Delete Confirmation Modal
+  const DeleteConfirmModal = () => (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+              <AlertTriangle className="w-6 h-6 text-red-600" />
+            </div>
+            <h3 className="text-xl font-bold text-gray-900">Delete Hub</h3>
+          </div>
+          <button
+            onClick={() => setShowDeleteConfirm(false)}
+            className="p-2 hover:bg-gray-100 rounded-xl transition"
+          >
+            <X className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+        <p className="text-gray-600 mb-2">
+          Are you sure you want to delete <span className="font-semibold text-gray-900">{hubData?.name}</span>?
+        </p>
+        <p className="text-sm text-gray-500 mb-6">
+          This action will permanently remove the hub and all its associated chargers. This cannot be undone.
+        </p>
+        {hubError && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm mb-4">
+            {hubError}
+          </div>
+        )}
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleDeleteHub}
+            disabled={isDeleting}
+            className="flex-1 px-4 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition flex items-center justify-center gap-2 font-medium shadow-lg shadow-red-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isDeleting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Deleting...
+              </>
+            ) : (
+              <>
+                <Trash2 size={20} />
+                Delete Hub
+              </>
+            )}
+          </button>
+          <button
+            onClick={() => setShowDeleteConfirm(false)}
+            className="flex-1 px-4 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition font-medium"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Assign Chargers Modal - Only shows unassigned chargers
   const AssignChargersModal = () => {
     const [searchTerm, setSearchTerm] = useState('');
-    const [localSelectedIds, setLocalSelectedIds] = useState(selectedChargerIds);
+    const [localSelectedIds, setLocalSelectedIds] = useState([]);
 
     useEffect(() => {
-      setLocalSelectedIds(selectedChargerIds);
-    }, [selectedChargerIds]);
+      // Only show unassigned chargers - clear any pre-selected IDs
+      setLocalSelectedIds([]);
+    }, []);
 
     useEffect(() => {
       if (showAssignChargersModal && !isModalOpenRef.current) {
         isModalOpenRef.current = true;
+        // Reset the list and fetch unassigned chargers
+        setAllChargers([]);
         fetchAllChargers();
       }
       return () => {
@@ -1222,17 +1399,31 @@ const HubDetails = () => {
     };
 
     const handleSaveAssignments = async () => {
-      if (isAssigningRef.current) return;
-      setSelectedChargerIds(localSelectedIds);
-      await handleAssignChargers();
+      if (isAssigningRef.current) {
+        console.log('⚠️ Assignment already in progress, skipping...');
+        return;
+      }
+      
+      // Get the current local selections from the modal state
+      const chargerIdsToAssign = localSelectedIds;
+      console.log('📝 Adding selected chargers to hub:', chargerIdsToAssign);
+      
+      // Call handleAssignChargers with the IDs directly
+      await handleAssignChargers(chargerIdsToAssign);
     };
 
-    const filteredAllChargers = allChargers.filter(charger =>
-      charger.charger_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      charger.charger_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      charger.serial_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      charger.id?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    // Filter chargers by search term AND ensure they are unassigned
+    const filteredAllChargers = allChargers.filter(charger => {
+      // First check if charger is unassigned
+      if (charger.assigned !== false) {
+        return false;
+      }
+      // Then apply search filter
+      return charger.charger_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+             charger.charger_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+             charger.serial_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+             charger.id?.toLowerCase().includes(searchTerm.toLowerCase());
+    });
 
     const isAllSelected = filteredAllChargers.length > 0 && 
       filteredAllChargers.every(c => localSelectedIds.includes(c.id));
@@ -1248,10 +1439,10 @@ const HubDetails = () => {
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <div>
                 <h2 className="text-xl font-semibold text-gray-900">
-                  Manage Chargers for <span className="text-green-600">{hubData?.name}</span>
+                  Add Chargers to <span className="text-green-600">{hubData?.name}</span>
                 </h2>
                 <p className="text-sm text-gray-500 mt-1">
-                  Select/deselect chargers to assign or remove from this hub
+                  Select unassigned chargers to add to this hub
                 </p>
               </div>
               <button
@@ -1271,7 +1462,7 @@ const HubDetails = () => {
                   <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
                     type="text"
-                    placeholder="Search by name, ID, or serial number..."
+                    placeholder="Search unassigned chargers by name, ID, or serial number..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
@@ -1280,7 +1471,7 @@ const HubDetails = () => {
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                   <span>Selected: <strong className="text-gray-900">{localSelectedIds.length}</strong></span>
                   <span className="w-px h-4 bg-gray-300"></span>
-                  <span>Total: <strong className="text-gray-900">{allChargers.length}</strong></span>
+                  <span>Available: <strong className="text-gray-900">{allChargers.filter(c => c.assigned === false).length}</strong></span>
                 </div>
               </div>
 
@@ -1293,19 +1484,25 @@ const HubDetails = () => {
                   <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Zap className="w-8 h-8 text-gray-400" />
                   </div>
-                  <p className="text-gray-500 font-medium">No Chargers Found</p>
-                  <p className="text-sm text-gray-400 mt-1">Create a new charger to assign to this hub</p>
-                  <button
-                    onClick={() => {
-                      setShowAssignChargersModal(false);
-                      isModalOpenRef.current = false;
-                      navigate('/add-charger');
-                    }}
-                    className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add New Charger
-                  </button>
+                  <p className="text-gray-500 font-medium">No Unassigned Chargers Available</p>
+                  <p className="text-sm text-gray-400 mt-1">
+                    {allChargers.filter(c => c.assigned === false).length === 0 ? 
+                      'All chargers are already assigned to hubs' : 
+                      'No chargers match your search criteria'}
+                  </p>
+                  {allChargers.filter(c => c.assigned === false).length === 0 && (
+                    <button
+                      onClick={() => {
+                        setShowAssignChargersModal(false);
+                        isModalOpenRef.current = false;
+                        navigate('/add-charger');
+                      }}
+                      className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Create New Charger
+                    </button>
+                  )}
                 </div>
               ) : (
                 <>
@@ -1400,16 +1597,16 @@ const HubDetails = () => {
                     <button
                       type="button"
                       onClick={handleSaveAssignments}
-                      disabled={isAssigning || isSubmitting || isAssigningRef.current}
+                      disabled={isAssigning || isSubmitting || isAssigningRef.current || localSelectedIds.length === 0}
                       className="flex-1 px-6 py-2.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {isAssigning || isSubmitting ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
-                          Saving...
+                          Adding Chargers...
                         </>
                       ) : (
-                        `Save Assignments (${localSelectedIds.length} selected)`
+                        `Add to Hub (${localSelectedIds.length} selected)`
                       )}
                     </button>
                     <button
@@ -1417,7 +1614,7 @@ const HubDetails = () => {
                       onClick={() => {
                         setShowAssignChargersModal(false);
                         isModalOpenRef.current = false;
-                        setLocalSelectedIds(selectedChargerIds);
+                        setLocalSelectedIds([]);
                       }}
                       className="px-6 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                     >
@@ -1495,12 +1692,8 @@ const HubDetails = () => {
                 <Menu className="w-5 h-5 text-gray-600" />
               </button>
               <div className="flex items-center gap-3">
-                {/* <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center shadow-lg shadow-green-500/25">
-                  <Building size={20} className="text-white" />
-                </div> */}
                 <div>
                   <h1 className="text-2xl font-bold text-gray-800">Hub Details</h1>
-                  {/* <p className="text-sm text-gray-500">{hubData?.name}</p> */}
                 </div>
               </div>
             </div>
@@ -1547,7 +1740,7 @@ const HubDetails = () => {
             className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition shadow-lg shadow-green-500/25"
           >
             <Plus size={18} />
-            Add Chargers to Hub
+            Add Chargers To Hub
           </button>
         </div>
 
@@ -1568,17 +1761,60 @@ const HubDetails = () => {
                         <p className="text-sm text-gray-500">Complete information</p>
                       </div>
                     </div>
-                    <button
-                      onClick={() => setShowEditHubModal(true)}
-                      className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition"
-                      title="Edit Hub"
-                    >
-                      <Edit size={18} />
-                    </button>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setShowEditHubModal(true)}
+                        className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition"
+                        title="Edit Hub"
+                      >
+                        <Edit size={18} />
+                      </button>
+                      <button
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                        title="Delete Hub"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
                   </div>
                 </div>
 
                 <div className="p-6 space-y-4">
+                  {/* Customer Visibility Toggle */}
+                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Globe2 size={18} className="text-blue-600" />
+                        <span className="text-sm font-medium text-gray-700">Customer Visibility</span>
+                      </div>
+                      <button
+                        onClick={handleToggleVisibility}
+                        disabled={isTogglingVisibility}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg transition disabled:opacity-50"
+                      >
+                        {isTogglingVisibility ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                        ) : hubData?.customer_visible ? (
+                          <>
+                            <ToggleRight className="w-6 h-6 text-green-600" />
+                            <span className="text-xs font-medium text-green-600">Published</span>
+                          </>
+                        ) : (
+                          <>
+                            <ToggleLeft className="w-6 h-6 text-gray-400" />
+                            <span className="text-xs font-medium text-gray-500">Unpublished</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {hubData?.customer_visible 
+                        ? 'Visible to customers in the User App' 
+                        : 'Hidden from customers in the User App'}
+                    </p>
+                  </div>
+
                   <div>
                     <p className="text-xs text-gray-500 uppercase tracking-wider">Hub Name</p>
                     <p className="text-base font-semibold text-gray-900">{hubData?.name}</p>
@@ -1621,8 +1857,6 @@ const HubDetails = () => {
                     <p className="text-xs text-gray-500 uppercase tracking-wider">Last Updated</p>
                     <p className="text-sm font-medium text-gray-900">{formatDate(hubData?.updated_at)}</p>
                   </div>
-
-                 
                 </div>
               </div>
             </div>
@@ -1639,7 +1873,6 @@ const HubDetails = () => {
                         {chargers.length}
                       </span>
                     </div>
-                 
                   </div>
                 </div>
 
@@ -1668,17 +1901,7 @@ const HubDetails = () => {
                     <div className="text-center py-12">
                       <Zap className="w-16 h-16 text-gray-300 mx-auto mb-3" />
                       <p className="text-gray-500 font-medium">No Chargers in this Hub</p>
-                      <p className="text-sm text-gray-400 mt-1">Assign chargers using the "Manage Chargers" button</p>
-                      <button
-                        onClick={() => {
-                          setShowAssignChargersModal(true);
-                          isModalOpenRef.current = false;
-                        }}
-                        className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition shadow-lg shadow-green-500/25"
-                      >
-                        <Plus className="w-4 h-4" />
-                      Add Chargers to hub
-                      </button>
+                      <p className="text-sm text-gray-400 mt-1">Assign chargers using the "Add Chargers To Hub" button</p>
                     </div>
                   ) : (
                     <div className="overflow-x-auto rounded-xl border border-gray-200">
@@ -1758,6 +1981,7 @@ const HubDetails = () => {
       {showEditHubModal && <EditHubModal />}
       {showAssignChargersModal && <AssignChargersModal />}
       {showChargerModal && <ChargerDetailsModal />}
+      {showDeleteConfirm && <DeleteConfirmModal />}
     </div>
   );
 };

@@ -55,7 +55,11 @@ import {
   Globe2,
   Crosshair,
   Compass,
-  AlertTriangle
+  AlertTriangle,
+  Plug,
+  Clock as ClockIcon,
+  Wrench,
+  Activity // Added missing Activity import
 } from 'lucide-react';
 import Sidebar from '../Sidebar/Sidebar';
 
@@ -398,7 +402,7 @@ const BasicDetailsStep = React.memo(({ formData, handleFormChange, handleGetAddr
   </div>
 ));
 
-// Step 2: Select Chargers Component
+// Step 2: Select Chargers Component - Table View with Colors
 const SelectChargersStep = React.memo(({ 
   chargers, 
   chargersLoading, 
@@ -410,13 +414,19 @@ const SelectChargersStep = React.memo(({
   loadingMoreChargers,
   toggleChargerSelection,
   formatDate,
-  getStatusColor
+  getStatusColor,
+  getStatusIcon,
+  onNavigateToAddCharger // Added prop for navigation
 }) => {
-  const filteredChargers = chargers.filter(charger =>
-    charger.name?.toLowerCase().includes(chargerSearchTerm.toLowerCase()) ||
-    charger.charger_id?.toLowerCase().includes(chargerSearchTerm.toLowerCase()) ||
-    charger.id?.toLowerCase().includes(chargerSearchTerm.toLowerCase())
-  );
+  // Filter only unassigned chargers (assigned === false)
+  const filteredChargers = chargers
+    .filter(charger => charger.assigned === false)
+    .filter(charger =>
+      charger.charger_name?.toLowerCase().includes(chargerSearchTerm.toLowerCase()) ||
+      charger.charger_id?.toLowerCase().includes(chargerSearchTerm.toLowerCase()) ||
+      charger.serial_number?.toLowerCase().includes(chargerSearchTerm.toLowerCase()) ||
+      charger.id?.toLowerCase().includes(chargerSearchTerm.toLowerCase())
+    );
 
   return (
     <div className="space-y-4">
@@ -425,15 +435,18 @@ const SelectChargersStep = React.memo(({
           <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
-            placeholder="Search chargers..."
+            placeholder="Search unassigned chargers..."
             value={chargerSearchTerm}
             onChange={(e) => setChargerSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
           />
         </div>
         <div className="flex items-center gap-3 text-sm">
           <span className="text-gray-500">
             Selected: <span className="font-semibold text-green-600">{selectedChargers.length}</span>
+          </span>
+          <span className="text-gray-500">
+            Available: <span className="font-semibold text-blue-600">{chargers.filter(c => c.assigned === false).length}</span>
           </span>
           <span className="text-gray-500">
             Total: <span className="font-semibold text-gray-900">{chargerPagination.total}</span>
@@ -443,84 +456,167 @@ const SelectChargersStep = React.memo(({
 
       {chargersLoading && chargers.length === 0 ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-6 h-6 text-green-600 animate-spin" />
+          <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
         </div>
       ) : filteredChargers.length === 0 ? (
         <div className="text-center py-12 bg-gray-50 rounded-xl border-2 border-dashed border-gray-300">
           <AlertTriangle className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-          <p className="text-gray-500 font-medium">No Chargers Found</p>
-          <p className="text-sm text-gray-400 mt-1">You haven't added any chargers yet</p>
+          <p className="text-gray-500 font-medium">No Unassigned Chargers Available</p>
+          <p className="text-sm text-gray-400 mt-1">
+            {chargers.filter(c => c.assigned === false).length === 0 ? 
+              'All chargers are already assigned to hubs' : 
+              'No chargers match your search criteria'}
+          </p>
+          {chargers.filter(c => c.assigned === false).length === 0 && (
+            <button
+              onClick={onNavigateToAddCharger}
+              className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+            >
+              <Plus className="w-4 h-4" />
+              Create New Charger
+            </button>
+          )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto pr-2">
-          {filteredChargers.map((charger) => {
-            const chargerId = charger.id || charger.charger_id;
-            const isSelected = selectedChargers.includes(chargerId);
-            
-            return (
-              <div
-                key={chargerId}
-                onClick={() => toggleChargerSelection(charger)}
-                className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                  isSelected
-                    ? 'border-green-500 bg-green-50 shadow-sm shadow-green-100'
-                    : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
+        <>
+          {/* Table View with Colors */}
+          <div className="overflow-x-auto rounded-xl border border-gray-200">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+                  <th className="px-4 py-3 text-left">
                     <div className="flex items-center gap-2">
-                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${
-                        isSelected ? 'border-green-500 bg-green-500' : 'border-gray-300'
-                      }`}>
-                        {isSelected && <Check className="w-3 h-3 text-white" />}
-                      </div>
-                      <h4 className="font-medium text-gray-900 truncate">
-                        {charger.name || charger.charger_name || 'Unnamed Charger'}
-                      </h4>
+                      <span className="font-semibold text-gray-700">Select</span>
                     </div>
-                    <div className="ml-7 mt-1 space-y-1">
-                      <p className="text-xs text-gray-500">
-                        ID: {charger.charger_id || charger.id}
-                      </p>
-                      {charger.status && (
-                        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(charger.status)}`}>
-                          {charger.status}
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                    <div className="flex items-center gap-1">
+                      <Hash className="w-3.5 h-3.5 text-gray-400" />
+                      Charger ID
+                    </div>
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                    <div className="flex items-center gap-1">
+                      <Zap className="w-3.5 h-3.5 text-gray-400" />
+                      Name
+                    </div>
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                    <div className="flex items-center gap-1">
+                      <FileText className="w-3.5 h-3.5 text-gray-400" />
+                      Serial
+                    </div>
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                    <div className="flex items-center gap-1">
+                      <Plug className="w-3.5 h-3.5 text-gray-400" />
+                      Type
+                    </div>
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                    <div className="flex items-center gap-1">
+                      <Activity className="w-3.5 h-3.5 text-gray-400" />
+                      Status
+                    </div>
+                  </th>
+                  <th className="px-4 py-3 text-left font-semibold text-gray-700">
+                    <div className="flex items-center gap-1">
+                      <Gauge className="w-3.5 h-3.5 text-gray-400" />
+                      Power
+                    </div>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredChargers.map((charger) => {
+                  const chargerId = charger.id || charger.charger_id;
+                  const isSelected = selectedChargers.includes(chargerId);
+                  
+                  return (
+                    <tr 
+                      key={chargerId}
+                      onClick={() => toggleChargerSelection(charger)}
+                      className={`border-b border-gray-100 hover:bg-gray-50 transition cursor-pointer ${
+                        isSelected ? 'bg-green-50 hover:bg-green-100' : ''
+                      }`}
+                    >
+                      <td className="px-4 py-3">
+                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition ${
+                          isSelected 
+                            ? 'border-green-500 bg-green-500' 
+                            : 'border-gray-300 hover:border-green-400'
+                        }`}>
+                          {isSelected && <Check className="w-3 h-3 text-white" />}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded-md text-gray-600">
+                          {charger.charger_id || charger.id?.slice(0, 8) || 'N/A'}
                         </span>
-                      )}
-                      {charger.created_at && (
-                        <p className="text-xs text-gray-400">
-                          Added: {formatDate(charger.created_at)}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  {isSelected && (
-                    <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+                      </td>
+                      <td className="px-4 py-3 font-medium text-gray-900">
+                        {charger.charger_name || charger.name || 'Unnamed'}
+                      </td>
+                      <td className="px-4 py-3 text-gray-600 text-xs">
+                        {charger.serial_number || 'N/A'}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${
+                          charger.charger_type === 'DC' 
+                            ? 'bg-purple-100 text-purple-700' 
+                            : charger.charger_type === 'AC' 
+                              ? 'bg-blue-100 text-blue-700' 
+                              : 'bg-gray-100 text-gray-700'
+                        }`}>
+                          {charger.charger_type || 'N/A'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(charger.status)}`}>
+                          {getStatusIcon(charger.status)}
+                          {charger.status || 'PENDING'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="font-semibold text-gray-700">
+                          {charger.max_power_kw || 0} kW
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
-      {chargerPagination.has_more && filteredChargers.length > 0 && (
-        <div className="text-center pt-2">
-          <button
-            onClick={loadMoreChargers}
-            disabled={loadingMoreChargers}
-            className="text-sm text-green-600 hover:text-green-700 font-medium disabled:opacity-50"
-          >
-            {loadingMoreChargers ? 'Loading...' : 'Load More Chargers'}
-          </button>
-        </div>
-      )}
+          {chargerPagination.has_more && filteredChargers.length > 0 && (
+            <div className="text-center pt-2">
+              <button
+                onClick={loadMoreChargers}
+                disabled={loadingMoreChargers}
+                className="text-sm text-green-600 hover:text-green-700 font-medium disabled:opacity-50 flex items-center gap-2 mx-auto"
+              >
+                {loadingMoreChargers ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Loading...
+                  </>
+                ) : (
+                  'Load More Chargers'
+                )}
+              </button>
+            </div>
+          )}
 
-      {filteredChargers.length > 0 && (
-        <p className="text-xs text-gray-400 text-center pt-2 border-t border-gray-200">
-          Select chargers to associate with this hub (optional)
-        </p>
+          <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+            <p className="text-xs text-gray-400">
+              {filteredChargers.length} unassigned charger(s) available
+            </p>
+            <p className="text-xs text-gray-400">
+              Selected: <span className="font-semibold text-green-600">{selectedChargers.length}</span>
+            </p>
+          </div>
+        </>
       )}
     </div>
   );
@@ -633,7 +729,12 @@ const AddHub = () => {
 
       if (response.ok) {
         // Extract chargers data from response
-        const chargersData = data.data || data.chargers || data || [];
+        let chargersData = data.data || data.chargers || data || [];
+        
+        // Filter to only show unassigned chargers (assigned === false)
+        // If the API doesn't filter, we filter on frontend
+        chargersData = chargersData.filter(charger => charger.assigned === false);
+        
         const hasMore = data.has_more || false;
         const nextBefore = data.next_before || null;
         const nextBeforeId = data.next_before_id || null;
@@ -834,16 +935,43 @@ const AddHub = () => {
 
   const getStatusColor = (status) => {
     const colors = {
-      'ACTIVE': 'bg-green-100 text-green-800',
-      'PENDING': 'bg-yellow-100 text-yellow-800',
-      'INACTIVE': 'bg-red-100 text-red-800',
-      'OFFLINE': 'bg-gray-100 text-gray-800',
-      'active': 'bg-green-100 text-green-800',
-      'inactive': 'bg-red-100 text-red-800',
-      'pending': 'bg-yellow-100 text-yellow-800',
-      'offline': 'bg-gray-100 text-gray-800'
+      'AVAILABLE': 'bg-green-100 text-green-800 border-green-200',
+      'ACTIVE': 'bg-green-100 text-green-800 border-green-200',
+      'PREPARING': 'bg-yellow-100 text-yellow-800 border-yellow-200',
+      'CHARGING': 'bg-blue-100 text-blue-800 border-blue-200',
+      'SUSPENDED_EV': 'bg-orange-100 text-orange-800 border-orange-200',
+      'SUSPENDED_EVSE': 'bg-orange-100 text-orange-800 border-orange-200',
+      'FINISHING': 'bg-purple-100 text-purple-800 border-purple-200',
+      'RESERVED': 'bg-indigo-100 text-indigo-800 border-indigo-200',
+      'UNAVAILABLE': 'bg-red-100 text-red-800 border-red-200',
+      'FAULTED': 'bg-red-100 text-red-800 border-red-200',
+      'OFFLINE': 'bg-gray-100 text-gray-800 border-gray-200',
+      'INACTIVE': 'bg-red-100 text-red-800 border-red-200',
+      'UNDER_MAINTENANCE': 'bg-orange-100 text-orange-800 border-orange-200',
+      'PENDING': 'bg-yellow-100 text-yellow-800 border-yellow-200'
     };
-    return colors[status] || 'bg-gray-100 text-gray-800';
+    return colors[status] || 'bg-gray-100 text-gray-800 border-gray-200';
+  };
+
+  const getStatusIcon = (status) => {
+    switch(status?.toUpperCase()) {
+      case 'AVAILABLE':
+      case 'ACTIVE':
+        return <CheckCircle className="w-3 h-3" />;
+      case 'CHARGING':
+        return <Zap className="w-3 h-3" />;
+      case 'OFFLINE':
+        return <Wifi className="w-3 h-3" />;
+      case 'FAULTED':
+      case 'UNAVAILABLE':
+        return <AlertCircle className="w-3 h-3" />;
+      case 'UNDER_MAINTENANCE':
+        return <Wrench className="w-3 h-3" />;
+      case 'PREPARING':
+        return <ClockIcon className="w-3 h-3" />;
+      default:
+        return <Circle className="w-3 h-3" />;
+    }
   };
 
   // Settings Dropdown Menu
@@ -1114,7 +1242,7 @@ const AddHub = () => {
                           }`}>
                             Select Chargers
                           </p>
-                          <p className="text-xs text-gray-400">View and select chargers</p>
+                          <p className="text-xs text-gray-400">View and select unassigned chargers</p>
                         </div>
                       </div>
                     </div>
@@ -1125,12 +1253,12 @@ const AddHub = () => {
                 <div className="flex-1 p-6">
                   <div className="mb-4">
                     <h3 className="text-lg font-semibold text-gray-900">
-                      {currentStep === 1 ? 'Basic Details' : 'Select Chargers'}
+                      {currentStep === 1 ? 'Basic Details' : 'Select Unassigned Chargers'}
                     </h3>
                     <p className="text-sm text-gray-500">
                       {currentStep === 1 
                         ? 'Enter the basic details of your hub' 
-                        : 'Select chargers to associate with this hub (optional)'}
+                        : 'Select unassigned chargers to associate with this hub (optional)'}
                     </p>
                   </div>
 
@@ -1155,6 +1283,8 @@ const AddHub = () => {
                       toggleChargerSelection={toggleChargerSelection}
                       formatDate={formatDate}
                       getStatusColor={getStatusColor}
+                      getStatusIcon={getStatusIcon}
+                      onNavigateToAddCharger={() => navigate('/add-charger')}
                     />
                   )}
 

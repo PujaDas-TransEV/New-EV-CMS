@@ -5,7 +5,7 @@ import ForgotPassword from './components/Authentication/ForgotPassword';
 import Profile from './components/Profile/Profile';
 import Dashboard from './components/Dashboard/Dashboard';
 import Sidebar from './components/Sidebar/Sidebar';
-import ChargerSessions from './components/ChargerSessions/ChargerSessions';
+import ChargerSessions from './components/ChargerSessions/ChargerList';
 import './index.css'; 
 import RevenueManagement from './components/RevenueManagement';
 import AddChargerForm from './components/ChargerSessions/AddChargerForm';
@@ -20,6 +20,8 @@ import HubwiseDetails from './components/Hubs/ViewHubwise';
 import RevenueOverview from './components/Revenue/Overview';
 import HelpandSupportPage from './components/HelpAndSupport/Help';
 import PaymentIntegration from './components/PaymentIntegration/Payment';
+import ChargerDetails from './components/ChargerSessions/ChargerDetails';
+import ChargerSession from './components/ChargerSessions/Session';
 function App() {
   return (
     <Router>
@@ -45,6 +47,8 @@ function App() {
         <Route path="/revenue/overview" element={<RevenueOverview />} />
         <Route path="/help-support" element={<HelpandSupportPage />} />
         <Route path="/payment-integration" element={<PaymentIntegration />} />
+        <Route path="/charger-details/:chargerId" element={<ChargerDetails />} />
+        <Route path="/sessions" element={<ChargerSession />} />
       </Routes>
     </Router>
   );

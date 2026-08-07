@@ -328,7 +328,7 @@ const AddChargerForm = () => {
       {
         connector_number: 1,
         connector_type: "",
-        connector_capacity: ""
+        connector_total_capacity: ""
       }
     ]
   });
@@ -383,7 +383,7 @@ const AddChargerForm = () => {
         {
           connector_number: prev.connectors.length + 1,
           connector_type: "",
-          connector_capacity: ""
+          connector_total_capacity: ""
         }
       ]
     }));
@@ -440,7 +440,7 @@ const AddChargerForm = () => {
           setIsLoading(false);
           return;
         }
-        if (!connector.connector_capacity) {
+        if (!connector.connector_total_capacity) {
           setMessage("Please enter connector capacity for all connectors");
           setMessageType("error");
           setIsLoading(false);
@@ -469,7 +469,7 @@ const AddChargerForm = () => {
         connectors: formData.connectors.map(conn => ({
           connector_number: parseInt(conn.connector_number) || 0,
           connector_type: conn.connector_type,
-          connector_capacity: parseFloat(conn.connector_capacity) || 0
+          connector_total_capacity: parseFloat(conn.connector_total_capacity) || 0
         }))
       };
 
@@ -550,7 +550,7 @@ const AddChargerForm = () => {
               {
                 connector_number: 1,
                 connector_type: "",
-                connector_capacity: ""
+                connector_total_capacity: ""
               }
             ]
           });
@@ -918,7 +918,7 @@ const AddChargerForm = () => {
                       {
                         connector_number: 1,
                         connector_type: "",
-                        connector_capacity: ""
+                        connector_total_capacity: ""
                       }
                     ]
                   });
@@ -1054,7 +1054,7 @@ const AddChargerForm = () => {
               <div className="relative">
                 <button
                   onClick={() => setShowAddMenu(!showAddMenu)}
-                  className="w-9 h-9 rounded-full bg-green-600 text-white flex items-center justify-center hover:bg-green-700 transition shadow-lg shadow-green-500/25"
+                  className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 transition shadow-lg shadow-green-500/25"
                 >
                   <Plus size={18} />
                 </button>
@@ -1296,9 +1296,9 @@ const AddChargerForm = () => {
                         />
                         <Input 
                           label="Connector Capacity (kW)" 
-                          name={`connector_${index}_connector_capacity`}
-                          value={connector.connector_capacity}
-                          onChange={(e) => handleConnectorChange(index, 'connector_capacity', e.target.value)}
+                          name={`connector_${index}_connector_total_capacity`}
+                          value={connector.connector_total_capacity}
+                          onChange={(e) => handleConnectorChange(index, 'connector_total_capacity', e.target.value)}
                           type="number"
                           placeholder="e.g., 50"
                           required
