@@ -209,9 +209,9 @@ const Drivers = () => {
 
   // Tabs configuration
   const tabs = [
-    { id: 'drivers', label: 'Drivers', icon: UsersIcon },
-    { id: 'alerts', label: 'Driver Alerts', icon: AlertTriangle },
-    { id: 'groups', label: 'Driver Groups', icon: UserCog },
+    { id: 'drivers', label: 'Customers', icon: UsersIcon },
+    { id: 'alerts', label: 'Customer Alerts', icon: AlertTriangle },
+    { id: 'groups', label: 'Customer Groups', icon: UserCog },
     { id: 'vehicles', label: 'Vehicles', icon: Car }
   ];
 
@@ -373,9 +373,9 @@ const Drivers = () => {
   const handleTabClick = (tabId) => {
     setActiveTab(tabId);
     if (tabId === 'alerts') {
-      navigate('/driver-alerts');
+      navigate('/customer-alerts');
     } else if (tabId === 'groups') {
-      navigate('/driver-groups');
+      navigate('/customer-groups');
     } else if (tabId === 'vehicles') {
       navigate('/vehicles');
     }
