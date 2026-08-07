@@ -22,6 +22,7 @@ import HelpandSupportPage from './components/HelpAndSupport/Help';
 import PaymentIntegration from './components/PaymentIntegration/Payment';
 import ChargerDetails from './components/ChargerSessions/ChargerDetails';
 import ChargerSession from './components/ChargerSessions/Session';
+import Drivers from './components/DriversandVehicles/Driver';
 function App() {
   return (
     <Router>
@@ -49,6 +50,7 @@ function App() {
         <Route path="/payment-integration" element={<PaymentIntegration />} />
         <Route path="/charger-details/:chargerId" element={<ChargerDetails />} />
         <Route path="/sessions" element={<ChargerSession />} />
+          <Route path="/drivers" element={<Drivers />} />
       </Routes>
     </Router>
   );

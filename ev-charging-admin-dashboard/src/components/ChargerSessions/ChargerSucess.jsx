@@ -596,7 +596,7 @@ const ChargerSuccess = () => {
             {/* Action Buttons */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
               <button
-                onClick={() => navigate('/manage-chargers')}
+                onClick={() => navigate('/charger-session')}
                 className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition flex items-center justify-center gap-2 font-medium"
               >
                 <Layers className="w-5 h-5" />
