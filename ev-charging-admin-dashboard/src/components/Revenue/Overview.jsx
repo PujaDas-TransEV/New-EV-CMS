@@ -420,7 +420,7 @@ const RevenueManagement = () => {
   // Sidebar tabs
   const sidebarTabs = [
     { id: 'overview', label: 'Overview', icon: BarChart, path: '/revenue/overview' },
-    { id: 'driver-tariffs', label: 'Driver Tariffs', icon: Users, path: '/revenue/driver-tariffs' },
+    { id: 'driver-tariffs', label: 'Driver Tariffs', icon: Users, path: '/revenue/customer-tariffs' },
     { id: 'charger-tariffs', label: 'Charger Tariffs', icon: Zap, path: '/revenue/charger-tariffs' },
     { id: 'aggregation-fee', label: 'Aggregation Fee', icon: Coins, path: '/revenue/aggregation-fee' },
     { id: 'tax', label: 'Tax', icon: Percent, path: '/revenue/tax' },
