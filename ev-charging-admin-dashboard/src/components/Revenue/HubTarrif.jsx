@@ -1,4 +1,4 @@
-// src/components/Revenue/CustomerTariff.jsx
+// src/components/Revenue/HubTariff.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../Authentication/AuthContext';
@@ -11,76 +11,61 @@ import {
   LogOut,
   Search,
   Users,
-  Users as UsersIcon,
   UserCog,
-  UserCheck,
-  UserX,
-  Shield,
   CheckCircle,
-  AlertCircle,
-  X,
+  XCircle,
   Eye,
   Edit,
   Trash2,
   Loader2,
-  Calendar,
-  Clock,
-  Mail,
-  Phone,
-  Menu,
-  Filter,
-  RefreshCw,
-  ChevronLeft,
-  ChevronRight,
-  ArrowLeft,
-  UserPlus,
-  MoreVertical,
-  Circle,
-  CircleCheck,
-  CircleX,
-  CircleAlert,
-  UserRound,
-  BadgeCheck,
-  Activity,
-  Power,
-  PowerOff,
-  Zap,
-  DollarSign,
   Tag,
   FileText,
   Layers,
-  Grid,
-  List,
-  TrendingUp,
-  TrendingDown,
-  Award,
-  Star,
-  Crown,
-  Wallet,
-  CreditCard,
+  Percent,
   Receipt,
   BarChart,
   PieChart,
-  LineChart,
-  Percent,
+  Zap,
+  Calendar,
+  Clock,
+  X,
+  AlertCircle,
+  Shield,
+  ArrowLeft,
   IndianRupee,
-  XCircle,
-  Calendar as CalendarIcon,
-  Clock as ClockIcon,
+  Globe,
+  CalendarDays,
+  Info,
+  Sparkles,
+  DollarSign,
+  Link as LinkIcon,
+  Wifi,
+  Plug,
+  Battery,
+  Gauge,
+  RadioTower,
+  Power,
+  PowerOff,
+  Activity,
+  MoreVertical,
+  Filter,
+  RefreshCw,
+  MapPin,
+  Home,
+  Briefcase,
 } from 'lucide-react';
 import Sidebar from '../Sidebar/Sidebar';
 
 // API Configuration
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://dev-evcmsnew.transev.site';
-const CPO_APP_ID = process.env.REACT_APP_CPO_APP_ID || 'cpo_dummy_5f75674f57829da5f3cae19ef4238d56';
 
 const API_CONFIG = {
-  USER_GROUPS_API: `${API_BASE_URL}/api/v1/cpo/user-groups`,
-  USER_GROUP_TARIFFS_API: (groupId) => `${API_BASE_URL}/api/v1/cpo/user-groups/${groupId}/tariffs`,
+  HUBS_API: `${API_BASE_URL}/api/v1/cpo/hubs`,
+  HUB_TARIFFS_API: (hubId) => `${API_BASE_URL}/api/v1/cpo/hubs/${hubId}/tariffs`,
   USER_INFO_API: `${API_BASE_URL}/api/v1/auth/me`
 };
 
-const CustomerTariff = () => {
+const HubTariff = () => {
   const navigate = useNavigate();
   const { authenticatedRequest, logout, isRefreshing, isAuthenticated, user } = useAuth();
   
@@ -91,16 +76,15 @@ const CustomerTariff = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [userGroups, setUserGroups] = useState([]);
-  const [selectedGroup, setSelectedGroup] = useState(null);
+  const [hubs, setHubs] = useState([]);
+  const [selectedHub, setSelectedHub] = useState(null);
   const [tariffs, setTariffs] = useState([]);
   const [loadingTariffs, setLoadingTariffs] = useState(false);
   const [showTariffDetail, setShowTariffDetail] = useState(false);
   const [selectedTariff, setSelectedTariff] = useState(null);
-  const [isCreating, setIsCreating] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
 
-  // Tabs configuration - Updated: Aggregation Fee replaced with Hub Tariffs
+  // Tabs configuration - Hub Tariffs replaces Aggregation Fee
   const tabs = [
     { id: 'overview', label: 'Overview', icon: BarChart, path: '/revenue/overview' },
     { id: 'driver_tariffs', label: 'Customer Tariffs', icon: Users, path: '/revenue/customer-tariffs' },
@@ -110,17 +94,18 @@ const CustomerTariff = () => {
     { id: 'settings', label: 'Settings', icon: Settings, path: '/revenue/settings' }
   ];
 
-  // Fetch user info and groups
+  // Fetch user info and hubs
   useEffect(() => {
     if (!isAuthenticated) {
       navigate('/signin');
       return;
     }
     fetchUserInfo();
-    fetchUserGroups();
+    fetchHubs();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, navigate]);
 
-  const fetchUserInfo = async () => {
+  const fetchUserInfo = useCallback(async () => {
     try {
       const response = await authenticatedRequest(API_CONFIG.USER_INFO_API, {
         method: 'GET'
@@ -132,39 +117,41 @@ const CustomerTariff = () => {
     } catch (error) {
       console.error('Error fetching user info:', error);
     }
-  };
+  }, [authenticatedRequest]);
 
-  const fetchUserGroups = useCallback(async () => {
+  // Fetch hubs using GET /api/v1/cpo/hubs
+  const fetchHubs = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const response = await authenticatedRequest(API_CONFIG.USER_GROUPS_API, {
+      const response = await authenticatedRequest(API_CONFIG.HUBS_API, {
         method: 'GET'
       });
 
       if (response.ok) {
         const data = await response.json();
-        const groups = data.user_groups || data.data || data || [];
-        setUserGroups(groups);
-        if (groups.length > 0) {
-          setSelectedGroup(groups[0]);
-          fetchTariffs(groups[0].id);
+        const hubsData = data.hubs || data.data || data || [];
+        setHubs(hubsData);
+        if (hubsData.length > 0) {
+          setSelectedHub(hubsData[0]);
+          fetchTariffs(hubsData[0].id);
         }
       } else {
-        setError('Failed to fetch customer groups');
+        setError('Failed to fetch hubs');
       }
     } catch (error) {
-      console.error('Error fetching user groups:', error);
-      setError('An error occurred while fetching groups');
+      console.error('Error fetching hubs:', error);
+      setError('An error occurred while fetching hubs');
     } finally {
       setLoading(false);
     }
   }, [authenticatedRequest]);
 
-  const fetchTariffs = useCallback(async (groupId) => {
+  // Fetch tariffs for a specific hub
+  const fetchTariffs = useCallback(async (hubId) => {
     setLoadingTariffs(true);
     try {
-      const response = await authenticatedRequest(API_CONFIG.USER_GROUP_TARIFFS_API(groupId), {
+      const response = await authenticatedRequest(API_CONFIG.HUB_TARIFFS_API(hubId), {
         method: 'GET'
       });
 
@@ -176,16 +163,16 @@ const CustomerTariff = () => {
         setTariffs([]);
       }
     } catch (error) {
-      console.error('Error fetching tariffs:', error);
+      console.error('Error fetching hub tariffs:', error);
       setTariffs([]);
     } finally {
       setLoadingTariffs(false);
     }
   }, [authenticatedRequest]);
 
-  const handleGroupSelect = (group) => {
-    setSelectedGroup(group);
-    fetchTariffs(group.id);
+  const handleHubSelect = (hub) => {
+    setSelectedHub(hub);
+    fetchTariffs(hub.id);
     setShowTariffDetail(false);
     setSelectedTariff(null);
   };
@@ -195,14 +182,14 @@ const CustomerTariff = () => {
     setShowTariffDetail(true);
   };
 
-  // Handle Add Tariff - Navigate to Add Customer Tariff page with group ID
+  // Handle Add Tariff - Navigate to Add Hub Tariff page
   const handleAddTariff = () => {
-    if (selectedGroup) {
-      navigate('/revenue/add-customer-tariff', { 
-        state: { groupId: selectedGroup.id, groupName: selectedGroup.name }
+    if (selectedHub) {
+      navigate('/revenue/add-hub-tariff', { 
+        state: { hubId: selectedHub.id, hubName: selectedHub.name }
       });
     } else {
-      navigate('/revenue/add-customer-tariff');
+      navigate('/revenue/add-hub-tariff');
     }
   };
 
@@ -218,7 +205,7 @@ const CustomerTariff = () => {
   const handleThemeToggle = () => setIsDarkMode(!isDarkMode);
 
   const handleTabClick = (tabId, path) => {
-    if (tabId === 'driver_tariffs') return;
+    if (tabId === 'hub_tariffs') return;
     navigate(path);
   };
 
@@ -234,7 +221,7 @@ const CustomerTariff = () => {
 
   const formatCurrency = (amount) => {
     if (!amount) return '₹ 0';
-    return `₹ ${amount.toLocaleString('en-IN')}`;
+    return `₹ ${parseFloat(amount).toLocaleString('en-IN')}`;
   };
 
   const getStatusColor = (isActive) => {
@@ -247,6 +234,12 @@ const CustomerTariff = () => {
     return isActive 
       ? <CheckCircle className="w-3 h-3" />
       : <XCircle className="w-3 h-3" />;
+  };
+
+  const getHubStatusColor = (isActive) => {
+    return isActive 
+      ? 'bg-green-100 text-green-700 border-green-200'
+      : 'bg-gray-100 text-gray-700 border-gray-200';
   };
 
   // Settings Dropdown Menu
@@ -293,13 +286,10 @@ const CustomerTariff = () => {
     <div className="absolute top-full right-0 mt-2 bg-black rounded-2xl w-64 shadow-2xl border border-gray-800 z-50">
       <div className="p-3">
         <button onClick={() => { setShowAddMenu(false); navigate("/add-hub"); }} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
-          <Plus size={18} className="text-gray-400" /> Add Hub
+          <Zap size={18} className="text-gray-400" /> Add Hub
         </button>
         <button onClick={() => { setShowAddMenu(false); navigate("/add-charger"); }} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
           <Zap size={18} className="text-gray-400" /> Add Charger
-        </button>
-        <button onClick={() => { setShowAddMenu(false); navigate("/add-customer"); }} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
-          <Users size={18} className="text-gray-400" /> Add Customer
         </button>
       </div>
     </div>
@@ -311,15 +301,15 @@ const CustomerTariff = () => {
 
     return (
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center justify-between">
+        <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-orange-50 to-amber-50 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Tag className="w-5 h-5 text-blue-600" />
-            <h3 className="font-semibold text-gray-900">Tariff Details</h3>
+            <Layers className="w-5 h-5 text-orange-600" />
+            <h3 className="font-semibold text-gray-900">Hub Tariff Details</h3>
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => onEdit(tariff)}
-              className="p-1.5 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+              className="p-1.5 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition"
               title="Edit Tariff"
             >
               <Edit size={16} />
@@ -336,70 +326,90 @@ const CustomerTariff = () => {
         <div className="p-5 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wider">Name</p>
-              <p className="text-sm font-semibold text-gray-900">{tariff.name || 'N/A'}</p>
+              <p className="text-xs text-gray-500 uppercase tracking-wider">Tariff ID</p>
+              <p className="text-sm font-semibold text-gray-900">{tariff.id?.slice(0, 8) || 'N/A'}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wider">Description</p>
-              <p className="text-sm text-gray-700">{tariff.description || '----'}</p>
+              <p className="text-xs text-gray-500 uppercase tracking-wider">Status</p>
+              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(tariff.is_active)}`}>
+                {getStatusIcon(tariff.is_active)}
+                {tariff.is_active ? 'Active' : 'Inactive'}
+              </span>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wider">Tariff Type</p>
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
-                {tariff.tariff_type || 'Flat Tariff'}
-              </span>
+              <p className="text-xs text-gray-500 uppercase tracking-wider">Price per kWh</p>
+              <p className="text-lg font-bold text-gray-900">{formatCurrency(tariff.price_per_kwh)}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wider">Validity</p>
-              <p className="text-sm font-medium text-gray-900">
-                {formatDate(tariff.valid_from)} -- {formatDate(tariff.valid_to)}
-              </p>
+              <p className="text-xs text-gray-500 uppercase tracking-wider">Idle Fee per Minute</p>
+              <p className="text-lg font-bold text-gray-900">{formatCurrency(tariff.idle_fee_per_min || 0)}</p>
             </div>
           </div>
 
-          <div className="border-t border-gray-200 pt-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Pricing</p>
-            <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
-              <div className="flex items-center justify-between">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wider">Currency</p>
+              <p className="text-sm font-medium text-gray-900">{tariff.currency || 'INR'}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wider">Tariff Type</p>
+              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                {tariff.tariff_type || 'Standard'}
+              </span>
+            </div>
+          </div>
+
+          {tariff.start_date || tariff.end_date ? (
+            <div className="border-t border-gray-200 pt-4">
+              <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Validity Period</p>
+              <div className="bg-gray-50 rounded-xl p-3 border border-gray-200 flex items-center gap-4">
                 <div>
-                  <p className="text-xs text-gray-500">Price Type</p>
-                  <p className="text-sm font-medium text-gray-900">{tariff.price_type || 'Fixed'}</p>
+                  <p className="text-xs text-gray-500">Start Date</p>
+                  <p className="text-sm font-medium text-gray-900">{formatDate(tariff.start_date)}</p>
                 </div>
+                <ArrowLeft size={16} className="text-gray-400 rotate-180" />
                 <div>
-                  <p className="text-xs text-gray-500">Amount</p>
-                  <p className="text-sm font-bold text-gray-900">{formatCurrency(tariff.amount)}</p>
+                  <p className="text-xs text-gray-500">End Date</p>
+                  <p className="text-sm font-medium text-gray-900">{formatDate(tariff.end_date)}</p>
                 </div>
-                {tariff.unit && (
-                  <div>
-                    <p className="text-xs text-gray-500">Unit</p>
-                    <p className="text-sm font-medium text-gray-900">{tariff.unit}</p>
-                  </div>
-                )}
               </div>
             </div>
-          </div>
+          ) : null}
 
-          <div className="border-t border-gray-200 pt-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Assigned Assets</p>
-            <div className="flex flex-wrap gap-2">
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-                <Zap size={12} />
-                Chargers: {tariff.charger_count || 0}
-              </span>
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                <Layers size={12} />
-                Hubs: {tariff.hub_count || 0}
-              </span>
+          {tariff.charger_id && (
+            <div className="border-t border-gray-200 pt-4">
+              <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Specific Charger</p>
+              <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
+                <p className="text-sm font-medium text-gray-900">Charger ID: {tariff.charger_id}</p>
+              </div>
             </div>
-          </div>
+          )}
+
+          {tariff.user_group_id && (
+            <div className="border-t border-gray-200 pt-4">
+              <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Customer Group</p>
+              <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
+                <p className="text-sm font-medium text-gray-900">Group ID: {tariff.user_group_id}</p>
+              </div>
+            </div>
+          )}
+
+          {tariff.gst_id && (
+            <div className="border-t border-gray-200 pt-4">
+              <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">GST Profile</p>
+              <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
+                <p className="text-sm font-medium text-gray-900">GST ID: {tariff.gst_id}</p>
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center gap-3 pt-2 border-t border-gray-200">
             <button
               onClick={() => onEdit(tariff)}
-              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition text-sm flex items-center justify-center gap-2"
+              className="flex-1 px-4 py-2 bg-orange-600 text-white rounded-xl hover:bg-orange-700 transition text-sm flex items-center justify-center gap-2"
             >
               <Edit size={16} />
               Edit Tariff
@@ -442,13 +452,13 @@ const CustomerTariff = () => {
 
       <div className="flex-1 min-w-0">
         {/* HEADER */}
-        <header className="bg-white border-b-2 border-gray-200 px-6 py-6 sticky top-0 z-30 shadow-sm">
+        <header className="bg-white border-b-2 border-gray-200 px-6 py-4 sticky top-0 z-30 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-bold text-gray-800">Revenue Management</h1>
                 <span className="text-gray-300 text-xl">/</span>
-                <span className="text-sm text-blue-400 font-medium mt-1">Customer Tariffs</span>
+                <span className="text-sm text-orange-600 font-medium mt-1">Hub Tariffs</span>
               </div>
             </div>
             
@@ -470,12 +480,12 @@ const CustomerTariff = () => {
           </div>
         </header>
 
-        {/* Tabs - Updated: Hub Tariffs instead of Aggregation Fee */}
+        {/* Tabs - Hub Tariffs active with green color */}
         <div className="border-b border-gray-200 bg-white px-6">
           <div className="flex flex-wrap items-center gap-1">
             {tabs.map((tab) => {
               const Icon = tab.icon;
-              const isActive = tab.id === 'driver_tariffs';
+              const isActive = tab.id === 'hub_tariffs';
               return (
                 <button
                   key={tab.id}
@@ -497,17 +507,17 @@ const CustomerTariff = () => {
         {/* Content */}
         <div className="p-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left Column - Customer Groups List */}
+            {/* Left Column - Hubs List */}
             <div className="lg:col-span-1">
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden sticky top-24">
                 <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Users className="w-5 h-5 text-blue-600" />
-                      <h3 className="font-semibold text-gray-900">Customer Groups</h3>
+                      <Layers className="w-5 h-5 text-orange-600" />
+                      <h3 className="font-semibold text-gray-900">Hubs</h3>
                     </div>
-                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                      {userGroups.length}
+                    <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
+                      {hubs.length}
                     </span>
                   </div>
                 </div>
@@ -517,56 +527,61 @@ const CustomerTariff = () => {
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input
                       type="text"
-                      placeholder="Search by group name..."
+                      placeholder="Search by hub..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+                      className="w-full pl-10 pr-4 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm"
                     />
                   </div>
 
                   {loading ? (
                     <div className="flex items-center justify-center py-8">
-                      <Loader2 className="w-6 h-6 text-green-600 animate-spin" />
+                      <Loader2 className="w-6 h-6 text-orange-600 animate-spin" />
                     </div>
-                  ) : userGroups.length === 0 ? (
+                  ) : hubs.length === 0 ? (
                     <div className="text-center py-8">
-                      <Users className="w-12 h-12 text-gray-300 mx-auto mb-2" />
-                      <p className="text-gray-500 text-sm">No groups found</p>
+                      <Layers className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+                      <p className="text-gray-500 text-sm">No hubs found</p>
                     </div>
                   ) : (
                     <div className="space-y-2 max-h-[500px] overflow-y-auto">
-                      {userGroups
-                        .filter(g => g.name?.toLowerCase().includes(searchQuery.toLowerCase()))
-                        .map((group) => (
+                      {hubs
+                        .filter(h => 
+                          (h.name || '')
+                            .toLowerCase()
+                            .includes(searchQuery.toLowerCase())
+                        )
+                        .map((hub) => (
                           <button
-                            key={group.id}
-                            onClick={() => handleGroupSelect(group)}
+                            key={hub.id}
+                            onClick={() => handleHubSelect(hub)}
                             className={`w-full text-left p-3 rounded-xl border transition ${
-                              selectedGroup?.id === group.id
-                                ? 'border-green-500 bg-green-50 shadow-sm'
+                              selectedHub?.id === hub.id
+                                ? 'border-orange-500 bg-orange-50 shadow-sm'
                                 : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                             }`}
                           >
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
-                                  {group.name?.charAt(0) || 'G'}
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
+                                  <Layers size={14} className="text-white" />
                                 </div>
                                 <div>
-                                  <p className="text-sm font-medium text-gray-900">{group.name}</p>
+                                  <p className="text-sm font-medium text-gray-900">
+                                    {hub.name || 'Unnamed Hub'}
+                                  </p>
                                   <p className="text-xs text-gray-500 truncate max-w-[120px]">
-                                    {group.description || 'No description'}
+                                    {hub.address || 'No address'}
                                   </p>
                                 </div>
                               </div>
-                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(group.is_active)}`}>
-                                {getStatusIcon(group.is_active)}
-                                {group.is_active ? 'Active' : 'Inactive'}
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${getHubStatusColor(hub.customer_visible)}`}>
+                                {hub.customer_visible ? 'Visible' : 'Hidden'}
                               </span>
                             </div>
                             <div className="mt-2 flex items-center gap-4 text-xs text-gray-500">
-                              <span>Members: {group.member_count || 0}</span>
-                              <span>Created: {formatDate(group.created_at)}</span>
+                              <span>📍 {hub.latitude}, {hub.longitude}</span>
+                              <span>{hub.open_24_hours ? '24/7' : 'Timed'}</span>
                             </div>
                           </button>
                         ))}
@@ -578,28 +593,31 @@ const CustomerTariff = () => {
 
             {/* Right Column - Tariffs List */}
             <div className="lg:col-span-2">
-              {selectedGroup ? (
+              {selectedHub ? (
                 <>
-                  {/* Group Info Card */}
+                  {/* Hub Info Card */}
                   <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 mb-4">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-green-500/25">
-                          <UserCog className="w-6 h-6 text-white" />
+                        <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/25">
+                          <Layers className="w-6 h-6 text-white" />
                         </div>
                         <div>
-                          <h3 className="text-lg font-bold text-gray-900">{selectedGroup.name}</h3>
-                          <p className="text-sm text-gray-500">{selectedGroup.description || 'No description'}</p>
+                          <h3 className="text-lg font-bold text-gray-900">
+                            {selectedHub.name || 'Unnamed Hub'}
+                          </h3>
+                          <p className="text-sm text-gray-500">{selectedHub.address || 'No address'}</p>
                           <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                            <span>Total Drivers: {selectedGroup.member_count || 0}</span>
-                            <span>Created: {formatDate(selectedGroup.created_at)}</span>
+                            <span>📍 {selectedHub.latitude}, {selectedHub.longitude}</span>
+                            <span>{selectedHub.open_24_hours ? '🕐 24/7' : '⏰ Timed'}</span>
+                            <span>{selectedHub.customer_visible ? '👁️ Visible' : '👁️ Hidden'}</span>
                           </div>
                         </div>
                       </div>
-                      {/* Add Tariff Button - Navigates to Add Customer Tariff page */}
+                      {/* Add Tariff Button */}
                       <button
                         onClick={handleAddTariff}
-                        className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 transition shadow-lg shadow-green-500/25"
+                        className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-xl hover:bg-orange-700 transition shadow-lg shadow-orange-500/25"
                       >
                         <Plus size={18} />
                         Add Tariff
@@ -610,16 +628,16 @@ const CustomerTariff = () => {
                   {/* Tariffs List */}
                   {loadingTariffs ? (
                     <div className="flex items-center justify-center py-12 bg-white rounded-2xl border border-gray-200">
-                      <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
+                      <Loader2 className="w-8 h-8 text-orange-600 animate-spin" />
                     </div>
                   ) : tariffs.length === 0 ? (
                     <div className="text-center py-12 bg-white rounded-2xl border-2 border-dashed border-gray-200">
-                      <Tag className="w-16 h-16 text-gray-300 mx-auto mb-3" />
+                      <Layers className="w-16 h-16 text-gray-300 mx-auto mb-3" />
                       <p className="text-gray-500 font-medium">No Tariffs Found</p>
-                      <p className="text-sm text-gray-400 mt-1">Create your first tariff for this group</p>
+                      <p className="text-sm text-gray-400 mt-1">Create your first tariff for this hub</p>
                       <button
                         onClick={handleAddTariff}
-                        className="mt-4 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                        className="mt-4 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition"
                       >
                         <Plus size={16} className="inline mr-1" />
                         Create Tariff
@@ -631,40 +649,56 @@ const CustomerTariff = () => {
                         <div
                           key={tariff.id}
                           onClick={() => handleTariffClick(tariff)}
-                          className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden hover:border-blue-300"
+                          className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden hover:border-orange-300"
                         >
                           <div className="p-5">
                             <div className="flex items-start justify-between">
                               <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-gradient-to-br from-purple-500 to-pink-600 rounded-xl flex items-center justify-center shadow-lg shadow-purple-500/25 flex-shrink-0">
+                                <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/25 flex-shrink-0">
                                   <Tag className="w-5 h-5 text-white" />
                                 </div>
                                 <div>
-                                  <h4 className="font-semibold text-gray-900">{tariff.name}</h4>
-                                  <p className="text-sm text-gray-500">{tariff.description || 'No description'}</p>
+                                  <h4 className="font-semibold text-gray-900">Tariff #{tariff.id?.slice(0, 8) || 'N/A'}</h4>
+                                  <p className="text-sm text-gray-500">
+                                    Price: {formatCurrency(tariff.price_per_kwh)} / kWh
+                                  </p>
                                   <div className="flex items-center gap-3 mt-1">
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
-                                      {tariff.tariff_type || 'Flat Tariff'}
-                                    </span>
                                     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(tariff.is_active)}`}>
                                       {getStatusIcon(tariff.is_active)}
                                       {tariff.is_active ? 'Active' : 'Inactive'}
                                     </span>
+                                    {tariff.tariff_type && (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                                        {tariff.tariff_type}
+                                      </span>
+                                    )}
+                                    {tariff.charger_id && (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+                                        <Zap size={12} />
+                                        Specific Charger
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               </div>
                               <div className="text-right">
-                                <p className="text-xs text-gray-500">Amount</p>
-                                <p className="text-lg font-bold text-gray-900">{formatCurrency(tariff.amount)}</p>
-                                <p className="text-xs text-gray-400">{tariff.price_type || 'Fixed'}</p>
+                                <p className="text-xs text-gray-500">Idle Fee</p>
+                                <p className="text-sm font-bold text-gray-900">{formatCurrency(tariff.idle_fee_per_min || 0)}/min</p>
+                                <p className="text-xs text-gray-400">{tariff.currency || 'INR'}</p>
                               </div>
                             </div>
                             
                             <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
                               <div className="flex items-center gap-4 text-xs text-gray-500">
-                                <span>Valid: {formatDate(tariff.valid_from)} - {formatDate(tariff.valid_to)}</span>
-                                <span>Chargers: {tariff.charger_count || 0}</span>
-                                <span>Hubs: {tariff.hub_count || 0}</span>
+                                {tariff.start_date && (
+                                  <span>Valid: {formatDate(tariff.start_date)} - {formatDate(tariff.end_date) || '∞'}</span>
+                                )}
+                                {tariff.user_group_id && (
+                                  <span>Group: {tariff.user_group_id?.slice(0, 8)}</span>
+                                )}
+                                {tariff.gst_id && (
+                                  <span>GST: {tariff.gst_id?.slice(0, 8)}</span>
+                                )}
                               </div>
                               <div className="flex items-center gap-1">
                                 <button
@@ -672,7 +706,7 @@ const CustomerTariff = () => {
                                     e.stopPropagation();
                                     handleTariffClick(tariff);
                                   }}
-                                  className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                                  className="p-1.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition"
                                   title="View Details"
                                 >
                                   <Eye size={16} />
@@ -698,9 +732,9 @@ const CustomerTariff = () => {
                 </>
               ) : (
                 <div className="text-center py-12 bg-white rounded-2xl border-2 border-dashed border-gray-200">
-                  <Users className="w-16 h-16 text-gray-300 mx-auto mb-3" />
-                  <p className="text-gray-500 font-medium">Select a Customer Group</p>
-                  <p className="text-sm text-gray-400 mt-1">Choose a group from the left to view its tariffs</p>
+                  <Layers className="w-16 h-16 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 font-medium">Select a Hub</p>
+                  <p className="text-sm text-gray-400 mt-1">Choose a hub from the left to view its tariffs</p>
                 </div>
               )}
             </div>
@@ -711,4 +745,4 @@ const CustomerTariff = () => {
   );
 };
 
-export default CustomerTariff;
+export default HubTariff;

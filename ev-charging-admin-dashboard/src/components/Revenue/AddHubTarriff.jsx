@@ -1,4 +1,4 @@
-// src/components/Revenue/AddCustomerTariff.jsx
+// src/components/Revenue/AddHubTariff.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../Authentication/AuthContext';
@@ -12,123 +12,24 @@ import {
   Users,
   CheckCircle,
   XCircle,
-  Eye,
-  Edit,
-  Trash2,
   Loader2,
-  Calendar,
-  Clock,
-  Mail,
-  Phone,
-  Menu,
-  Filter,
-  RefreshCw,
-  ChevronLeft,
-  ChevronRight,
   ArrowLeft,
-  UserPlus,
-  MoreVertical,
-  Circle,
-  CircleCheck,
-  CircleX,
-  CircleAlert,
-  UserRound,
-  BadgeCheck,
-  Activity,
-  Power,
-  PowerOff,
-  Save,
-  ArrowRight,
   Info,
   Sparkles,
-  Award,
-  Star,
   Zap,
   Layers,
-  Gift,
-  Crown,
-  Check,
-  List,
-  Grid,
-  Search as SearchIcon,
-  FileText,
   Tag,
   DollarSign,
-  Calendar as CalendarIcon,
-  Clock as ClockIcon,
-  Percent,
   IndianRupee,
   Globe,
-  MapPin,
-  Wifi,
-  Plug,
-  Battery,
-  Gauge,
-  RadioTower,
-  Link as LinkIcon,
-  CreditCard,
-  Wallet,
-  Receipt,
-  TrendingUp,
-  TrendingDown,
-  BarChart,
-  PieChart,
-  LineChart,
-  Settings as SettingsIcon,
-  Sliders,
-  ToggleLeft,
-  ToggleRight,
   CalendarDays,
-  Timer,
-  Infinity,
-  Package,
-  Repeat,
-  Landmark,
-  Banknote,
-  File,
-  Server,
-  Database,
-  Cloud,
-  Smartphone,
-  Monitor,
-  Tablet,
-  Laptop,
-  Cpu,
-  HardDrive,
-  Network,
-  Radio,
-  Bluetooth,
-  Thermometer,
-  Wind,
-  Droplet,
-  Sun,
-  Moon,
-  CloudRain,
-  CloudSnow,
-  CloudLightning,
-  CloudWind,
-  CloudFog,
-  CloudDrizzle,
-  CloudHail,
-  CloudSleet,
-  CloudThunder,
-  CloudTornado,
-  CloudHurricane,
-  CloudTyphoon,
-  CloudCyclone,
-  CloudStorm,
-  CloudRainbow,
-  CloudSun,
-  CloudMoon,
-  CloudStar,
-  CloudComet,
-  CloudAsteroid,
-  CloudMeteor,
-  CloudGalaxy,
-  CloudUniverse,
-  CloudMultiverse,
+  Clock,
+  Shield,
+  Receipt,
   AlertCircle,
-  Shield
+  ArrowRight,
+  Gauge,
+  Calendar as CalendarIcon,
 } from 'lucide-react';
 import Sidebar from '../Sidebar/Sidebar';
 
@@ -136,15 +37,15 @@ import Sidebar from '../Sidebar/Sidebar';
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://dev-evcmsnew.transev.site';
 
 const API_CONFIG = {
-  USER_GROUPS_API: `${API_BASE_URL}/api/v1/cpo/user-groups`,
-  USER_GROUP_TARIFFS_API: (groupId) => `${API_BASE_URL}/api/v1/cpo/user-groups/${groupId}/tariffs`,
   HUBS_API: `${API_BASE_URL}/api/v1/cpo/hubs`,
+  HUB_TARIFFS_API: (hubId) => `${API_BASE_URL}/api/v1/cpo/hubs/${hubId}/tariffs`,
   CHARGERS_API: `${API_BASE_URL}/api/v1/cpo/chargers`,
+  USER_GROUPS_API: `${API_BASE_URL}/api/v1/cpo/user-groups`,
   GST_API: `${API_BASE_URL}/api/v1/cpo/gst`,
   USER_INFO_API: `${API_BASE_URL}/api/v1/auth/me`
 };
 
-const AddCustomerTariff = () => {
+const AddHubTariff = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { authenticatedRequest, logout, isRefreshing, isAuthenticated, user } = useAuth();
@@ -157,59 +58,54 @@ const AddCustomerTariff = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [userGroups, setUserGroups] = useState([]);
-  const [selectedGroup, setSelectedGroup] = useState(null);
-  const [showGroupDropdown, setShowGroupDropdown] = useState(false);
-  
-  // Hubs, Chargers and GST states
   const [hubs, setHubs] = useState([]);
+  const [selectedHub, setSelectedHub] = useState(null);
+  const [showHubDropdown, setShowHubDropdown] = useState(false);
   const [chargers, setChargers] = useState([]);
-  const [gstList, setGstList] = useState([]);
-  const [loadingHubs, setLoadingHubs] = useState(false);
-  const [loadingChargers, setLoadingChargers] = useState(false);
-  const [loadingGST, setLoadingGST] = useState(false);
   const [filteredChargers, setFilteredChargers] = useState([]);
+  const [userGroups, setUserGroups] = useState([]);
+  const [gstList, setGstList] = useState([]);
+  const [loadingChargers, setLoadingChargers] = useState(false);
+  const [loadingUserGroups, setLoadingUserGroups] = useState(false);
+  const [loadingGST, setLoadingGST] = useState(false);
+  const [showChargerSelect, setShowChargerSelect] = useState(false);
   
-  // Form state - Matches backend CreateUserGroupTariff request
+  // Form state - Matches backend CreateHubTariff request
   const [formData, setFormData] = useState({
     hub_id: '',
     charger_id: '',
+    user_group_id: '',
     gst_id: '',
     price_per_kwh: '',
     idle_fee_per_min: '0',
     currency: 'INR',
     is_active: true,
     start_date: '',
-    end_date: ''
+    end_date: '',
+    tariff_type: 'Standard',
+    price_type: 'Fixed',
+    units: 'kWh'
   });
 
   // Form validation errors
   const [formErrors, setFormErrors] = useState({});
 
-  // Fetch user info and groups
+  // Fetch user info and data
   useEffect(() => {
     if (!isAuthenticated) {
       navigate('/signin');
       return;
     }
     fetchUserInfo();
-    fetchUserGroups();
     fetchHubs();
     fetchChargers();
+    fetchUserGroups();
     fetchGSTList();
     
     const state = location.state;
-    if (state && state.groupId) {
-      // Wait for groups to load before setting selected group
-      const checkGroup = () => {
-        const group = userGroups.find(g => g.id === state.groupId);
-        if (group) {
-          setSelectedGroup(group);
-        } else {
-          setTimeout(checkGroup, 100);
-        }
-      };
-      checkGroup();
+    if (state && state.hubId) {
+      setSelectedHub({ id: state.hubId, name: state.hubName });
+      setFormData(prev => ({ ...prev, hub_id: state.hubId }));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, navigate, location]);
@@ -228,32 +124,8 @@ const AddCustomerTariff = () => {
     }
   };
 
-  const fetchUserGroups = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const response = await authenticatedRequest(API_CONFIG.USER_GROUPS_API, {
-        method: 'GET'
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const groups = data.user_groups || data.data || data || [];
-        setUserGroups(groups);
-      } else {
-        setError('Failed to fetch customer groups');
-      }
-    } catch (error) {
-      console.error('Error fetching user groups:', error);
-      setError('An error occurred while fetching groups');
-    } finally {
-      setLoading(false);
-    }
-  }, [authenticatedRequest]);
-
-  // Fetch hubs using GET /api/v1/cpo/hubs
   const fetchHubs = useCallback(async () => {
-    setLoadingHubs(true);
+    setLoading(true);
     try {
       const response = await authenticatedRequest(API_CONFIG.HUBS_API, {
         method: 'GET'
@@ -270,11 +142,10 @@ const AddCustomerTariff = () => {
       console.error('Error fetching hubs:', error);
       setHubs([]);
     } finally {
-      setLoadingHubs(false);
+      setLoading(false);
     }
   }, [authenticatedRequest]);
 
-  // Fetch chargers using GET /api/v1/cpo/chargers
   const fetchChargers = useCallback(async () => {
     setLoadingChargers(true);
     try {
@@ -297,7 +168,28 @@ const AddCustomerTariff = () => {
     }
   }, [authenticatedRequest]);
 
-  // Fetch GST list using GET /api/v1/cpo/gst
+  const fetchUserGroups = useCallback(async () => {
+    setLoadingUserGroups(true);
+    try {
+      const response = await authenticatedRequest(API_CONFIG.USER_GROUPS_API, {
+        method: 'GET'
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const groups = data.user_groups || data.data || data || [];
+        setUserGroups(groups);
+      } else {
+        setUserGroups([]);
+      }
+    } catch (error) {
+      console.error('Error fetching user groups:', error);
+      setUserGroups([]);
+    } finally {
+      setLoadingUserGroups(false);
+    }
+  }, [authenticatedRequest]);
+
   const fetchGSTList = useCallback(async () => {
     setLoadingGST(true);
     try {
@@ -341,30 +233,24 @@ const AddCustomerTariff = () => {
     }
   };
 
-  const handleGroupSelect = (group) => {
-    setSelectedGroup(group);
-    setShowGroupDropdown(false);
+  const handleHubSelect = (hub) => {
+    setSelectedHub(hub);
+    setFormData(prev => ({ ...prev, hub_id: hub.id, charger_id: '' }));
+    setShowHubDropdown(false);
+    setShowChargerSelect(false);
   };
 
-  const handleHubChange = (e) => {
-    const hubId = e.target.value;
-    setFormData(prev => ({ 
-      ...prev, 
-      hub_id: hubId,
-      charger_id: '' // Reset charger when hub changes
-    }));
-    if (formErrors.hub_id) {
-      setFormErrors(prev => ({ ...prev, hub_id: '' }));
+  const handleChargerToggle = () => {
+    setShowChargerSelect(!showChargerSelect);
+    if (!showChargerSelect) {
+      setFormData(prev => ({ ...prev, charger_id: '' }));
     }
   };
 
   const validateForm = () => {
     const errors = {};
-    if (!selectedGroup) {
-      errors.group = 'Please select a customer group';
-    }
     if (!formData.hub_id) {
-      errors.hub_id = 'Hub is required';
+      errors.hub_id = 'Please select a hub';
     }
     if (!formData.price_per_kwh) {
       errors.price_per_kwh = 'Price per kWh is required';
@@ -386,7 +272,7 @@ const AddCustomerTariff = () => {
     return Object.keys(errors).length === 0;
   };
 
-  // Submit to CreateUserGroupTariff API - matches backend exactly
+  // Submit to CreateHubTariff API - matches backend exactly
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -399,9 +285,8 @@ const AddCustomerTariff = () => {
     setSuccess('');
 
     try {
-      // Build payload matching backend CreateUserGroupTariff request
+      // Build payload matching backend CreateHubTariff request
       const payload = {
-        hub_id: formData.hub_id,
         price_per_kwh: parseFloat(formData.price_per_kwh),
         idle_fee_per_min: parseFloat(formData.idle_fee_per_min) || 0,
         currency: formData.currency,
@@ -412,6 +297,9 @@ const AddCustomerTariff = () => {
       if (formData.charger_id) {
         payload.charger_id = formData.charger_id;
       }
+      if (formData.user_group_id) {
+        payload.user_group_id = formData.user_group_id;
+      }
       if (formData.gst_id) {
         payload.gst_id = formData.gst_id;
       }
@@ -421,11 +309,20 @@ const AddCustomerTariff = () => {
       if (formData.end_date) {
         payload.end_date = formData.end_date;
       }
+      if (formData.tariff_type) {
+        payload.tariff_type = formData.tariff_type;
+      }
+      if (formData.price_type) {
+        payload.price_type = formData.price_type;
+      }
+      if (formData.units) {
+        payload.units = formData.units;
+      }
 
-      console.log('📤 Creating user group tariff payload:', payload);
+      console.log('📤 Creating hub tariff payload:', payload);
 
       const response = await authenticatedRequest(
-        API_CONFIG.USER_GROUP_TARIFFS_API(selectedGroup.id),
+        API_CONFIG.HUB_TARIFFS_API(formData.hub_id),
         {
           method: 'POST',
           body: JSON.stringify(payload)
@@ -436,28 +333,34 @@ const AddCustomerTariff = () => {
       console.log('📥 Response:', data);
 
       if (response.ok) {
-        setSuccess('Tariff created successfully!');
+        setSuccess('Hub tariff created successfully!');
         // Reset form
         setFormData({
           hub_id: '',
           charger_id: '',
+          user_group_id: '',
           gst_id: '',
           price_per_kwh: '',
           idle_fee_per_min: '0',
           currency: 'INR',
           is_active: true,
           start_date: '',
-          end_date: ''
+          end_date: '',
+          tariff_type: 'Standard',
+          price_type: 'Fixed',
+          units: 'kWh'
         });
+        setSelectedHub(null);
+        setShowChargerSelect(false);
         // Navigate back to tariffs list after delay
         setTimeout(() => {
-          navigate('/revenue/customer-tariffs');
+          navigate('/revenue/hub-tariffs');
         }, 2000);
       } else {
-        setError(data.message || data.error?.message || 'Failed to create tariff');
+        setError(data.message || data.error?.message || 'Failed to create hub tariff');
       }
     } catch (error) {
-      console.error('Error creating tariff:', error);
+      console.error('Error creating hub tariff:', error);
       setError('An error occurred while creating the tariff');
     } finally {
       setIsSubmitting(false);
@@ -570,15 +473,15 @@ const AddCustomerTariff = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <button 
-                onClick={() => navigate('/revenue/customer-tariffs')} 
+                onClick={() => navigate('/revenue/hub-tariffs')} 
                 className="p-2 hover:bg-gray-100 rounded-xl transition"
               >
                 <ArrowLeft size={20} className="text-gray-600" />
               </button>
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-bold text-gray-800">Add Customer Tariff</h1>
+                <h1 className="text-2xl font-bold text-gray-800">Add Hub Tariff</h1>
                 <span className="text-gray-300 text-xl">/</span>
-                <span className="text-sm text-blue-500 font-medium mt-1">New Tariff</span>
+                <span className="text-sm text-orange-500 font-medium mt-1">New Tariff</span>
               </div>
             </div>
             
@@ -591,7 +494,7 @@ const AddCustomerTariff = () => {
                 {showSettingsMenu && <SettingsMenu />}
               </div>
               <div className="relative">
-                <button onClick={() => setShowAddMenu(!showAddMenu)} className="w-9 h-9 rounded-full bg-green-600 text-white flex items-center justify-center hover:bg-green-700 transition shadow-lg shadow-green-500/25">
+                <button onClick={() => setShowAddMenu(!showAddMenu)} className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 transition shadow-lg shadow-blue-500/25">
                   <Plus size={18} />
                 </button>
                 {showAddMenu && <AddMenu />}
@@ -603,25 +506,25 @@ const AddCustomerTariff = () => {
         {/* MAIN CONTENT */}
         <div className="p-6 max-w-5xl mx-auto">
           {/* Page Header */}
-          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-6 shadow-sm mb-6">
+          <div className="bg-gradient-to-r from-orange-50 to-amber-50 border border-orange-200 rounded-2xl p-6 shadow-sm mb-6">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
                 <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-                  <Tag size={24} className="text-green-600" />
-                  Create New Customer Tariff
+                  <Layers size={24} className="text-orange-600" />
+                  Create Hub Tariff
                 </h2>
                 <p className="text-sm text-gray-600 mt-1">
-                  Set up pricing for a specific customer group (User Group Tariff)
+                  Set up pricing for a specific hub
                 </p>
               </div>
               <div className="flex items-center gap-3 text-sm">
-                <div className="flex items-center gap-2 px-3 py-2 bg-white border border-green-200 rounded-xl shadow-sm">
-                  <Shield size={16} className="text-green-600" />
-                  <span className="text-green-700 font-medium">Secure</span>
+                <div className="flex items-center gap-2 px-3 py-2 bg-white border border-orange-200 rounded-xl shadow-sm">
+                  <Shield size={16} className="text-orange-600" />
+                  <span className="text-orange-700 font-medium">Secure</span>
                 </div>
-                <div className="flex items-center gap-2 px-3 py-2 bg-white border border-green-200 rounded-xl shadow-sm">
-                  <DollarSign size={16} className="text-green-600" />
-                  <span className="text-green-700 font-medium">Pricing</span>
+                <div className="flex items-center gap-2 px-3 py-2 bg-white border border-orange-200 rounded-xl shadow-sm">
+                  <DollarSign size={16} className="text-orange-600" />
+                  <span className="text-orange-700 font-medium">Pricing</span>
                 </div>
               </div>
             </div>
@@ -629,66 +532,66 @@ const AddCustomerTariff = () => {
 
           {/* Form Card */}
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-green-50 to-white">
+            <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-orange-50 to-white">
               <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <Sparkles size={20} className="text-green-600" />
+                <Sparkles size={20} className="text-orange-600" />
                 Tariff Configuration
               </h3>
-              <p className="text-sm text-gray-500 mt-1">Configure the pricing and rules for this customer group tariff</p>
+              <p className="text-sm text-gray-500 mt-1">Configure the pricing and rules for this hub tariff</p>
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              {/* Customer Group Selection */}
+              {/* Hub Selection */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Customer Group <span className="text-red-500 text-lg">*</span>
+                  Hub <span className="text-red-500 text-lg">*</span>
                 </label>
                 <div className="relative">
                   <button
                     type="button"
-                    onClick={() => setShowGroupDropdown(!showGroupDropdown)}
+                    onClick={() => setShowHubDropdown(!showHubDropdown)}
                     className={`w-full flex items-center justify-between px-4 py-3 rounded-xl border ${
-                      formErrors.group ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-green-500'
+                      formErrors.hub_id ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-orange-500'
                     } focus:outline-none focus:ring-2 focus:border-transparent transition bg-gray-50 hover:bg-white`}
                   >
                     <div className="flex items-center gap-3">
-                      <Users size={18} className="text-gray-400" />
-                      <span className={selectedGroup ? 'text-gray-900' : 'text-gray-400'}>
-                        {selectedGroup ? selectedGroup.name : 'Select a customer group'}
+                      <Layers size={18} className="text-gray-400" />
+                      <span className={selectedHub ? 'text-gray-900' : 'text-gray-400'}>
+                        {selectedHub ? selectedHub.name : 'Select a hub'}
                       </span>
                     </div>
-                    <ChevronDown size={18} className={`text-gray-400 transition-transform ${showGroupDropdown ? 'rotate-180' : ''}`} />
+                    <ChevronDown size={18} className={`text-gray-400 transition-transform ${showHubDropdown ? 'rotate-180' : ''}`} />
                   </button>
                   
-                  {showGroupDropdown && (
+                  {showHubDropdown && (
                     <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl border border-gray-200 shadow-lg z-50 max-h-60 overflow-y-auto">
-                      {userGroups.length === 0 ? (
+                      {loading ? (
                         <div className="p-4 text-center text-gray-500">
-                          <Users size={24} className="mx-auto mb-2 text-gray-300" />
-                          <p className="text-sm">No groups available</p>
+                          <Loader2 className="w-6 h-6 mx-auto mb-2 animate-spin" />
+                          <p className="text-sm">Loading hubs...</p>
+                        </div>
+                      ) : hubs.length === 0 ? (
+                        <div className="p-4 text-center text-gray-500">
+                          <Layers size={24} className="mx-auto mb-2 text-gray-300" />
+                          <p className="text-sm">No hubs available</p>
                         </div>
                       ) : (
-                        userGroups.map((group) => (
+                        hubs.map((hub) => (
                           <button
-                            key={group.id}
+                            key={hub.id}
                             type="button"
-                            onClick={() => handleGroupSelect(group)}
-                            className={`w-full text-left px-4 py-3 hover:bg-green-50 transition flex items-center gap-3 ${
-                              selectedGroup?.id === group.id ? 'bg-green-50 text-green-700' : 'text-gray-700'
+                            onClick={() => handleHubSelect(hub)}
+                            className={`w-full text-left px-4 py-3 hover:bg-orange-50 transition flex items-center gap-3 ${
+                              selectedHub?.id === hub.id ? 'bg-orange-50 text-orange-700' : 'text-gray-700'
                             }`}
                           >
-                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
-                              {group.name?.charAt(0) || 'G'}
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
+                              <Layers size={14} className="text-white" />
                             </div>
                             <div>
-                              <p className="text-sm font-medium">{group.name}</p>
-                              <p className="text-xs text-gray-500">{group.member_count || 0} members</p>
-                              <p className="text-xs text-gray-400 mt-0.5">
-                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${getStatusColor(group.is_active)}`}>
-                                  {getStatusIcon(group.is_active)}
-                                  {group.is_active ? 'Active' : 'Inactive'}
-                                </span>
-                              </p>
+                              <p className="text-sm font-medium">{hub.name}</p>
+                              <p className="text-xs text-gray-500">{hub.address || 'No address'}</p>
+                              <p className="text-xs text-gray-400">{hub.open_24_hours ? '24/7' : 'Timed'}</p>
                             </div>
                           </button>
                         ))
@@ -696,88 +599,93 @@ const AddCustomerTariff = () => {
                     </div>
                   )}
                 </div>
-                {formErrors.group && (
-                  <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
-                    <AlertCircle size={14} />
-                    {formErrors.group}
-                  </p>
-                )}
-              </div>
-
-              {/* Hub Selection - Required */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Hub <span className="text-red-500 text-lg">*</span>
-                </label>
-                <div className="relative">
-                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-                    <Layers size={18} />
-                  </div>
-                  <select
-                    name="hub_id"
-                    value={formData.hub_id}
-                    onChange={handleHubChange}
-                    className={`w-full pl-10 pr-10 py-3 rounded-xl border ${
-                      formErrors.hub_id ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-green-500'
-                    } focus:outline-none focus:ring-2 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white`}
-                  >
-                    <option value="">Select a hub</option>
-                    {loadingHubs ? (
-                      <option value="" disabled>Loading hubs...</option>
-                    ) : (
-                      hubs.map((hub) => (
-                        <option key={hub.id} value={hub.id}>
-                          {hub.name}
-                        </option>
-                      ))
-                    )}
-                  </select>
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
-                    <ChevronDown size={18} />
-                  </div>
-                </div>
                 {formErrors.hub_id && (
                   <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
                     <AlertCircle size={14} />
                     {formErrors.hub_id}
                   </p>
                 )}
-                <p className="mt-1 text-xs text-gray-400">Select the hub where this tariff will apply</p>
               </div>
 
-              {/* Charger Selection (Optional) - Filtered by Hub */}
+              {/* Specific Charger (Optional) */}
+              <div>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Specific Charger <span className="text-gray-400 text-sm">(optional)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleChargerToggle}
+                    className={`text-xs px-2 py-1 rounded-lg transition ${
+                      showChargerSelect ? 'bg-orange-100 text-orange-700' : 'bg-gray-100 text-gray-600'
+                    }`}
+                  >
+                    {showChargerSelect ? '✓ Enabled' : 'Enable'}
+                  </button>
+                </div>
+                {showChargerSelect && (
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                      <Zap size={18} />
+                    </div>
+                    <select
+                      name="charger_id"
+                      value={formData.charger_id}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white"
+                    >
+                      <option value="">Select a charger</option>
+                      {loadingChargers ? (
+                        <option value="" disabled>Loading chargers...</option>
+                      ) : filteredChargers.length > 0 ? (
+                        filteredChargers.map((charger) => (
+                          <option key={charger.id} value={charger.id}>
+                            {charger.charger_name || charger.charger_id || charger.id}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="" disabled>No chargers available for this hub</option>
+                      )}
+                    </select>
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
+                      <ChevronDown size={18} />
+                    </div>
+                    <p className="mt-1 text-xs text-gray-400">Apply tariff to a specific charger within this hub</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Customer Group (Optional) */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Charger <span className="text-gray-400 text-sm">(optional)</span>
+                  Customer Group <span className="text-gray-400 text-sm">(optional)</span>
                 </label>
                 <div className="relative">
                   <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-                    <Zap size={18} />
+                    <Users size={18} />
                   </div>
                   <select
-                    name="charger_id"
-                    value={formData.charger_id}
+                    name="user_group_id"
+                    value={formData.user_group_id}
                     onChange={handleChange}
-                    className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white"
+                    className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white"
                   >
-                    <option value="">Select a charger (optional)</option>
-                    {loadingChargers ? (
-                      <option value="" disabled>Loading chargers...</option>
-                    ) : filteredChargers.length > 0 ? (
-                      filteredChargers.map((charger) => (
-                        <option key={charger.id} value={charger.id}>
-                          {charger.charger_name || charger.charger_id || charger.id}
+                    <option value="">Select a customer group (optional)</option>
+                    {loadingUserGroups ? (
+                      <option value="" disabled>Loading groups...</option>
+                    ) : (
+                      userGroups.map((group) => (
+                        <option key={group.id} value={group.id}>
+                          {group.name} {group.is_active ? '(Active)' : '(Inactive)'}
                         </option>
                       ))
-                    ) : (
-                      <option value="" disabled>No chargers available for this hub</option>
                     )}
                   </select>
                   <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
                     <ChevronDown size={18} />
                   </div>
                 </div>
-                <p className="mt-1 text-xs text-gray-400">Optional: Apply tariff to a specific charger</p>
+                <p className="mt-1 text-xs text-gray-400">Optional: Apply tariff to a specific customer group</p>
               </div>
 
               {/* GST Selection (Optional) */}
@@ -793,7 +701,7 @@ const AddCustomerTariff = () => {
                     name="gst_id"
                     value={formData.gst_id}
                     onChange={handleChange}
-                    className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white"
+                    className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white"
                   >
                     <option value="">Select GST profile (optional)</option>
                     {loadingGST ? (
@@ -831,7 +739,7 @@ const AddCustomerTariff = () => {
                     step="0.01"
                     min="0"
                     className={`w-full pl-10 pr-4 py-3 rounded-xl border ${
-                      formErrors.price_per_kwh ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-green-500'
+                      formErrors.price_per_kwh ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-orange-500'
                     } focus:outline-none focus:ring-2 focus:border-transparent transition bg-gray-50 hover:bg-white`}
                     required
                   />
@@ -862,7 +770,7 @@ const AddCustomerTariff = () => {
                     step="0.01"
                     min="0"
                     className={`w-full pl-10 pr-4 py-3 rounded-xl border ${
-                      formErrors.idle_fee_per_min ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-green-500'
+                      formErrors.idle_fee_per_min ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-orange-500'
                     } focus:outline-none focus:ring-2 focus:border-transparent transition bg-gray-50 hover:bg-white`}
                   />
                 </div>
@@ -875,28 +783,106 @@ const AddCustomerTariff = () => {
                 <p className="mt-1 text-xs text-gray-400">Fee charged per minute when charger is idle</p>
               </div>
 
-              {/* Currency */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Currency
-                </label>
-                <div className="relative">
-                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-                    <Globe size={18} />
+              {/* Currency and Tariff Type */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Currency
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                      <Globe size={18} />
+                    </div>
+                    <select
+                      name="currency"
+                      value={formData.currency}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white"
+                    >
+                      <option value="INR">INR - Indian Rupee</option>
+                      <option value="USD">USD - US Dollar</option>
+                      <option value="EUR">EUR - Euro</option>
+                      <option value="GBP">GBP - British Pound</option>
+                    </select>
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
+                      <ChevronDown size={18} />
+                    </div>
                   </div>
-                  <select
-                    name="currency"
-                    value={formData.currency}
-                    onChange={handleChange}
-                    className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white"
-                  >
-                    <option value="INR">INR - Indian Rupee</option>
-                    <option value="USD">USD - US Dollar</option>
-                    <option value="EUR">EUR - Euro</option>
-                    <option value="GBP">GBP - British Pound</option>
-                  </select>
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
-                    <ChevronDown size={18} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Tariff Type
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                      <Tag size={18} />
+                    </div>
+                    <select
+                      name="tariff_type"
+                      value={formData.tariff_type}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white"
+                    >
+                      <option value="Standard">Standard</option>
+                      <option value="Premium">Premium</option>
+                      <option value="Discount">Discount</option>
+                      <option value="Peak">Peak</option>
+                      <option value="Off-Peak">Off-Peak</option>
+                    </select>
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
+                      <ChevronDown size={18} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Price Type and Units */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Price Type
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                      <DollarSign size={18} />
+                    </div>
+                    <select
+                      name="price_type"
+                      value={formData.price_type}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white"
+                    >
+                      <option value="Fixed">Fixed</option>
+                      <option value="Variable">Variable</option>
+                      <option value="Tiered">Tiered</option>
+                    </select>
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
+                      <ChevronDown size={18} />
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Units
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                      <Gauge size={18} />
+                    </div>
+                    <select
+                      name="units"
+                      value={formData.units}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white"
+                    >
+                      <option value="kWh">kWh</option>
+                      <option value="MWh">MWh</option>
+                      <option value="Wh">Wh</option>
+                      <option value="Session">Session</option>
+                    </select>
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
+                      <ChevronDown size={18} />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -916,7 +902,7 @@ const AddCustomerTariff = () => {
                       name="start_date"
                       value={formData.start_date}
                       onChange={handleChange}
-                      className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition bg-gray-50 hover:bg-white"
+                      className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition bg-gray-50 hover:bg-white"
                     />
                   </div>
                 </div>
@@ -933,7 +919,7 @@ const AddCustomerTariff = () => {
                       name="end_date"
                       value={formData.end_date}
                       onChange={handleChange}
-                      className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition bg-gray-50 hover:bg-white"
+                      className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition bg-gray-50 hover:bg-white"
                     />
                   </div>
                 </div>
@@ -950,7 +936,7 @@ const AddCustomerTariff = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   Status
                 </label>
-                <div className="flex items-center gap-4 p-4 bg-green-50 rounded-xl border border-green-200">
+                <div className="flex items-center gap-4 p-4 bg-orange-50 rounded-xl border border-orange-200">
                   <div className="relative">
                     <input
                       type="checkbox"
@@ -963,7 +949,7 @@ const AddCustomerTariff = () => {
                     <div
                       onClick={() => setFormData(prev => ({ ...prev, is_active: !prev.is_active }))}
                       className={`w-12 h-6 rounded-full cursor-pointer transition-colors ${
-                        formData.is_active ? 'bg-green-600' : 'bg-gray-300'
+                        formData.is_active ? 'bg-orange-600' : 'bg-gray-300'
                       }`}
                     >
                       <div
@@ -987,20 +973,16 @@ const AddCustomerTariff = () => {
               </div>
 
               {/* Info Box */}
-              <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 border border-green-200">
+              <div className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl p-4 border border-orange-200">
                 <div className="flex items-start gap-3">
-                  <Info size={18} className="text-green-600 mt-0.5 flex-shrink-0" />
+                  <Info size={18} className="text-orange-600 mt-0.5 flex-shrink-0" />
                   <div>
-                    <p className="text-sm font-medium text-green-800">What is a Customer Group Tariff?</p>
-                    <p className="text-sm text-green-700 mt-1">
-                      Customer group tariffs define the pricing structure for specific user groups.
-                      This tariff will be applied to all customers belonging to the selected group.
-                      You can optionally restrict it to a specific hub, charger, or apply GST rates.
-                      The tariff includes price per kWh and optional idle fees with a validity period.
-                    </p>
-                    <p className="text-sm text-green-700 mt-2">
-                      <strong>Note:</strong> This is a User Group Tariff which is applied at the customer group level
-                      and can be optionally scoped to a specific hub or charger.
+                    <p className="text-sm font-medium text-orange-800">What is a Hub Tariff?</p>
+                    <p className="text-sm text-orange-700 mt-1">
+                      Hub tariffs define the pricing structure for a specific hub.
+                      You can optionally link it to a specific charger, customer group,
+                      or apply GST rates. This tariff applies to all chargers in the hub
+                      unless a charger-specific tariff exists.
                     </p>
                   </div>
                 </div>
@@ -1026,7 +1008,7 @@ const AddCustomerTariff = () => {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="flex-1 px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 transition flex items-center justify-center gap-2 font-medium shadow-lg shadow-green-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 px-6 py-3 bg-gradient-to-r from-orange-600 to-amber-600 text-white rounded-xl hover:from-orange-700 hover:to-amber-700 transition flex items-center justify-center gap-2 font-medium shadow-lg shadow-orange-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isSubmitting ? (
                     <>
@@ -1035,7 +1017,7 @@ const AddCustomerTariff = () => {
                     </>
                   ) : (
                     <>
-                      <Tag size={20} />
+                      <Layers size={20} />
                       Create Tariff
                       <ArrowRight size={18} className="group-hover:translate-x-1 transition" />
                     </>
@@ -1043,7 +1025,7 @@ const AddCustomerTariff = () => {
                 </button>
                 <button
                   type="button"
-                  onClick={() => navigate('/revenue/customer-tariffs')}
+                  onClick={() => navigate('/revenue/hub-tariffs')}
                   className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition font-medium"
                 >
                   Cancel
@@ -1056,35 +1038,35 @@ const AddCustomerTariff = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
             <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition group">
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl flex items-center justify-center group-hover:scale-110 transition">
-                  <Tag className="w-5 h-5 text-green-600" />
+                <div className="w-10 h-10 bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl flex items-center justify-center group-hover:scale-110 transition">
+                  <Layers className="w-5 h-5 text-orange-600" />
                 </div>
-                <h4 className="font-semibold text-gray-900">Group Specific Pricing</h4>
+                <h4 className="font-semibold text-gray-900">Hub Level Pricing</h4>
               </div>
               <p className="text-sm text-gray-500 leading-relaxed">
-                Create custom pricing structures for different customer groups and usage patterns
+                Set custom pricing for entire hubs with a single tariff configuration
               </p>
             </div>
             <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition group">
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl flex items-center justify-center group-hover:scale-110 transition">
-                  <CalendarDays className="w-5 h-5 text-blue-600" />
+                <div className="w-10 h-10 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl flex items-center justify-center group-hover:scale-110 transition">
+                  <Zap className="w-5 h-5 text-green-600" />
                 </div>
-                <h4 className="font-semibold text-gray-900">Hub & Charger Specific</h4>
+                <h4 className="font-semibold text-gray-900">Charger Specific</h4>
               </div>
               <p className="text-sm text-gray-500 leading-relaxed">
-                Apply tariffs to specific hubs or individual chargers within the hub
+                Optionally target specific chargers within the hub for granular control
               </p>
             </div>
             <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition group">
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-10 h-10 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl flex items-center justify-center group-hover:scale-110 transition">
-                  <Receipt className="w-5 h-5 text-purple-600" />
+                  <Users className="w-5 h-5 text-purple-600" />
                 </div>
-                <h4 className="font-semibold text-gray-900">GST Integration</h4>
+                <h4 className="font-semibold text-gray-900">Group Targeting</h4>
               </div>
               <p className="text-sm text-gray-500 leading-relaxed">
-                Automatically apply GST rates (SGST, CGST, IGST) to your tariffs
+                Link tariffs to customer groups for targeted pricing strategies
               </p>
             </div>
           </div>
@@ -1094,4 +1076,4 @@ const AddCustomerTariff = () => {
   );
 };
 
-export default AddCustomerTariff;
+export default AddHubTariff;

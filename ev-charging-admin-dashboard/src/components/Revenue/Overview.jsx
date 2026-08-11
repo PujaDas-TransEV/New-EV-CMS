@@ -420,9 +420,9 @@ const RevenueManagement = () => {
   // Sidebar tabs
   const sidebarTabs = [
     { id: 'overview', label: 'Overview', icon: BarChart, path: '/revenue/overview' },
-    { id: 'driver-tariffs', label: 'Driver Tariffs', icon: Users, path: '/revenue/customer-tariffs' },
+    { id: 'driver-tariffs', label: 'Customer Tariffs', icon: Users, path: '/revenue/customer-tariffs' },
     { id: 'charger-tariffs', label: 'Charger Tariffs', icon: Zap, path: '/revenue/charger-tariffs' },
-    { id: 'aggregation-fee', label: 'Aggregation Fee', icon: Coins, path: '/revenue/aggregation-fee' },
+    { id: 'aggregation-fee', label: 'Hub Tariffs', icon: Coins, path: '/revenue/hub-tariffs' },
     { id: 'tax', label: 'Tax', icon: Percent, path: '/revenue/tax' },
     { id: 'settings', label: 'Settings', icon: Settings, path: '/revenue/settings' }
   ];
@@ -571,10 +571,11 @@ const RevenueManagement = () => {
               >
                 <Menu className="w-5 h-5 text-gray-600" />
               </button>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-800">Revenue Management</h1>
-                <p className="text-xs text-blue-600 font-medium">/ Overview</p>
-              </div>
+<div className="flex items-center gap-2">
+  <h1 className="text-2xl font-bold text-gray-800">Revenue Management</h1>
+  <span className="text-gray-300 text-xl">/</span>
+  <span className="text-sm text-blue-600 font-medium mt-1">Overview</span>
+</div>
             </div>
             
             <div className="flex items-center gap-2 relative">
