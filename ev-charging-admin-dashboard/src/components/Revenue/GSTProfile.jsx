@@ -1,5 +1,4 @@
-// src/components/Revenue/AddGSTProfile.jsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../Authentication/AuthContext';
 import {
@@ -25,34 +24,97 @@ import {
   Save,
   Building2,
   MapPin,
-  Globe,
   X,
   Zap,
-  Users 
+  Users,
+  Link2,
+  ChevronUp,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import Sidebar from '../Sidebar/Sidebar';
 
 // API Configuration
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://dev-evcmsnew.transev.site';
+const API_BASE_URL =
+  process.env.REACT_APP_API_BASE_URL ||
+  'https://dev-evcmsnew.transev.site';
 
 const API_CONFIG = {
   GST_API: `${API_BASE_URL}/api/v1/cpo/gsts`,
   ORGANIZATION_API: `${API_BASE_URL}/api/v1/cpo/organization`,
-  USER_INFO_API: `${API_BASE_URL}/api/v1/auth/me`
+  USER_INFO_API: `${API_BASE_URL}/api/v1/auth/me`,
 };
+
+// Indian States - same values as backend enum
+const INDIAN_STATES = [
+  { value: 'Andhra Pradesh', label: 'Andhra Pradesh' },
+  { value: 'Arunachal Pradesh', label: 'Arunachal Pradesh' },
+  { value: 'Assam', label: 'Assam' },
+  { value: 'Bihar', label: 'Bihar' },
+  { value: 'Chhattisgarh', label: 'Chhattisgarh' },
+  { value: 'Goa', label: 'Goa' },
+  { value: 'Gujarat', label: 'Gujarat' },
+  { value: 'Haryana', label: 'Haryana' },
+  { value: 'Himachal Pradesh', label: 'Himachal Pradesh' },
+  { value: 'Jharkhand', label: 'Jharkhand' },
+  { value: 'Karnataka', label: 'Karnataka' },
+  { value: 'Kerala', label: 'Kerala' },
+  { value: 'Madhya Pradesh', label: 'Madhya Pradesh' },
+  { value: 'Maharashtra', label: 'Maharashtra' },
+  { value: 'Manipur', label: 'Manipur' },
+  { value: 'Meghalaya', label: 'Meghalaya' },
+  { value: 'Mizoram', label: 'Mizoram' },
+  { value: 'Nagaland', label: 'Nagaland' },
+  { value: 'Odisha', label: 'Odisha' },
+  { value: 'Punjab', label: 'Punjab' },
+  { value: 'Rajasthan', label: 'Rajasthan' },
+  { value: 'Sikkim', label: 'Sikkim' },
+  { value: 'Tamil Nadu', label: 'Tamil Nadu' },
+  { value: 'Telangana', label: 'Telangana' },
+  { value: 'Tripura', label: 'Tripura' },
+  { value: 'Uttar Pradesh', label: 'Uttar Pradesh' },
+  { value: 'Uttarakhand', label: 'Uttarakhand' },
+  { value: 'West Bengal', label: 'West Bengal' },
+  {
+    value: 'Andaman and Nicobar Islands',
+    label: 'Andaman and Nicobar Islands',
+  },
+  { value: 'Chandigarh', label: 'Chandigarh' },
+  {
+    value: 'Dadra and Nagar Haveli and Daman and Diu',
+    label: 'Dadra and Nagar Haveli and Daman and Diu',
+  },
+  {
+    value: 'Delhi (National Capital Territory of Delhi)',
+    label: 'Delhi (National Capital Territory of Delhi)',
+  },
+  { value: 'Jammu and Kashmir', label: 'Jammu and Kashmir' },
+  { value: 'Ladakh', label: 'Ladakh' },
+  { value: 'Lakshadweep', label: 'Lakshadweep' },
+  { value: 'Puducherry', label: 'Puducherry' },
+];
 
 const AddGSTProfile = () => {
   const navigate = useNavigate();
-  const { authenticatedRequest, logout, isRefreshing, isAuthenticated, user } = useAuth();
-  
+
+  const {
+    authenticatedRequest,
+    logout,
+    isRefreshing,
+    isAuthenticated,
+    user,
+  } = useAuth();
+
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [userData, setUserData] = useState(null);
+
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
-  const [loading, setLoading] = useState(false);
+
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
   const [organization, setOrganization] = useState(null);
   const [loadingOrg, setLoadingOrg] = useState(false);
 
@@ -60,14 +122,20 @@ const AddGSTProfile = () => {
   const [formData, setFormData] = useState({
     name: '',
     state: '',
-    sgst_rate: '',
     cgst_rate: '',
+    sgst_rate: '',
     igst_rate: '',
-    is_active: true
+    is_active: true,
   });
 
-  // Form validation errors
   const [formErrors, setFormErrors] = useState({});
+
+  // Controls which tax fields are visible
+  const [showCgst, setShowCgst] = useState(false);
+  const [showSgst, setShowSgst] = useState(false);
+
+  // For interstate case
+  const [applyIgst, setApplyIgst] = useState(false);
 
   // Fetch user info and organization
   useEffect(() => {
@@ -75,16 +143,19 @@ const AddGSTProfile = () => {
       navigate('/signin');
       return;
     }
+
     fetchUserInfo();
     fetchOrganization();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, navigate]);
 
   const fetchUserInfo = useCallback(async () => {
     try {
       const response = await authenticatedRequest(API_CONFIG.USER_INFO_API, {
-        method: 'GET'
+        method: 'GET',
       });
+
       if (response.ok) {
         const data = await response.json();
         setUserData(data);
@@ -96,18 +167,18 @@ const AddGSTProfile = () => {
 
   const fetchOrganization = useCallback(async () => {
     setLoadingOrg(true);
+
     try {
-      const response = await authenticatedRequest(API_CONFIG.ORGANIZATION_API, {
-        method: 'GET'
-      });
+      const response = await authenticatedRequest(
+        API_CONFIG.ORGANIZATION_API,
+        {
+          method: 'GET',
+        }
+      );
 
       if (response.ok) {
         const data = await response.json();
         setOrganization(data);
-        // Auto-fill the state field from organization
-        if (data.state) {
-          setFormData(prev => ({ ...prev, state: data.state }));
-        }
       } else {
         setOrganization(null);
       }
@@ -119,61 +190,271 @@ const AddGSTProfile = () => {
     }
   }, [authenticatedRequest]);
 
+  /*
+   * Organization state
+   */
+  const organizationState = useMemo(() => {
+    return organization?.state?.trim() || '';
+  }, [organization]);
+
+  /*
+   * Check whether GST state and organization state are same
+   */
+  const isSameState = useMemo(() => {
+    if (!formData.state || !organizationState) {
+      return false;
+    }
+
+    return (
+      formData.state.trim().toLowerCase() ===
+      organizationState.trim().toLowerCase()
+    );
+  }, [formData.state, organizationState]);
+
+  const isDifferentState = useMemo(() => {
+    if (!formData.state || !organizationState) {
+      return false;
+    }
+
+    return !isSameState;
+  }, [formData.state, organizationState, isSameState]);
+
+  /*
+   * Handle normal input changes
+   */
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData(prev => ({ 
-      ...prev, 
-      [name]: type === 'checkbox' ? checked : value 
+
+    setFormData((prev) => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value,
     }));
+
     if (formErrors[name]) {
-      setFormErrors(prev => ({ ...prev, [name]: '' }));
+      setFormErrors((prev) => ({
+        ...prev,
+        [name]: '',
+      }));
     }
   };
 
+  /*
+   * Handle GST state change
+   *
+   * Every time CPO changes GST state:
+   * - reset CGST
+   * - reset SGST
+   * - reset IGST
+   * - hide all fields
+   * - reset IGST toggle
+   */
+  const handleStateChange = (e) => {
+    const selectedState = e.target.value;
+
+    setFormData((prev) => ({
+      ...prev,
+      state: selectedState,
+      cgst_rate: '',
+      sgst_rate: '',
+      igst_rate: '',
+    }));
+
+    setShowCgst(false);
+    setShowSgst(false);
+    setApplyIgst(false);
+
+    setFormErrors((prev) => ({
+      ...prev,
+      state: '',
+      cgst_rate: '',
+      sgst_rate: '',
+      igst_rate: '',
+    }));
+  };
+
+  /*
+   * Add CGST field
+   */
+  const handleAddCgst = () => {
+    setShowCgst(true);
+
+    setFormErrors((prev) => ({
+      ...prev,
+      cgst_rate: '',
+    }));
+  };
+
+  /*
+   * Add SGST field
+   */
+  const handleAddSgst = () => {
+    if (!showCgst) {
+      setShowCgst(true);
+    }
+
+    setShowSgst(true);
+
+    setFormErrors((prev) => ({
+      ...prev,
+      sgst_rate: '',
+    }));
+  };
+
+  /*
+   * Remove CGST
+   */
+  const handleRemoveCgst = () => {
+    setShowCgst(false);
+
+    setFormData((prev) => ({
+      ...prev,
+      cgst_rate: '',
+    }));
+
+    // SGST cannot exist without CGST
+    if (showSgst) {
+      setShowSgst(false);
+
+      setFormData((prev) => ({
+        ...prev,
+        sgst_rate: '',
+      }));
+    }
+  };
+
+  /*
+   * Remove SGST
+   */
+  const handleRemoveSgst = () => {
+    setShowSgst(false);
+
+    setFormData((prev) => ({
+      ...prev,
+      sgst_rate: '',
+    }));
+  };
+
+  /*
+   * Toggle IGST
+   */
+  const handleIgstToggle = (enabled) => {
+    setApplyIgst(enabled);
+
+    if (enabled) {
+      // Interstate = only IGST
+      setShowCgst(false);
+      setShowSgst(false);
+
+      setFormData((prev) => ({
+        ...prev,
+        cgst_rate: '',
+        sgst_rate: '',
+        igst_rate: '',
+      }));
+
+      setFormErrors((prev) => ({
+        ...prev,
+        cgst_rate: '',
+        sgst_rate: '',
+        igst_rate: '',
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        igst_rate: '',
+      }));
+
+      setFormErrors((prev) => ({
+        ...prev,
+        igst_rate: '',
+      }));
+    }
+  };
+
+  /*
+   * Validation
+   */
   const validateForm = () => {
     const errors = {};
+
     if (!formData.name.trim()) {
       errors.name = 'GST profile name is required';
-    }
-    if (formData.name.trim().length > 100) {
+    } else if (formData.name.trim().length > 100) {
       errors.name = 'Name must be less than 100 characters';
     }
 
-    // Validate State - Required
-    if (!formData.state.trim()) {
-      errors.state = 'State is required';
+    if (!formData.state) {
+      errors.state = 'GST state is required';
     }
 
-    // Validate CGST rate - Required
-    const cgst = parseFloat(formData.cgst_rate);
-    if (isNaN(cgst) || cgst < 0 || cgst > 100) {
-      errors.cgst_rate = 'CGST rate must be between 0 and 100';
-    }
+    /*
+     * Same state:
+     * CGST is mandatory once the field has been added.
+     *
+     * SGST is optional from UI perspective,
+     * but if user adds SGST then it must have a valid value.
+     */
+    if (isSameState) {
+      if (showCgst) {
+        const cgst = parseFloat(formData.cgst_rate);
 
-    // Validate SGST rate - Optional, but if provided must be valid
-    if (formData.sgst_rate) {
-      const sgst = parseFloat(formData.sgst_rate);
-      if (isNaN(sgst) || sgst < 0 || sgst > 100) {
-        errors.sgst_rate = 'SGST rate must be between 0 and 100';
+        if (
+          formData.cgst_rate === '' ||
+          Number.isNaN(cgst) ||
+          cgst < 0 ||
+          cgst > 100
+        ) {
+          errors.cgst_rate = 'CGST rate must be between 0 and 100';
+        }
+      }
+
+      if (showSgst) {
+        const sgst = parseFloat(formData.sgst_rate);
+
+        if (
+          formData.sgst_rate === '' ||
+          Number.isNaN(sgst) ||
+          sgst < 0 ||
+          sgst > 100
+        ) {
+          errors.sgst_rate = 'SGST rate must be between 0 and 100';
+        }
       }
     }
 
-    // Validate IGST rate - Optional, but if provided must be valid
-    if (formData.igst_rate) {
-      const igst = parseFloat(formData.igst_rate);
-      if (isNaN(igst) || igst < 0 || igst > 100) {
-        errors.igst_rate = 'IGST rate must be between 0 and 100';
+    /*
+     * Different state:
+     * IGST must be enabled and valid.
+     */
+    if (isDifferentState) {
+      if (!applyIgst) {
+        errors.igst_rate =
+          'Please enable IGST because the GST state is different from the organization state';
+      } else {
+        const igst = parseFloat(formData.igst_rate);
+
+        if (
+          formData.igst_rate === '' ||
+          Number.isNaN(igst) ||
+          igst < 0 ||
+          igst > 100
+        ) {
+          errors.igst_rate = 'IGST rate must be between 0 and 100';
+        }
       }
     }
 
     setFormErrors(errors);
+
     return Object.keys(errors).length === 0;
   };
 
-  // Submit to Create GST Profile API
+  /*
+   * Submit
+   */
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!validateForm()) {
       return;
     }
@@ -186,39 +467,48 @@ const AddGSTProfile = () => {
       const payload = {
         name: formData.name.trim(),
         state: formData.state.trim(),
-        sgst_rate: formData.sgst_rate ? parseFloat(formData.sgst_rate) : 0,
-        cgst_rate: parseFloat(formData.cgst_rate),
-        igst_rate: formData.igst_rate ? parseFloat(formData.igst_rate) : 0,
-        is_active: formData.is_active
+
+        // Same-state configuration
+        sgst_rate:
+          isSameState && showSgst && formData.sgst_rate
+            ? parseFloat(formData.sgst_rate)
+            : 0,
+
+        cgst_rate:
+          isSameState && showCgst && formData.cgst_rate
+            ? parseFloat(formData.cgst_rate)
+            : 0,
+
+        // Interstate configuration
+        igst_rate:
+          isDifferentState && applyIgst && formData.igst_rate
+            ? parseFloat(formData.igst_rate)
+            : 0,
+
+        is_active: formData.is_active,
       };
 
-      console.log('📤 Creating GST profile payload:', payload);
+      console.log('GST Profile Payload:', payload);
 
       const response = await authenticatedRequest(API_CONFIG.GST_API, {
         method: 'POST',
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
 
       const data = await response.json();
-      console.log('📥 Response:', data);
 
       if (response.ok) {
         setSuccess('GST profile created successfully!');
-        // Reset form
-        setFormData({
-          name: '',
-          state: organization?.state || '',
-          sgst_rate: '',
-          cgst_rate: '',
-          igst_rate: '',
-          is_active: true
-        });
-        // Navigate back to tax page after delay
+
         setTimeout(() => {
           navigate('/revenue/tax');
         }, 2000);
       } else {
-        setError(data.message || data.error?.message || 'Failed to create GST profile');
+        setError(
+          data.message ||
+            data.error?.message ||
+            'Failed to create GST profile'
+        );
       }
     } catch (error) {
       console.error('Error creating GST profile:', error);
@@ -228,6 +518,9 @@ const AddGSTProfile = () => {
     }
   };
 
+  /*
+   * Logout
+   */
   const handleLogout = useCallback(async () => {
     try {
       await logout();
@@ -237,23 +530,34 @@ const AddGSTProfile = () => {
     }
   }, [logout, navigate]);
 
-  const handleThemeToggle = () => setIsDarkMode(!isDarkMode);
+  const handleThemeToggle = () => {
+    setIsDarkMode(!isDarkMode);
+  };
 
-  // Settings Dropdown Menu
+  /*
+   * Settings Dropdown
+   */
   const SettingsMenu = () => (
     <div className="absolute top-full right-0 mt-2 bg-black rounded-2xl w-80 shadow-2xl border border-gray-800 z-50 overflow-hidden">
       <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-5 py-4">
         <div className="flex items-center gap-3">
           <div className="w-14 h-14 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-2xl font-bold text-white border-2 border-white/30 flex-shrink-0">
-            {userData?.user?.full_name?.charAt(0) || user?.name?.charAt(0) || 'U'}
+            {userData?.user?.full_name?.charAt(0) ||
+              user?.name?.charAt(0) ||
+              'U'}
           </div>
+
           <div className="flex-1 min-w-0">
             <h4 className="text-base font-semibold text-white truncate">
               {userData?.user?.full_name || user?.name || 'User'}
             </h4>
+
             <p className="text-sm text-gray-400 truncate">
-              {userData?.user?.email || user?.email || 'user@transev.com'}
+              {userData?.user?.email ||
+                user?.email ||
+                'user@transev.com'}
             </p>
+
             {userData?.role && (
               <span className="inline-block mt-1 px-2 py-0.5 bg-white/10 rounded-full text-xs text-gray-300 border border-gray-600">
                 {userData.role}
@@ -262,47 +566,170 @@ const AddGSTProfile = () => {
           </div>
         </div>
       </div>
-      
+
       <div className="p-2">
-        <button onClick={() => { setShowSettingsMenu(false); navigate('/profile'); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
-          <User size={16} className="text-gray-500" /> <span>Profile</span>
+        <button
+          onClick={() => {
+            setShowSettingsMenu(false);
+            navigate('/profile');
+          }}
+          className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition"
+        >
+          <User size={16} className="text-gray-500" />
+          <span>Profile</span>
         </button>
-        <button onClick={() => { setShowSettingsMenu(false); navigate('/organization'); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
-          <Building size={16} className="text-gray-500" /> <span>Organization</span>
+
+        <button
+          onClick={() => {
+            setShowSettingsMenu(false);
+            navigate('/organization');
+          }}
+          className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition"
+        >
+          <Building size={16} className="text-gray-500" />
+          <span>Organization</span>
         </button>
+
         <div className="border-t border-gray-700 my-1"></div>
-        <button onClick={() => { setShowSettingsMenu(false); handleLogout(); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-red-900/30 text-sm font-medium text-red-400 hover:text-red-300 flex items-center gap-3 transition">
-          <LogOut size={16} className="text-red-500" /> <span>Sign Out</span>
+
+        <button
+          onClick={() => {
+            setShowSettingsMenu(false);
+            handleLogout();
+          }}
+          className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-red-900/30 text-sm font-medium text-red-400 hover:text-red-300 flex items-center gap-3 transition"
+        >
+          <LogOut size={16} className="text-red-500" />
+          <span>Sign Out</span>
         </button>
       </div>
     </div>
   );
 
-  // Add Dropdown Menu
+  /*
+   * Add Dropdown
+   */
   const AddMenu = () => (
     <div className="absolute top-full right-0 mt-2 bg-black rounded-2xl w-64 shadow-2xl border border-gray-800 z-50">
       <div className="p-3">
-        <button onClick={() => { setShowAddMenu(false); navigate("/add-hub"); }} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
-          <Zap size={18} className="text-gray-400" /> Add Hub
+        <button
+          onClick={() => {
+            setShowAddMenu(false);
+            navigate('/add-hub');
+          }}
+          className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition"
+        >
+          <Zap size={18} className="text-gray-400" />
+          Add Hub
         </button>
-        <button onClick={() => { setShowAddMenu(false); navigate("/add-charger"); }} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
-          <Zap size={18} className="text-gray-400" /> Add Charger
+
+        <button
+          onClick={() => {
+            setShowAddMenu(false);
+            navigate('/add-charger');
+          }}
+          className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition"
+        >
+          <Zap size={18} className="text-gray-400" />
+          Add Charger
         </button>
-        <button onClick={() => { setShowAddMenu(false); navigate("/add-customer"); }} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
-          <Users size={18} className="text-gray-400" /> Add Customer
+
+        <button
+          onClick={() => {
+            setShowAddMenu(false);
+            navigate('/add-customer');
+          }}
+          className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition"
+        >
+          <Users size={18} className="text-gray-400" />
+          Add Customer
         </button>
       </div>
     </div>
   );
 
+  /*
+   * Tax field component
+   */
+  const TaxInput = ({
+    label,
+    name,
+    value,
+    onChange,
+    error,
+    description,
+    onRemove,
+    required = true,
+  }) => (
+    <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4">
+      <div className="flex items-center justify-between mb-2">
+        <label className="block text-sm font-semibold text-gray-700">
+          {label}{' '}
+          {required && <span className="text-red-500 text-lg">*</span>}
+        </label>
+
+        {onRemove && (
+          <button
+            type="button"
+            onClick={onRemove}
+            className="p-1.5 rounded-lg hover:bg-red-100 text-gray-400 hover:text-red-500 transition"
+            title={`Remove ${label}`}
+          >
+            <Trash2 size={15} />
+          </button>
+        )}
+      </div>
+
+      <div className="relative">
+        <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+          <Percent size={18} />
+        </div>
+
+        <input
+          type="number"
+          name={name}
+          value={value}
+          onChange={onChange}
+          placeholder="0.00"
+          step="0.01"
+          min="0"
+          max="100"
+          className={`w-full pl-10 pr-4 py-3 rounded-xl border ${
+            error
+              ? 'border-red-300 focus:ring-red-500'
+              : 'border-gray-300 focus:ring-blue-500'
+          } focus:outline-none focus:ring-2 focus:border-transparent transition bg-white`}
+          required={required}
+        />
+      </div>
+
+      {error ? (
+        <p className="mt-1.5 text-sm text-red-600 flex items-center gap-1">
+          <AlertCircle size={14} />
+          {error}
+        </p>
+      ) : (
+        <p className="mt-1.5 text-xs text-gray-400">
+          {description}
+        </p>
+      )}
+    </div>
+  );
+
+  /*
+   * Loading state
+   */
   if (isRefreshing) {
     return (
       <div className="min-h-screen bg-gray-50 flex">
         <Sidebar />
+
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="w-12 h-12 border-4 border-green-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
-            <p className="mt-4 text-gray-600">Refreshing session...</p>
+            <p className="mt-4 text-gray-600">
+              Refreshing session...
+            </p>
           </div>
         </div>
       </div>
@@ -311,10 +738,12 @@ const AddGSTProfile = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      <Sidebar 
-        isDarkMode={isDarkMode} 
+      <Sidebar
+        isDarkMode={isDarkMode}
         onThemeToggle={handleThemeToggle}
-        userName={userData?.user?.full_name || user?.name || 'User'}
+        userName={
+          userData?.user?.full_name || user?.name || 'User'
+        }
         userEmail={userData?.user?.email || user?.email || ''}
         onLogout={handleLogout}
       />
@@ -324,31 +753,52 @@ const AddGSTProfile = () => {
         <header className="bg-white border-b-2 border-gray-200 px-6 py-6 sticky top-0 z-30 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <button 
-                onClick={() => navigate('/revenue/tax')} 
+              <button
+                onClick={() => navigate('/revenue/tax')}
                 className="p-2 hover:bg-gray-100 rounded-xl transition"
               >
                 <ArrowLeft size={20} className="text-gray-600" />
               </button>
+
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-bold text-gray-800">Add GST Profile</h1>
+                <h1 className="text-2xl font-bold text-gray-800">
+                  Add GST Profile
+                </h1>
+
                 <span className="text-gray-300 text-xl">/</span>
-                <span className="text-sm text-blue-500 font-medium mt-1">New GST Profile</span>
+
+                <span className="text-sm text-blue-500 font-medium mt-1">
+                  New GST Profile
+                </span>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-2 relative">
               <div className="relative">
-                <button onClick={() => setShowSettingsMenu(!showSettingsMenu)} className="p-2 hover:bg-gray-100 rounded-xl transition flex items-center gap-1.5">
+                <button
+                  onClick={() =>
+                    setShowSettingsMenu(!showSettingsMenu)
+                  }
+                  className="p-2 hover:bg-gray-100 rounded-xl transition flex items-center gap-1.5"
+                >
                   <Settings size={20} className="text-gray-600" />
-                  <ChevronDown size={16} className="text-gray-400" />
+                  <ChevronDown
+                    size={16}
+                    className="text-gray-400"
+                  />
                 </button>
+
                 {showSettingsMenu && <SettingsMenu />}
               </div>
+
               <div className="relative">
-                <button onClick={() => setShowAddMenu(!showAddMenu)} className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 transition shadow-lg shadow-blue-500/25">
+                <button
+                  onClick={() => setShowAddMenu(!showAddMenu)}
+                  className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 transition shadow-lg shadow-blue-500/25"
+                >
                   <Plus size={18} />
                 </button>
+
                 {showAddMenu && <AddMenu />}
               </div>
             </div>
@@ -357,94 +807,153 @@ const AddGSTProfile = () => {
 
         {/* MAIN CONTENT */}
         <div className="p-6 max-w-5xl mx-auto">
-          {/* Page Header */}
+          {/* PAGE HEADER */}
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-6 shadow-sm mb-6">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
                 <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-                  <Receipt size={24} className="text-blue-600" />
+                  <Receipt
+                    size={24}
+                    className="text-blue-600"
+                  />
                   Create GST Profile
                 </h2>
+
                 <p className="text-sm text-gray-600 mt-1">
-                  Configure GST tax rates for your organization
+                  Configure GST tax rates based on your organization
+                  and GST state
                 </p>
               </div>
+
               <div className="flex items-center gap-3 text-sm">
                 <div className="flex items-center gap-2 px-3 py-2 bg-white border border-blue-200 rounded-xl shadow-sm">
-                  <Shield size={16} className="text-blue-600" />
-                  <span className="text-blue-700 font-medium">Secure</span>
+                  <Shield
+                    size={16}
+                    className="text-blue-600"
+                  />
+                  <span className="text-blue-700 font-medium">
+                    Secure
+                  </span>
                 </div>
+
                 <div className="flex items-center gap-2 px-3 py-2 bg-white border border-blue-200 rounded-xl shadow-sm">
-                  <DollarSign size={16} className="text-blue-600" />
-                  <span className="text-blue-700 font-medium">Tax</span>
+                  <DollarSign
+                    size={16}
+                    className="text-blue-600"
+                  />
+                  <span className="text-blue-700 font-medium">
+                    Tax
+                  </span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Form Card */}
+          {/* FORM CARD */}
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-white">
               <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                <Sparkles size={20} className="text-blue-600" />
+                <Sparkles
+                  size={20}
+                  className="text-blue-600"
+                />
                 GST Configuration
               </h3>
-              <p className="text-sm text-gray-500 mt-1">Set up GST rates for your charging operations</p>
+
+              <p className="text-sm text-gray-500 mt-1">
+                Select your GST state and configure the applicable
+                tax rates.
+              </p>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              {/* Organization Info */}
+            <form
+              onSubmit={handleSubmit}
+              className="p-6 space-y-6"
+            >
+              {/* ORGANIZATION INFO */}
               {organization && (
                 <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-200">
                   <div className="flex items-start gap-3">
-                    <Building2 size={18} className="text-blue-600 mt-0.5 flex-shrink-0" />
-                    <div>
-                      <p className="text-sm font-medium text-blue-800">Organization Details</p>
-                      <p className="text-sm text-blue-700">
-                        <strong>Business:</strong> {organization.business_name || 'N/A'}
+                    <Building2
+                      size={18}
+                      className="text-blue-600 mt-0.5 flex-shrink-0"
+                    />
+
+                    <div className="flex-1">
+                      <p className="text-sm font-semibold text-blue-800">
+                        Organization Details
                       </p>
-                      <p className="text-sm text-blue-700">
-                        <strong>State:</strong> {organization.state || 'N/A'}
-                      </p>
-                      <p className="text-xs text-blue-600 mt-1">
-                        {organization.state ? (
-                          <span className="inline-flex items-center gap-1">
-                            <CheckCircle size={14} />
-                            State auto-filled from organization
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
+                        <div>
+                          <p className="text-xs text-blue-600">
+                            Business Name
+                          </p>
+
+                          <p className="text-sm font-medium text-blue-800">
+                            {organization.business_name ||
+                              'N/A'}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-xs text-blue-600">
+                            Organization State
+                          </p>
+
+                          <p className="text-sm font-medium text-blue-800 flex items-center gap-1">
+                            <MapPin size={14} />
+                            {organizationState || 'Not configured'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {!organizationState && (
+                        <div className="mt-3 flex items-start gap-2 text-xs text-yellow-700 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                          <AlertCircle
+                            size={15}
+                            className="flex-shrink-0 mt-0.5"
+                          />
+                          <span>
+                            Please configure your organization
+                            state before creating a GST profile.
                           </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1">
-                            <AlertCircle size={14} />
-                            Please set up your organization state first
-                          </span>
-                        )}
-                      </p>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* Profile Name */}
+              {/* PROFILE NAME */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Profile Name <span className="text-red-500 text-lg">*</span>
+                  Profile Name{' '}
+                  <span className="text-red-500 text-lg">
+                    *
+                  </span>
                 </label>
+
                 <div className="relative">
                   <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
                     <Tag size={18} />
                   </div>
+
                   <input
                     type="text"
                     name="name"
                     value={formData.name}
                     onChange={handleChange}
-                    placeholder="e.g., Standard GST, Premium GST"
+                    placeholder="e.g., Standard GST, West Bengal GST"
                     className={`w-full pl-10 pr-4 py-3 rounded-xl border ${
-                      formErrors.name ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
+                      formErrors.name
+                        ? 'border-red-300 focus:ring-red-500'
+                        : 'border-gray-300 focus:ring-blue-500'
                     } focus:outline-none focus:ring-2 focus:border-transparent transition bg-gray-50 hover:bg-white`}
                     required
                   />
                 </div>
+
                 {formErrors.name && (
                   <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
                     <AlertCircle size={14} />
@@ -453,184 +962,402 @@ const AddGSTProfile = () => {
                 )}
               </div>
 
-              {/* State - Auto-filled from organization */}
+              {/* GST STATE */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  State <span className="text-red-500 text-lg">*</span>
+                  GST State{' '}
+                  <span className="text-red-500 text-lg">
+                    *
+                  </span>
                 </label>
+
                 <div className="relative">
-                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 z-10">
                     <MapPin size={18} />
                   </div>
-                  <input
-                    type="text"
+
+                  <select
                     name="state"
                     value={formData.state}
-                    onChange={handleChange}
-                    placeholder="State will be auto-filled from organization"
-                    className={`w-full pl-10 pr-4 py-3 rounded-xl border ${
-                      formErrors.state ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
+                    onChange={handleStateChange}
+                    className={`w-full pl-10 pr-10 py-3 rounded-xl border appearance-none ${
+                      formErrors.state
+                        ? 'border-red-300 focus:ring-red-500'
+                        : 'border-gray-300 focus:ring-blue-500'
                     } focus:outline-none focus:ring-2 focus:border-transparent transition bg-gray-50 hover:bg-white`}
                     required
-                    readOnly={!!organization?.state}
-                  />
+                  >
+                    <option value="">
+                      Select GST state
+                    </option>
+
+                    {INDIAN_STATES.map((state) => (
+                      <option
+                        key={state.value}
+                        value={state.value}
+                      >
+                        {state.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none">
+                    <ChevronDown size={18} />
+                  </div>
                 </div>
+
                 {formErrors.state && (
                   <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
                     <AlertCircle size={14} />
                     {formErrors.state}
                   </p>
                 )}
-                {organization?.state && (
-                  <p className="mt-1 text-xs text-green-600">
-                    <CheckCircle size={12} className="inline mr-1" />
-                    State auto-filled from your organization
-                  </p>
+
+                {formData.state && organizationState && (
+                  <div
+                    className={`mt-3 rounded-xl border p-4 ${
+                      isSameState
+                        ? 'bg-green-50 border-green-200'
+                        : 'bg-amber-50 border-amber-200'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      {isSameState ? (
+                        <CheckCircle
+                          size={19}
+                          className="text-green-600 flex-shrink-0 mt-0.5"
+                        />
+                      ) : (
+                        <AlertTriangle
+                          size={19}
+                          className="text-amber-600 flex-shrink-0 mt-0.5"
+                        />
+                      )}
+
+                      <div>
+                        {isSameState ? (
+                          <>
+                            <p className="text-sm font-semibold text-green-800">
+                              Same State GST
+                            </p>
+
+                            <p className="text-xs text-green-700 mt-1">
+                              GST state and organization state are
+                              the same. CGST and SGST will be
+                              applicable.
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="text-sm font-semibold text-amber-800">
+                              Different State Detected
+                            </p>
+
+                            <p className="text-xs text-amber-700 mt-1">
+                              Organization state is{' '}
+                              <strong>
+                                {organizationState}
+                              </strong>{' '}
+                              but the selected GST state is{' '}
+                              <strong>
+                                {formData.state}
+                              </strong>
+                              . Since the states are different,
+                              IGST will be applicable.
+                            </p>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
 
-              {/* Tax Rates */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-3">
-                  Tax Rates
-                </label>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* CGST - Required */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      CGST Rate <span className="text-red-500 text-lg">*</span>
-                    </label>
-                    <div className="relative">
-                      <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-                        <Percent size={18} />
-                      </div>
-                      <input
-                        type="number"
-                        name="cgst_rate"
-                        value={formData.cgst_rate}
-                        onChange={handleChange}
-                        placeholder="0"
-                        step="0.01"
-                        min="0"
-                        max="100"
-                        className={`w-full pl-10 pr-4 py-3 rounded-xl border ${
-                          formErrors.cgst_rate ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
-                        } focus:outline-none focus:ring-2 focus:border-transparent transition bg-gray-50 hover:bg-white`}
-                        required
-                      />
-                    </div>
-                    {formErrors.cgst_rate && (
-                      <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
-                        <AlertCircle size={14} />
-                        {formErrors.cgst_rate}
+              {/* TAX CONFIGURATION */}
+              {formData.state && organizationState && (
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div>
+                      <label className="block text-sm font-semibold text-gray-800">
+                        Tax Rates
+                      </label>
+
+                      <p className="text-xs text-gray-500 mt-1">
+                        Add only the tax fields applicable to this
+                        GST configuration.
                       </p>
-                    )}
-                    <p className="mt-1 text-xs text-gray-400">Central GST rate (0-100%)</p>
+                    </div>
+
+                    <div className="px-3 py-1.5 rounded-full bg-gray-100 text-xs font-medium text-gray-600">
+                      {isSameState
+                        ? 'Intra-State'
+                        : 'Inter-State'}
+                    </div>
                   </div>
 
-                  {/* SGST - Optional */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      SGST Rate <span className="text-gray-400 text-sm">(optional)</span>
-                    </label>
-                    <div className="relative">
-                      <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-                        <Percent size={18} />
-                      </div>
-                      <input
-                        type="number"
-                        name="sgst_rate"
-                        value={formData.sgst_rate}
-                        onChange={handleChange}
-                        placeholder="0"
-                        step="0.01"
-                        min="0"
-                        max="100"
-                        className={`w-full pl-10 pr-4 py-3 rounded-xl border ${
-                          formErrors.sgst_rate ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
-                        } focus:outline-none focus:ring-2 focus:border-transparent transition bg-gray-50 hover:bg-white`}
-                      />
-                    </div>
-                    {formErrors.sgst_rate && (
-                      <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
-                        <AlertCircle size={14} />
-                        {formErrors.sgst_rate}
-                      </p>
-                    )}
-                    <p className="mt-1 text-xs text-gray-400">State GST rate (0-100%)</p>
-                  </div>
+                  {/* SAME STATE */}
+                  {isSameState && (
+                    <div className="space-y-4">
+                      {/* Tax fields */}
+                      <div
+                        className={`grid grid-cols-1 ${
+                          showCgst && showSgst
+                            ? 'md:grid-cols-2'
+                            : 'md:grid-cols-1'
+                        } gap-4`}
+                      >
+                        {showCgst && (
+                          <TaxInput
+                            label="CGST Rate"
+                            name="cgst_rate"
+                            value={formData.cgst_rate}
+                            onChange={handleChange}
+                            error={formErrors.cgst_rate}
+                            description="Central GST rate (0-100%)"
+                            onRemove={
+                              showSgst
+                                ? handleRemoveCgst
+                                : undefined
+                            }
+                          />
+                        )}
 
-                  {/* IGST - Optional */}
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      IGST Rate <span className="text-gray-400 text-sm">(optional)</span>
-                    </label>
-                    <div className="relative">
-                      <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-                        <Percent size={18} />
+                        {showSgst && (
+                          <TaxInput
+                            label="SGST Rate"
+                            name="sgst_rate"
+                            value={formData.sgst_rate}
+                            onChange={handleChange}
+                            error={formErrors.sgst_rate}
+                            description="State GST rate (0-100%)"
+                            onRemove={handleRemoveSgst}
+                          />
+                        )}
                       </div>
-                      <input
-                        type="number"
-                        name="igst_rate"
-                        value={formData.igst_rate}
-                        onChange={handleChange}
-                        placeholder="0"
-                        step="0.01"
-                        min="0"
-                        max="100"
-                        className={`w-full pl-10 pr-4 py-3 rounded-xl border ${
-                          formErrors.igst_rate ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-blue-500'
-                        } focus:outline-none focus:ring-2 focus:border-transparent transition bg-gray-50 hover:bg-white`}
-                      />
-                    </div>
-                    {formErrors.igst_rate && (
-                      <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
-                        <AlertCircle size={14} />
-                        {formErrors.igst_rate}
-                      </p>
-                    )}
-                    <p className="mt-1 text-xs text-gray-400">Integrated GST rate (0-100%)</p>
-                  </div>
-                </div>
-              </div>
 
-              {/* Info Box */}
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-200">
-                <div className="flex items-start gap-3">
-                  <Info size={18} className="text-blue-600 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <p className="text-sm font-medium text-blue-800">GST Rate Rules</p>
-                    <p className="text-sm text-blue-700 mt-1">
-                      <strong>State:</strong> {formData.state || 'Not set'}
-                      <br />
-                      <strong>CGST</strong> is mandatory for all transactions.
-                      <br />
-                      {formData.state ? (
-                        <>
-                          <strong>For transactions within {formData.state}:</strong>
-                          <br />
-                          SGST + CGST rates will be applied.
-                          <br />
-                          <strong>For inter-state transactions:</strong>
-                          <br />
-                          IGST rate will be applied instead.
-                        </>
-                      ) : (
-                        'Please set the state to determine the correct GST application rules.'
+                      {/* Add field buttons */}
+                      {!showCgst && (
+                        <button
+                          type="button"
+                          onClick={handleAddCgst}
+                          className="w-full border-2 border-dashed border-blue-300 hover:border-blue-500 bg-blue-50/50 hover:bg-blue-50 rounded-xl py-4 flex items-center justify-center gap-2 text-blue-600 hover:text-blue-700 font-medium transition"
+                        >
+                          <Plus size={18} />
+                          Add CGST Field
+                        </button>
                       )}
-                    </p>
-                    <p className="text-xs text-blue-600 mt-2">
-                      <strong>Note:</strong> SGST and IGST are optional. You can set either SGST or IGST based on your business needs.
-                    </p>
+
+                      {showCgst && !showSgst && (
+                        <button
+                          type="button"
+                          onClick={handleAddSgst}
+                          className="w-full border-2 border-dashed border-blue-300 hover:border-blue-500 bg-blue-50/50 hover:bg-blue-50 rounded-xl py-4 flex items-center justify-center gap-2 text-blue-600 hover:text-blue-700 font-medium transition"
+                        >
+                          <Plus size={18} />
+                          Add SGST Field
+                        </button>
+                      )}
+
+                      {showCgst && showSgst && (
+                        <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                          <div className="flex items-center gap-2 text-green-700">
+                            <CheckCircle size={18} />
+                            <p className="text-sm font-medium">
+                              CGST + SGST configuration completed
+                            </p>
+                          </div>
+
+                          <p className="text-xs text-green-600 mt-1 ml-6">
+                            Both intra-state tax fields are now
+                            configured.
+                          </p>
+                        </div>
+                      )}
+
+                      {!showCgst && (
+                        <div className="flex items-start gap-2 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-xl p-4">
+                          <Info
+                            size={16}
+                            className="text-gray-400 flex-shrink-0"
+                          />
+                          <span>
+                            Click <strong>Add CGST Field</strong>{' '}
+                            to add the Central GST rate. You can
+                            then add SGST separately.
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* DIFFERENT STATE */}
+                  {isDifferentState && (
+                    <div className="space-y-4">
+                      {/* Warning */}
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                        <div className="flex items-start gap-3">
+                          <AlertTriangle
+                            size={20}
+                            className="text-amber-600 flex-shrink-0 mt-0.5"
+                          />
+
+                          <div>
+                            <p className="text-sm font-semibold text-amber-800">
+                              Inter-State Tax Configuration
+                            </p>
+
+                            <p className="text-xs text-amber-700 mt-1 leading-relaxed">
+                              The selected GST state{' '}
+                              <strong>
+                                {formData.state}
+                              </strong>{' '}
+                              is different from your organization
+                              state{' '}
+                              <strong>
+                                {organizationState}
+                              </strong>
+                              . Therefore, IGST should be used
+                              instead of CGST and SGST.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* IGST YES/NO */}
+                      <div className="bg-white border border-gray-200 rounded-2xl p-5">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                          <div>
+                            <p className="text-sm font-semibold text-gray-800">
+                              Apply IGST?
+                            </p>
+
+                            <p className="text-xs text-gray-500 mt-1">
+                              Enable IGST to configure the
+                              inter-state tax rate.
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleIgstToggle(false)
+                              }
+                              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                                !applyIgst
+                                  ? 'bg-gray-800 text-white'
+                                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                              }`}
+                            >
+                              No
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleIgstToggle(true)
+                              }
+                              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                                applyIgst
+                                  ? 'bg-blue-600 text-white shadow-sm'
+                                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                              }`}
+                            >
+                              Yes, Apply IGST
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* IGST FIELD */}
+                      {applyIgst && (
+                        <TaxInput
+                          label="IGST Rate"
+                          name="igst_rate"
+                          value={formData.igst_rate}
+                          onChange={handleChange}
+                          error={formErrors.igst_rate}
+                          description="Integrated GST rate (0-100%)"
+                        />
+                      )}
+
+                      {!applyIgst && (
+                        <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                          <div className="flex items-start gap-2">
+                            <AlertCircle
+                              size={18}
+                              className="text-red-500 flex-shrink-0"
+                            />
+
+                            <div>
+                              <p className="text-sm font-medium text-red-700">
+                                IGST is required
+                              </p>
+
+                              <p className="text-xs text-red-600 mt-1">
+                                Because the organization state and
+                                selected GST state are different,
+                                please select{' '}
+                                <strong>
+                                  Yes, Apply IGST
+                                </strong>{' '}
+                                to continue.
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {applyIgst && (
+                        <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                          <div className="flex items-center gap-2 text-green-700">
+                            <CheckCircle size={18} />
+
+                            <p className="text-sm font-medium">
+                              IGST configuration enabled
+                            </p>
+                          </div>
+
+                          <p className="text-xs text-green-600 mt-1 ml-6">
+                            CGST and SGST fields are hidden because
+                            this is an inter-state GST configuration.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* STATE NOT SELECTED */}
+              {!formData.state && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                  <div className="flex items-start gap-3">
+                    <Info
+                      size={19}
+                      className="text-blue-600 flex-shrink-0 mt-0.5"
+                    />
+
+                    <div>
+                      <p className="text-sm font-medium text-blue-800">
+                        Select GST State
+                      </p>
+
+                      <p className="text-xs text-blue-700 mt-1">
+                        Select the GST state above to see the
+                        applicable CGST/SGST or IGST configuration.
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
-              {/* Active Status */}
+              {/* ACTIVE STATUS */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   Status
                 </label>
+
                 <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
                   <div className="relative">
                     <input
@@ -641,52 +1368,78 @@ const AddGSTProfile = () => {
                       onChange={handleChange}
                       className="sr-only"
                     />
-                    <div
-                      onClick={() => setFormData(prev => ({ ...prev, is_active: !prev.is_active }))}
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          is_active: !prev.is_active,
+                        }))
+                      }
                       className={`w-12 h-6 rounded-full cursor-pointer transition-colors ${
-                        formData.is_active ? 'bg-green-600' : 'bg-gray-300'
+                        formData.is_active
+                          ? 'bg-green-600'
+                          : 'bg-gray-300'
                       }`}
                     >
                       <div
                         className={`w-5 h-5 rounded-full bg-white transition-transform ${
-                          formData.is_active ? 'translate-x-6' : 'translate-x-0.5'
+                          formData.is_active
+                            ? 'translate-x-6'
+                            : 'translate-x-0.5'
                         } mt-0.5 shadow-md`}
                       />
-                    </div>
+                    </button>
                   </div>
+
                   <div>
                     <p className="text-sm font-medium text-gray-700">
-                      {formData.is_active ? 'Active' : 'Inactive'}
+                      {formData.is_active
+                        ? 'Active'
+                        : 'Inactive'}
                     </p>
+
                     <p className="text-xs text-gray-400">
-                      {formData.is_active 
-                        ? 'GST profile will be available for use' 
+                      {formData.is_active
+                        ? 'GST profile will be available for use'
                         : 'GST profile will be hidden and inactive'}
                     </p>
                   </div>
                 </div>
               </div>
 
-              {/* Error/Success Messages */}
+              {/* ERROR */}
               {error && (
                 <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-2 text-red-700">
-                  <AlertCircle size={18} className="flex-shrink-0" />
+                  <AlertCircle
+                    size={18}
+                    className="flex-shrink-0"
+                  />
                   <span>{error}</span>
                 </div>
               )}
 
+              {/* SUCCESS */}
               {success && (
                 <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-2 text-green-700">
-                  <CheckCircle size={18} className="flex-shrink-0" />
+                  <CheckCircle
+                    size={18}
+                    className="flex-shrink-0"
+                  />
                   <span>{success}</span>
                 </div>
               )}
 
-              {/* Action Buttons */}
+              {/* ACTION BUTTONS */}
               <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-gray-200">
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={
+                    isSubmitting ||
+                    !formData.state ||
+                    !organizationState
+                  }
                   className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 transition flex items-center justify-center gap-2 font-medium shadow-lg shadow-blue-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isSubmitting ? (
@@ -698,10 +1451,14 @@ const AddGSTProfile = () => {
                     <>
                       <Save size={20} />
                       Create GST Profile
-                      <ArrowRight size={18} className="group-hover:translate-x-1 transition" />
+                      <ArrowRight
+                        size={18}
+                        className="transition"
+                      />
                     </>
                   )}
                 </button>
+
                 <button
                   type="button"
                   onClick={() => navigate('/revenue/tax')}
@@ -713,39 +1470,56 @@ const AddGSTProfile = () => {
             </form>
           </div>
 
-          {/* Features Section */}
+          {/* FEATURES */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-            <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition group">
+            <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition">
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl flex items-center justify-center group-hover:scale-110 transition">
+                <div className="w-10 h-10 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl flex items-center justify-center">
                   <Receipt className="w-5 h-5 text-blue-600" />
                 </div>
-                <h4 className="font-semibold text-gray-900">GST Compliance</h4>
+
+                <h4 className="font-semibold text-gray-900">
+                  GST Compliance
+                </h4>
               </div>
+
               <p className="text-sm text-gray-500 leading-relaxed">
-                Ensure tax compliance with proper GST rate configuration
+                Configure GST rates according to your state and
+                tax requirements.
               </p>
             </div>
-            <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition group">
+
+            <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition">
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl flex items-center justify-center group-hover:scale-110 transition">
+                <div className="w-10 h-10 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl flex items-center justify-center">
                   <MapPin className="w-5 h-5 text-green-600" />
                 </div>
-                <h4 className="font-semibold text-gray-900">State Based</h4>
+
+                <h4 className="font-semibold text-gray-900">
+                  State Based
+                </h4>
               </div>
+
               <p className="text-sm text-gray-500 leading-relaxed">
-                SGST + CGST for same state, IGST for inter-state transactions
+                Same state uses CGST + SGST, while different state
+                uses IGST.
               </p>
             </div>
-            <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition group">
+
+            <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition">
               <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl flex items-center justify-center group-hover:scale-110 transition">
-                  <Globe className="w-5 h-5 text-purple-600" />
+                <div className="w-10 h-10 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl flex items-center justify-center">
+                  <Link2 className="w-5 h-5 text-purple-600" />
                 </div>
-                <h4 className="font-semibold text-gray-900">Flexible Configuration</h4>
+
+                <h4 className="font-semibold text-gray-900">
+                  Hub Assignment
+                </h4>
               </div>
+
               <p className="text-sm text-gray-500 leading-relaxed">
-                SGST and IGST are optional - configure based on your business needs
+                Assign GST profiles to hubs for automatic tax
+                calculation.
               </p>
             </div>
           </div>
