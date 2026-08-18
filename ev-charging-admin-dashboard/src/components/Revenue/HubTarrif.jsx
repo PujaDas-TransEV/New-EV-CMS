@@ -1,5 +1,6 @@
 // src/components/Revenue/HubTariff.jsx
-import React, { useState, useEffect, useCallback } from 'react';
+// src/components/Revenue/HubTariff.jsx
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../Authentication/AuthContext';
 import {
@@ -53,6 +54,13 @@ import {
   MapPin,
   Home,
   Briefcase,
+  Infinity,
+  Pencil,
+  Save,
+  RotateCcw,
+  TrendingUp,
+  Wallet,
+  Clock as ClockIcon,
 } from 'lucide-react';
 import Sidebar from '../Sidebar/Sidebar';
 
@@ -62,7 +70,52 @@ const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://dev-evcmsnew
 const API_CONFIG = {
   HUBS_API: `${API_BASE_URL}/api/v1/cpo/hubs`,
   HUB_TARIFFS_API: (hubId) => `${API_BASE_URL}/api/v1/cpo/hubs/${hubId}/tariffs`,
-  USER_INFO_API: `${API_BASE_URL}/api/v1/auth/me`
+  HUB_TARIFF_DETAIL_API: (hubId, tariffId) => `${API_BASE_URL}/api/v1/cpo/hubs/${hubId}/tariffs/${tariffId}`,
+  USER_INFO_API: `${API_BASE_URL}/api/v1/auth/me`,
+  USER_GROUPS_API: `${API_BASE_URL}/api/v1/cpo/user-groups`,
+  CHARGERS_API: `${API_BASE_URL}/api/v1/cpo/chargers`,
+  GST_API: `${API_BASE_URL}/api/v1/cpo/gst`
+};
+
+// Mapping UI labels to Backend Enum Values - FIXED
+const TARIFF_TYPE_MAP = {
+  'Standard': 'fixed',
+  'Premium': 'premium',
+  'Discount': 'discount',
+  'Peak': 'peak',
+  'Off-Peak': 'off_peak'
+};
+
+const PRICE_TYPE_MAP = {
+  'Energy': 'energy',
+  'Time': 'time',
+  'Sessions': 'sessions'
+};
+
+// FIXED: Units mapping - using correct values
+const UNITS_MAP = {
+  'kWh': 'kwh',
+  'minutes': 'minutes'
+};
+
+// Reverse mappings for display
+const TARIFF_TYPE_DISPLAY = {
+  'fixed': 'Standard',
+  'premium': 'Premium',
+  'discount': 'Discount',
+  'peak': 'Peak',
+  'off_peak': 'Off-Peak'
+};
+
+const PRICE_TYPE_DISPLAY = {
+  'energy': 'Energy',
+  'time': 'Time',
+  'sessions': 'Sessions'
+};
+
+const UNITS_DISPLAY = {
+  'kwh': 'kWh',
+  'minutes': 'Minutes'
 };
 
 const HubTariff = () => {
@@ -83,8 +136,28 @@ const HubTariff = () => {
   const [showTariffDetail, setShowTariffDetail] = useState(false);
   const [selectedTariff, setSelectedTariff] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [userGroups, setUserGroups] = useState([]);
+  const [chargers, setChargers] = useState([]);
+  const [gstList, setGstList] = useState([]);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [updateSuccess, setUpdateSuccess] = useState('');
+  const [activeTariffExists, setActiveTariffExists] = useState(false);
+  
+  // Ref to prevent modal blinking
+  const isModalOpeningRef = useRef(false);
 
-  // Tabs configuration - Hub Tariffs replaces Aggregation Fee
+  // Edit form state
+  const [editFormData, setEditFormData] = useState({
+    price_per_unit: '',
+    idle_fee_per_min: '0',
+    currency: 'INR',
+    is_active: true,
+    tariff_type: 'Standard',
+    price_type: 'Energy',
+    units: 'kWh'
+  });
+
+  // Tabs configuration
   const tabs = [
     { id: 'overview', label: 'Overview', icon: BarChart, path: '/revenue/overview' },
     { id: 'driver_tariffs', label: 'Customer Tariffs', icon: Users, path: '/revenue/customer-tariffs' },
@@ -94,7 +167,6 @@ const HubTariff = () => {
     { id: 'settings', label: 'Settings', icon: Settings, path: '/revenue/settings' }
   ];
 
-  // Fetch user info and hubs
   useEffect(() => {
     if (!isAuthenticated) {
       navigate('/signin');
@@ -102,6 +174,9 @@ const HubTariff = () => {
     }
     fetchUserInfo();
     fetchHubs();
+    fetchUserGroups();
+    fetchChargers();
+    fetchGSTList();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, navigate]);
 
@@ -119,7 +194,51 @@ const HubTariff = () => {
     }
   }, [authenticatedRequest]);
 
-  // Fetch hubs using GET /api/v1/cpo/hubs
+  const fetchUserGroups = useCallback(async () => {
+    try {
+      const response = await authenticatedRequest(API_CONFIG.USER_GROUPS_API, {
+        method: 'GET'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const groups = data.user_groups || data.data || data || [];
+        setUserGroups(groups);
+      }
+    } catch (error) {
+      console.error('Error fetching user groups:', error);
+    }
+  }, [authenticatedRequest]);
+
+  const fetchChargers = useCallback(async () => {
+    try {
+      const response = await authenticatedRequest(API_CONFIG.CHARGERS_API, {
+        method: 'GET'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const chargersData = data.chargers || data.data || data || [];
+        setChargers(chargersData);
+      }
+    } catch (error) {
+      console.error('Error fetching chargers:', error);
+    }
+  }, [authenticatedRequest]);
+
+  const fetchGSTList = useCallback(async () => {
+    try {
+      const response = await authenticatedRequest(API_CONFIG.GST_API, {
+        method: 'GET'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const gstData = data.gsts || data.data || data || [];
+        setGstList(gstData);
+      }
+    } catch (error) {
+      console.error('Error fetching GST list:', error);
+    }
+  }, [authenticatedRequest]);
+
   const fetchHubs = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -147,7 +266,6 @@ const HubTariff = () => {
     }
   }, [authenticatedRequest]);
 
-  // Fetch tariffs for a specific hub
   const fetchTariffs = useCallback(async (hubId) => {
     setLoadingTariffs(true);
     try {
@@ -159,14 +277,37 @@ const HubTariff = () => {
         const data = await response.json();
         const tariffData = data.tariffs || data.data || data || [];
         setTariffs(tariffData);
+        
+        // Check if there's an active tariff
+        const hasActive = tariffData.some(t => t.is_active === true);
+        setActiveTariffExists(hasActive);
       } else {
         setTariffs([]);
+        setActiveTariffExists(false);
       }
     } catch (error) {
       console.error('Error fetching hub tariffs:', error);
       setTariffs([]);
+      setActiveTariffExists(false);
     } finally {
       setLoadingTariffs(false);
+    }
+  }, [authenticatedRequest]);
+
+  const fetchTariffDetail = useCallback(async (hubId, tariffId) => {
+    try {
+      const response = await authenticatedRequest(API_CONFIG.HUB_TARIFF_DETAIL_API(hubId, tariffId), {
+        method: 'GET'
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        return data.tariff || data.data || data;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error fetching tariff detail:', error);
+      return null;
     }
   }, [authenticatedRequest]);
 
@@ -177,12 +318,39 @@ const HubTariff = () => {
     setSelectedTariff(null);
   };
 
-  const handleTariffClick = (tariff) => {
-    setSelectedTariff(tariff);
-    setShowTariffDetail(true);
+  // Fixed: Prevent modal blinking
+  const handleTariffClick = async (tariff) => {
+    if (isModalOpeningRef.current) return;
+    isModalOpeningRef.current = true;
+
+    try {
+      const fullTariff = await fetchTariffDetail(selectedHub.id, tariff.id);
+      if (fullTariff) {
+        setSelectedTariff(fullTariff);
+        setShowTariffDetail(true);
+        setIsEditing(false);
+        
+        const displayTariffType = TARIFF_TYPE_DISPLAY[fullTariff.tariff_type] || fullTariff.tariff_type || 'Standard';
+        const displayPriceType = PRICE_TYPE_DISPLAY[fullTariff.price_type] || fullTariff.price_type || 'Energy';
+        const displayUnits = UNITS_DISPLAY[fullTariff.units] || fullTariff.units || 'kWh';
+        
+        setEditFormData({
+          price_per_unit: fullTariff.price_per_unit || '',
+          idle_fee_per_min: fullTariff.idle_fee_per_min || '0',
+          currency: fullTariff.currency || 'INR',
+          is_active: fullTariff.is_active !== undefined ? fullTariff.is_active : true,
+          tariff_type: displayTariffType,
+          price_type: displayPriceType,
+          units: displayUnits
+        });
+      }
+    } catch (error) {
+      console.error('Error loading tariff details:', error);
+    } finally {
+      isModalOpeningRef.current = false;
+    }
   };
 
-  // Handle Add Tariff - Navigate to Add Hub Tariff page
   const handleAddTariff = () => {
     if (selectedHub) {
       navigate('/revenue/add-hub-tariff', { 
@@ -190,6 +358,121 @@ const HubTariff = () => {
       });
     } else {
       navigate('/revenue/add-hub-tariff');
+    }
+  };
+
+  const handleEditToggle = () => {
+    setIsEditing(!isEditing);
+    if (!isEditing && selectedTariff) {
+      const displayTariffType = TARIFF_TYPE_DISPLAY[selectedTariff.tariff_type] || selectedTariff.tariff_type || 'Standard';
+      const displayPriceType = PRICE_TYPE_DISPLAY[selectedTariff.price_type] || selectedTariff.price_type || 'Energy';
+      const displayUnits = UNITS_DISPLAY[selectedTariff.units] || selectedTariff.units || 'kWh';
+      
+      setEditFormData({
+        price_per_unit: selectedTariff.price_per_unit || '',
+        idle_fee_per_min: selectedTariff.idle_fee_per_min || '0',
+        currency: selectedTariff.currency || 'INR',
+        is_active: selectedTariff.is_active !== undefined ? selectedTariff.is_active : true,
+        tariff_type: displayTariffType,
+        price_type: displayPriceType,
+        units: displayUnits
+      });
+    }
+  };
+
+  const handleEditChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setEditFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  // FIXED: Handle update with proper API payload
+  const handleUpdateTariff = async (e) => {
+    e.preventDefault();
+    setIsUpdating(true);
+    setError('');
+    setUpdateSuccess('');
+
+    try {
+      const pricePerUnit = parseFloat(editFormData.price_per_unit) || 0;
+      const idleFeePerMin = parseFloat(editFormData.idle_fee_per_min) || 0;
+      
+      const apiPayload = {
+        price_per_unit: Number(pricePerUnit.toFixed(4)).toString(),
+        idle_fee_per_min: Number(idleFeePerMin.toFixed(4)).toString(),
+        currency: editFormData.currency,
+        is_active: editFormData.is_active,
+        tariff_type: 'fixed', // Always fixed as per contract
+        price_type: PRICE_TYPE_MAP[editFormData.price_type] || 'energy',
+      };
+
+      // FIXED: For Sessions, omit units; for Energy use 'kwh'; for Time use 'minutes'
+      if (editFormData.price_type === 'Energy') {
+        apiPayload.units = 'kwh';
+      } else if (editFormData.price_type === 'Time') {
+        apiPayload.units = 'minutes';
+      }
+      // For Sessions, don't include units
+
+      console.log('📤 Update Payload:', JSON.stringify(apiPayload, null, 2));
+
+      const response = await authenticatedRequest(
+        API_CONFIG.HUB_TARIFF_DETAIL_API(selectedHub.id, selectedTariff.id),
+        {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(apiPayload)
+        }
+      );
+
+      let data;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { message: text };
+        }
+      }
+
+      if (response.ok) {
+        setUpdateSuccess('Tariff updated successfully!');
+        
+        // Refresh tariff list
+        await fetchTariffs(selectedHub.id);
+        
+        // Update selected tariff with new data
+        const updatedTariff = await fetchTariffDetail(selectedHub.id, selectedTariff.id);
+        if (updatedTariff) {
+          setSelectedTariff(updatedTariff);
+          setIsEditing(false);
+        }
+        
+        setTimeout(() => setUpdateSuccess(''), 3000);
+      } else {
+        let errorMessage = 'Failed to update tariff';
+        if (data.message) {
+          errorMessage = data.message;
+        } else if (data.error?.message) {
+          errorMessage = data.error.message;
+        } else if (data.error?.code) {
+          errorMessage = `${data.error.code}: ${data.error.message || 'Unknown error'}`;
+        }
+        setError(errorMessage);
+      }
+    } catch (error) {
+      console.error('Error updating tariff:', error);
+      setError(error.message || 'An error occurred while updating the tariff');
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -219,9 +502,37 @@ const HubTariff = () => {
     });
   };
 
+  const formatDateTime = (dateString) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleString('en-US', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
   const formatCurrency = (amount) => {
-    if (!amount) return '₹ 0';
-    return `₹ ${parseFloat(amount).toLocaleString('en-IN')}`;
+    if (!amount && amount !== 0) return '₹ 0';
+    return `₹ ${Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  const getPriceDisplay = (tariff) => {
+    if (!tariff) return '';
+    const price = formatCurrency(tariff.price_per_unit);
+    const priceType = tariff.price_type || 'energy';
+    switch(priceType) {
+      case 'energy':
+        return `${price} / kWh`;
+      case 'time':
+        return `${price} / minute`;
+      case 'sessions':
+        return `${price} / session`;
+      default:
+        return price;
+    }
   };
 
   const getStatusColor = (isActive) => {
@@ -240,6 +551,21 @@ const HubTariff = () => {
     return isActive 
       ? 'bg-green-100 text-green-700 border-green-200'
       : 'bg-gray-100 text-gray-700 border-gray-200';
+  };
+
+  const getGroupName = (groupId) => {
+    const group = userGroups.find(g => g.id === groupId);
+    return group ? group.name : groupId;
+  };
+
+  const getChargerName = (chargerId) => {
+    const charger = chargers.find(c => c.id === chargerId);
+    return charger ? charger.charger_name || charger.charger_id : chargerId;
+  };
+
+  const getGSTName = (gstId) => {
+    const gst = gstList.find(g => g.id === gstId);
+    return gst ? gst.name : gstId;
   };
 
   // Settings Dropdown Menu
@@ -295,131 +621,426 @@ const HubTariff = () => {
     </div>
   );
 
-  // Tariff Detail Component
-  const TariffDetail = ({ tariff, onClose, onEdit }) => {
+  // Tariff Detail Modal Component
+  const TariffDetailModal = ({ tariff, onClose, onEditToggle, isEditing, editFormData, onEditChange, onUpdate, isUpdating, error, updateSuccess }) => {
     if (!tariff) return null;
 
     return (
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-orange-50 to-amber-50 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Layers className="w-5 h-5 text-orange-600" />
-            <h3 className="font-semibold text-gray-900">Hub Tariff Details</h3>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => onEdit(tariff)}
-              className="p-1.5 text-gray-500 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition"
-              title="Edit Tariff"
-            >
-              <Edit size={16} />
-            </button>
-            <button
-              onClick={onClose}
-              className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition"
-            >
-              <X size={16} />
-            </button>
-          </div>
-        </div>
-
-        <div className="p-5 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wider">Tariff ID</p>
-              <p className="text-sm font-semibold text-gray-900">{tariff.id?.slice(0, 8) || 'N/A'}</p>
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fadeIn">
+        <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl animate-slideUp">
+          {/* Modal Header */}
+          <div className="bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 px-6 py-5 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
+                <Layers className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">
+                  {isEditing ? 'Edit Tariff' : 'Tariff Details'}
+                </h3>
+                <p className="text-sm text-white/80">
+                  {isEditing ? 'Update tariff configuration' : `ID: ${tariff.id?.slice(0, 12) || 'N/A'}`}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wider">Status</p>
-              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(tariff.is_active)}`}>
-                {getStatusIcon(tariff.is_active)}
-                {tariff.is_active ? 'Active' : 'Inactive'}
-              </span>
+            <div className="flex items-center gap-2">
+              {!isEditing && (
+                <button
+                  onClick={onEditToggle}
+                  className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-xl transition"
+                  title="Edit Tariff"
+                >
+                  <Pencil size={18} />
+                </button>
+              )}
+              <button
+                onClick={onClose}
+                className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-xl transition"
+              >
+                <X size={20} />
+              </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wider">Price per kWh</p>
-              <p className="text-lg font-bold text-gray-900">{formatCurrency(tariff.price_per_kwh)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wider">Idle Fee per Minute</p>
-              <p className="text-lg font-bold text-gray-900">{formatCurrency(tariff.idle_fee_per_min || 0)}</p>
-            </div>
-          </div>
+          {/* Modal Body */}
+          <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+            {error && (
+              <div className="mb-4 bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-2 text-red-700">
+                <AlertCircle size={18} className="flex-shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+            {updateSuccess && (
+              <div className="mb-4 bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-2 text-green-700">
+                <CheckCircle size={18} className="flex-shrink-0" />
+                <span>{updateSuccess}</span>
+              </div>
+            )}
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wider">Currency</p>
-              <p className="text-sm font-medium text-gray-900">{tariff.currency || 'INR'}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500 uppercase tracking-wider">Tariff Type</p>
-              <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
-                {tariff.tariff_type || 'Standard'}
-              </span>
-            </div>
-          </div>
-
-          {tariff.start_date || tariff.end_date ? (
-            <div className="border-t border-gray-200 pt-4">
-              <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Validity Period</p>
-              <div className="bg-gray-50 rounded-xl p-3 border border-gray-200 flex items-center gap-4">
-                <div>
-                  <p className="text-xs text-gray-500">Start Date</p>
-                  <p className="text-sm font-medium text-gray-900">{formatDate(tariff.start_date)}</p>
+            {isEditing ? (
+              // Edit Form
+              <form onSubmit={onUpdate} className="space-y-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                      Price per Unit <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                        <IndianRupee size={18} />
+                      </div>
+                      <input
+                        type="number"
+                        name="price_per_unit"
+                        value={editFormData.price_per_unit}
+                        onChange={onEditChange}
+                        placeholder="0.00"
+                        step="0.01"
+                        min="0"
+                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition bg-gray-50 hover:bg-white"
+                        required
+                      />
+                    </div>
+                    <p className="mt-1 text-xs text-gray-400">
+                      {editFormData.price_type === 'Energy' && 'Price per kWh'}
+                      {editFormData.price_type === 'Time' && 'Price per minute'}
+                      {editFormData.price_type === 'Sessions' && 'Price per session'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                      Idle Fee per Minute
+                    </label>
+                    <div className="relative">
+                      <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                        <ClockIcon size={18} />
+                      </div>
+                      <input
+                        type="number"
+                        name="idle_fee_per_min"
+                        value={editFormData.idle_fee_per_min}
+                        onChange={onEditChange}
+                        placeholder="0.00"
+                        step="0.01"
+                        min="0"
+                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition bg-gray-50 hover:bg-white"
+                      />
+                    </div>
+                    <p className="mt-1 text-xs text-gray-400">Must be 0 (idle fee is not supported)</p>
+                  </div>
                 </div>
-                <ArrowLeft size={16} className="text-gray-400 rotate-180" />
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                      Currency <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                        <Globe size={18} />
+                      </div>
+                      <select
+                        name="currency"
+                        value={editFormData.currency}
+                        onChange={onEditChange}
+                        className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white"
+                      >
+                        <option value="INR">INR</option>
+                        <option value="USD">USD</option>
+                        <option value="EUR">EUR</option>
+                        <option value="GBP">GBP</option>
+                      </select>
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
+                        <ChevronDown size={18} />
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                      Tariff Type <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                        <Tag size={18} />
+                      </div>
+                      <select
+                        name="tariff_type"
+                        value={editFormData.tariff_type}
+                        onChange={onEditChange}
+                        className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white"
+                      >
+                        <option value="Standard">Standard</option>
+                        <option value="Premium">Premium</option>
+                        <option value="Discount">Discount</option>
+                        <option value="Peak">Peak</option>
+                        <option value="Off-Peak">Off-Peak</option>
+                      </select>
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
+                        <ChevronDown size={18} />
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                      Price Type <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                        <DollarSign size={18} />
+                      </div>
+                      <select
+                        name="price_type"
+                        value={editFormData.price_type}
+                        onChange={onEditChange}
+                        className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white"
+                      >
+                        <option value="Energy">Energy (per kWh)</option>
+                        <option value="Time">Time (per minute)</option>
+                        <option value="Sessions">Sessions (per session)</option>
+                      </select>
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
+                        <ChevronDown size={18} />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* FIXED: Units field - shows correct options based on price type */}
+                {editFormData.price_type !== 'Sessions' && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                      Units <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                        <Gauge size={18} />
+                      </div>
+                      <select
+                        name="units"
+                        value={editFormData.units}
+                        onChange={onEditChange}
+                        className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white"
+                      >
+                        {editFormData.price_type === 'Energy' && (
+                          <option value="kWh">kWh</option>
+                        )}
+                        {editFormData.price_type === 'Time' && (
+                          <option value="minutes">Minutes</option>
+                        )}
+                      </select>
+                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
+                        <ChevronDown size={18} />
+                      </div>
+                    </div>
+                    <p className="mt-1 text-xs text-gray-400">
+                      {editFormData.price_type === 'Energy' && 'Energy is priced per kWh'}
+                      {editFormData.price_type === 'Time' && 'Time is priced per minute'}
+                    </p>
+                  </div>
+                )}
+
+                {editFormData.price_type === 'Sessions' && (
+                  <div className="bg-blue-50 rounded-xl p-3 border border-blue-200">
+                    <p className="text-xs text-blue-700">
+                      <Info size={14} className="inline mr-1" />
+                      Sessions pricing: One fixed amount for one completed session. Units are omitted.
+                    </p>
+                  </div>
+                )}
+
                 <div>
-                  <p className="text-xs text-gray-500">End Date</p>
-                  <p className="text-sm font-medium text-gray-900">{formatDate(tariff.end_date)}</p>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Status
+                  </label>
+                  <div className="flex items-center gap-4 p-4 bg-orange-50 rounded-xl border border-orange-200">
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        name="is_active"
+                        id="edit_is_active"
+                        checked={editFormData.is_active}
+                        onChange={onEditChange}
+                        className="sr-only"
+                      />
+                      <div
+                        onClick={() => setEditFormData(prev => ({ ...prev, is_active: !prev.is_active }))}
+                        className={`w-12 h-6 rounded-full cursor-pointer transition-colors ${editFormData.is_active ? 'bg-orange-600' : 'bg-gray-300'}`}
+                      >
+                        <div className={`w-5 h-5 rounded-full bg-white transition-transform ${editFormData.is_active ? 'translate-x-6' : 'translate-x-0.5'} mt-0.5 shadow-md`} />
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-700">
+                        {editFormData.is_active ? 'Active' : 'Inactive'}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {editFormData.is_active ? 'Tariff will be available for use' : 'Tariff will be hidden and inactive'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 pt-4 border-t border-gray-200">
+                  <button
+                    type="submit"
+                    disabled={isUpdating}
+                    className="flex-1 px-6 py-3 bg-gradient-to-r from-orange-600 to-amber-600 text-white rounded-xl hover:from-orange-700 hover:to-amber-700 transition flex items-center justify-center gap-2 font-medium shadow-lg shadow-orange-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isUpdating ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Updating...
+                      </>
+                    ) : (
+                      <>
+                        <Save size={18} />
+                        Update Tariff
+                      </>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onEditToggle}
+                    className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition font-medium"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
+            ) : (
+              // View Mode
+              <div className="space-y-5">
+                {/* Status and Price */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-4 border border-green-200">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Status</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(tariff.is_active)}`}>
+                        {getStatusIcon(tariff.is_active)}
+                        {tariff.is_active ? 'Active' : 'Inactive'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="bg-gradient-to-br from-orange-50 to-amber-50 rounded-2xl p-4 border border-orange-200">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Price</p>
+                    <p className="text-2xl font-bold text-orange-600 mt-1">{getPriceDisplay(tariff)}</p>
+                  </div>
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-4 border border-blue-200">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Idle Fee / min</p>
+                    <p className="text-2xl font-bold text-blue-600 mt-1">{formatCurrency(tariff.idle_fee_per_min || 0)}</p>
+                  </div>
+                </div>
+
+                {/* Tariff Details */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Currency</p>
+                    <p className="text-sm font-semibold text-gray-900 mt-1">{tariff.currency || 'INR'}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Tariff Type</p>
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-700 mt-1">
+                      {TARIFF_TYPE_DISPLAY[tariff.tariff_type] || tariff.tariff_type || 'Standard'}
+                    </span>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Price Type</p>
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-700 mt-1">
+                      {PRICE_TYPE_DISPLAY[tariff.price_type] || tariff.price_type || 'Energy'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Units (if applicable) */}
+                {tariff.price_type !== 'sessions' && tariff.units && (
+                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Units</p>
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-indigo-100 text-indigo-700 mt-1">
+                      {UNITS_DISPLAY[tariff.units] || tariff.units}
+                    </span>
+                  </div>
+                )}
+
+                {/* Validity Period */}
+                {(tariff.start_date || tariff.end_date) && (
+                  <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-2xl p-4 border border-gray-200">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Validity Period</p>
+                    <div className="flex items-center gap-6 flex-wrap">
+                      <div>
+                        <p className="text-xs text-gray-400">Start</p>
+                        <p className="text-sm font-medium text-gray-900">{formatDate(tariff.start_date) || 'N/A'}</p>
+                      </div>
+                      <ArrowLeft size={16} className="text-gray-400 rotate-180" />
+                      <div>
+                        <p className="text-xs text-gray-400">End</p>
+                        <p className="text-sm font-medium text-gray-900">
+                          {formatDate(tariff.end_date) || <span className="text-green-600"><Infinity size={14} className="inline" /> No expiry</span>}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Associated Resources */}
+                {(tariff.charger_id || tariff.user_group_id) && (
+                  <div className="rounded-2xl p-4 border border-gray-200">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Associated Resources</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {tariff.charger_id && (
+                        <div className="bg-blue-50 rounded-xl p-3 border border-blue-200">
+                          <div className="flex items-center gap-2">
+                            <Zap size={16} className="text-blue-600" />
+                            <span className="text-sm font-medium text-gray-700">Charger</span>
+                          </div>
+                          <p className="text-sm text-gray-900 mt-1">{getChargerName(tariff.charger_id)}</p>
+                        </div>
+                      )}
+                      {tariff.user_group_id && (
+                        <div className="bg-green-50 rounded-xl p-3 border border-green-200">
+                          <div className="flex items-center gap-2">
+                            <Users size={16} className="text-green-600" />
+                            <span className="text-sm font-medium text-gray-700">Group</span>
+                          </div>
+                          <p className="text-sm text-gray-900 mt-1">{getGroupName(tariff.user_group_id)}</p>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-400 mt-2">
+                      <Info size={14} className="inline mr-1" />
+                      GST is managed separately at the Hub level and is not included in tariff details.
+                    </p>
+                  </div>
+                )}
+
+                {/* Timestamps */}
+                <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Timestamps</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
+                    <div className="bg-white rounded-lg p-2">
+                      <span className="text-gray-500">Created:</span>
+                      <span className="text-gray-700 ml-2">{formatDateTime(tariff.created_at)}</span>
+                    </div>
+                    <div className="bg-white rounded-lg p-2">
+                      <span className="text-gray-500">Updated:</span>
+                      <span className="text-gray-700 ml-2">{formatDateTime(tariff.updated_at)}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tariff Precedence Info */}
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-4 border border-blue-200">
+                  <p className="text-xs font-medium text-blue-800 flex items-center gap-2">
+                    <Info size={14} className="text-blue-600" />
+                    Tariff Precedence
+                  </p>
+                  <p className="text-xs text-blue-700 mt-1">
+                    UserGroup &gt; Charger &gt; Hub. This tariff applies at the <strong>Hub</strong> level.
+                    {tariff.charger_id && ' It is also linked to a specific charger.'}
+                    {tariff.user_group_id && ' It is also linked to a specific user group.'}
+                  </p>
                 </div>
               </div>
-            </div>
-          ) : null}
-
-          {tariff.charger_id && (
-            <div className="border-t border-gray-200 pt-4">
-              <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Specific Charger</p>
-              <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
-                <p className="text-sm font-medium text-gray-900">Charger ID: {tariff.charger_id}</p>
-              </div>
-            </div>
-          )}
-
-          {tariff.user_group_id && (
-            <div className="border-t border-gray-200 pt-4">
-              <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Customer Group</p>
-              <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
-                <p className="text-sm font-medium text-gray-900">Group ID: {tariff.user_group_id}</p>
-              </div>
-            </div>
-          )}
-
-          {tariff.gst_id && (
-            <div className="border-t border-gray-200 pt-4">
-              <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">GST Profile</p>
-              <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
-                <p className="text-sm font-medium text-gray-900">GST ID: {tariff.gst_id}</p>
-              </div>
-            </div>
-          )}
-
-          <div className="flex items-center gap-3 pt-2 border-t border-gray-200">
-            <button
-              onClick={() => onEdit(tariff)}
-              className="flex-1 px-4 py-2 bg-orange-600 text-white rounded-xl hover:bg-orange-700 transition text-sm flex items-center justify-center gap-2"
-            >
-              <Edit size={16} />
-              Edit Tariff
-            </button>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition text-sm"
-            >
-              Close
-            </button>
+            )}
           </div>
         </div>
       </div>
@@ -463,6 +1084,17 @@ const HubTariff = () => {
             </div>
             
             <div className="flex items-center gap-2 relative">
+              <button
+                onClick={() => {
+                  if (selectedHub) {
+                    fetchTariffs(selectedHub.id);
+                  }
+                }}
+                className="p-2 hover:bg-gray-100 rounded-xl transition text-gray-600 hover:text-gray-800"
+                title="Refresh tariffs"
+              >
+                <RefreshCw size={18} className={loadingTariffs ? 'animate-spin' : ''} />
+              </button>
               <div className="relative">
                 <button onClick={() => setShowSettingsMenu(!showSettingsMenu)} className="p-2 hover:bg-gray-100 rounded-xl transition flex items-center gap-1.5">
                   <Settings size={20} className="text-gray-600" />
@@ -480,7 +1112,7 @@ const HubTariff = () => {
           </div>
         </header>
 
-        {/* Tabs - Hub Tariffs active with green color */}
+        {/* Tabs */}
         <div className="border-b border-gray-200 bg-white px-6">
           <div className="flex flex-wrap items-center gap-1">
             {tabs.map((tab) => {
@@ -492,7 +1124,7 @@ const HubTariff = () => {
                   onClick={() => handleTabClick(tab.id, tab.path)}
                   className={`flex items-center gap-2 px-5 py-5 rounded-t-xl text-sm font-medium transition ${
                     isActive
-                      ? 'bg-green-50 text-green-600 border-b-2 border-green-600'
+                      ? 'bg-orange-50 text-orange-600 border-b-2 border-orange-600'
                       : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
                   }`}
                 >
@@ -510,13 +1142,13 @@ const HubTariff = () => {
             {/* Left Column - Hubs List */}
             <div className="lg:col-span-1">
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden sticky top-24">
-                <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
+                <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-orange-50 to-amber-50">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Layers className="w-5 h-5 text-orange-600" />
                       <h3 className="font-semibold text-gray-900">Hubs</h3>
                     </div>
-                    <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full">
+                    <span className="text-xs bg-orange-500 text-white px-2.5 py-1 rounded-full font-medium">
                       {hubs.length}
                     </span>
                   </div>
@@ -527,10 +1159,10 @@ const HubTariff = () => {
                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                     <input
                       type="text"
-                      placeholder="Search by hub..."
+                      placeholder="Search hubs..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-sm bg-gray-50 hover:bg-white transition"
                     />
                   </div>
 
@@ -544,7 +1176,7 @@ const HubTariff = () => {
                       <p className="text-gray-500 text-sm">No hubs found</p>
                     </div>
                   ) : (
-                    <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                    <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
                       {hubs
                         .filter(h => 
                           (h.name || '')
@@ -555,19 +1187,19 @@ const HubTariff = () => {
                           <button
                             key={hub.id}
                             onClick={() => handleHubSelect(hub)}
-                            className={`w-full text-left p-3 rounded-xl border transition ${
+                            className={`w-full text-left p-3 rounded-xl border transition-all ${
                               selectedHub?.id === hub.id
-                                ? 'border-orange-500 bg-orange-50 shadow-sm'
-                                : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                                ? 'border-orange-500 bg-gradient-to-r from-orange-50 to-amber-50 shadow-md ring-2 ring-orange-500/20'
+                                : 'border-gray-200 hover:border-orange-300 hover:bg-gray-50'
                             }`}
                           >
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
+                                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-orange-500 to-amber-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-lg shadow-orange-500/25">
                                   <Layers size={14} className="text-white" />
                                 </div>
                                 <div>
-                                  <p className="text-sm font-medium text-gray-900">
+                                  <p className="text-sm font-semibold text-gray-900 truncate max-w-[120px]">
                                     {hub.name || 'Unnamed Hub'}
                                   </p>
                                   <p className="text-xs text-gray-500 truncate max-w-[120px]">
@@ -579,9 +1211,10 @@ const HubTariff = () => {
                                 {hub.customer_visible ? 'Visible' : 'Hidden'}
                               </span>
                             </div>
-                            <div className="mt-2 flex items-center gap-4 text-xs text-gray-500">
-                              <span>📍 {hub.latitude}, {hub.longitude}</span>
-                              <span>{hub.open_24_hours ? '24/7' : 'Timed'}</span>
+                            <div className="mt-1.5 flex items-center gap-3 text-xs text-gray-400">
+                              <span>{hub.open_24_hours ? '🕐 24/7' : '⏰ Timed'}</span>
+                              <span>•</span>
+                              <span className="truncate">{hub.latitude}, {hub.longitude}</span>
                             </div>
                           </button>
                         ))}
@@ -596,33 +1229,47 @@ const HubTariff = () => {
               {selectedHub ? (
                 <>
                   {/* Hub Info Card */}
-                  <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 mb-4">
+                  <div className="bg-gradient-to-r from-green-500 via-green-500 to-orange-300 rounded-2xl p-5 mb-5 shadow-lg shadow-green-500/25">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/25">
-                          <Layers className="w-6 h-6 text-white" />
+                      <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center shadow-lg">
+                          <Layers className="w-8 h-8 text-white" />
                         </div>
                         <div>
-                          <h3 className="text-lg font-bold text-gray-900">
+                          <h3 className="text-xl font-bold text-white">
                             {selectedHub.name || 'Unnamed Hub'}
                           </h3>
-                          <p className="text-sm text-gray-500">{selectedHub.address || 'No address'}</p>
-                          <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
+                          <p className="text-sm text-white/80">{selectedHub.address || 'No address'}</p>
+                          <div className="flex items-center gap-3 mt-1 text-xs text-white/70">
                             <span>📍 {selectedHub.latitude}, {selectedHub.longitude}</span>
+                            <span>•</span>
                             <span>{selectedHub.open_24_hours ? '🕐 24/7' : '⏰ Timed'}</span>
+                            <span>•</span>
                             <span>{selectedHub.customer_visible ? '👁️ Visible' : '👁️ Hidden'}</span>
                           </div>
                         </div>
                       </div>
-                      {/* Add Tariff Button */}
-                      <button
-                        onClick={handleAddTariff}
-                        className="flex items-center gap-2 px-4 py-2 bg-orange-600 text-white rounded-xl hover:bg-orange-700 transition shadow-lg shadow-orange-500/25"
-                      >
-                        <Plus size={18} />
-                        Add Tariff
-                      </button>
+                      {!activeTariffExists ? (
+                        <button
+                          onClick={handleAddTariff}
+                          className="flex items-center gap-2 px-5 py-2.5 bg-white text-orange-600 rounded-xl hover:bg-orange-50 transition shadow-lg font-medium"
+                        >
+                          <Plus size={18} />
+                          Add Tariff
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-2 px-4 py-2 bg-yellow-100 text-yellow-700 rounded-xl border border-yellow-300">
+                          <AlertCircle size={16} />
+                          <span className="text-sm font-medium">Active tariff exists</span>
+                        </div>
+                      )}
                     </div>
+                    {activeTariffExists && (
+                      <div className="mt-3 text-xs text-white/70 bg-white/10 rounded-lg p-2">
+                        <Info size={14} className="inline mr-1" />
+                        To add a new tariff, please deactivate the existing active tariff first.
+                      </div>
+                    )}
                   </div>
 
                   {/* Tariffs List */}
@@ -637,7 +1284,7 @@ const HubTariff = () => {
                       <p className="text-sm text-gray-400 mt-1">Create your first tariff for this hub</p>
                       <button
                         onClick={handleAddTariff}
-                        className="mt-4 px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition"
+                        className="mt-4 px-5 py-2.5 bg-orange-600 text-white rounded-xl hover:bg-orange-700 transition shadow-lg shadow-orange-500/25 font-medium"
                       >
                         <Plus size={16} className="inline mr-1" />
                         Create Tariff
@@ -649,56 +1296,75 @@ const HubTariff = () => {
                         <div
                           key={tariff.id}
                           onClick={() => handleTariffClick(tariff)}
-                          className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden hover:border-orange-300"
+                          className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-xl transition-all cursor-pointer overflow-hidden hover:border-orange-300 group"
                         >
                           <div className="p-5">
                             <div className="flex items-start justify-between">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-gradient-to-br from-orange-500 to-amber-600 rounded-xl flex items-center justify-center shadow-lg shadow-orange-500/25 flex-shrink-0">
-                                  <Tag className="w-5 h-5 text-white" />
+                              <div className="flex items-center gap-4 flex-1 min-w-0">
+                                <div className="w-12 h-12 bg-gradient-to-br from-orange-500 to-amber-600 rounded-2xl flex items-center justify-center shadow-lg shadow-orange-500/25 flex-shrink-0 group-hover:scale-110 transition">
+                                  <Tag className="w-6 h-6 text-white" />
                                 </div>
-                                <div>
-                                  <h4 className="font-semibold text-gray-900">Tariff #{tariff.id?.slice(0, 8) || 'N/A'}</h4>
-                                  <p className="text-sm text-gray-500">
-                                    Price: {formatCurrency(tariff.price_per_kwh)} / kWh
-                                  </p>
-                                  <div className="flex items-center gap-3 mt-1">
-                                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(tariff.is_active)}`}>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <h4 className="font-semibold text-gray-900 truncate">
+                                      Tariff #{tariff.id?.slice(0, 8) || 'N/A'}
+                                    </h4>
+                                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(tariff.is_active)}`}>
                                       {getStatusIcon(tariff.is_active)}
                                       {tariff.is_active ? 'Active' : 'Inactive'}
                                     </span>
                                     {tariff.tariff_type && (
-                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
-                                        {tariff.tariff_type}
+                                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+                                        {TARIFF_TYPE_DISPLAY[tariff.tariff_type] || tariff.tariff_type}
                                       </span>
                                     )}
+                                  </div>
+                                  <div className="flex flex-wrap items-center gap-3 mt-1.5">
+                                    <span className="text-sm font-bold text-orange-600">
+                                      {getPriceDisplay(tariff)}
+                                    </span>
+                                    <span className="text-xs text-gray-400">|</span>
+                                    <span className="text-sm text-gray-500">
+                                      Idle: {formatCurrency(tariff.idle_fee_per_min || 0)}/min
+                                    </span>
                                     {tariff.charger_id && (
                                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-                                        <Zap size={12} />
-                                        Specific Charger
+                                        <Zap size={10} />
+                                        Charger
+                                      </span>
+                                    )}
+                                    {tariff.user_group_id && (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                                        <Users size={10} />
+                                        Group
                                       </span>
                                     )}
                                   </div>
                                 </div>
                               </div>
-                              <div className="text-right">
-                                <p className="text-xs text-gray-500">Idle Fee</p>
-                                <p className="text-sm font-bold text-gray-900">{formatCurrency(tariff.idle_fee_per_min || 0)}/min</p>
-                                <p className="text-xs text-gray-400">{tariff.currency || 'INR'}</p>
+                              <div className="text-right flex-shrink-0 ml-4">
+                                <p className="text-xs text-gray-500">Currency</p>
+                                <p className="text-sm font-semibold text-gray-900">{tariff.currency || 'INR'}</p>
                               </div>
                             </div>
                             
-                            <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
-                              <div className="flex items-center gap-4 text-xs text-gray-500">
+                            <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
                                 {tariff.start_date && (
-                                  <span>Valid: {formatDate(tariff.start_date)} - {formatDate(tariff.end_date) || '∞'}</span>
+                                  <span className="flex items-center gap-1">
+                                    <CalendarDays size={12} />
+                                    {formatDate(tariff.start_date)}
+                                    {tariff.end_date ? ` → ${formatDate(tariff.end_date)}` : ' → ∞'}
+                                  </span>
                                 )}
-                                {tariff.user_group_id && (
-                                  <span>Group: {tariff.user_group_id?.slice(0, 8)}</span>
+                                {!tariff.start_date && !tariff.end_date && (
+                                  <span className="flex items-center gap-1 text-green-600">
+                                    <Infinity size={12} />
+                                    No expiry
+                                  </span>
                                 )}
-                                {tariff.gst_id && (
-                                  <span>GST: {tariff.gst_id?.slice(0, 8)}</span>
-                                )}
+                                <span className="text-gray-300">|</span>
+                                <span>Price Type: {PRICE_TYPE_DISPLAY[tariff.price_type] || tariff.price_type || 'Energy'}</span>
                               </div>
                               <div className="flex items-center gap-1">
                                 <button
@@ -706,7 +1372,7 @@ const HubTariff = () => {
                                     e.stopPropagation();
                                     handleTariffClick(tariff);
                                   }}
-                                  className="p-1.5 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-lg transition"
+                                  className="p-2 text-gray-400 hover:text-orange-600 hover:bg-orange-50 rounded-xl transition"
                                   title="View Details"
                                 >
                                   <Eye size={16} />
@@ -714,10 +1380,10 @@ const HubTariff = () => {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setIsEditing(true);
-                                    setSelectedTariff(tariff);
+                                    handleTariffClick(tariff);
+                                    setTimeout(() => setIsEditing(true), 100);
                                   }}
-                                  className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition"
+                                  className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-xl transition"
                                   title="Edit Tariff"
                                 >
                                   <Edit size={16} />
@@ -741,6 +1407,28 @@ const HubTariff = () => {
           </div>
         </div>
       </div>
+
+      {/* Tariff Detail Modal */}
+      {showTariffDetail && selectedTariff && (
+        <TariffDetailModal
+          tariff={selectedTariff}
+          onClose={() => {
+            setShowTariffDetail(false);
+            setSelectedTariff(null);
+            setIsEditing(false);
+            setError('');
+            setUpdateSuccess('');
+          }}
+          onEditToggle={handleEditToggle}
+          isEditing={isEditing}
+          editFormData={editFormData}
+          onEditChange={handleEditChange}
+          onUpdate={handleUpdateTariff}
+          isUpdating={isUpdating}
+          error={error}
+          updateSuccess={updateSuccess}
+        />
+      )}
     </div>
   );
 };

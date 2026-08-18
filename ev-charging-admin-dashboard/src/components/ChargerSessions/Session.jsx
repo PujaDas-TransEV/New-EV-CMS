@@ -973,9 +973,7 @@
 
 // export default Sessions;
 
-// src/components/ChargerSessions/Session.jsx
-// src/components/ChargerSessions/Session.jsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../Authentication/AuthContext';
 import {
@@ -1021,7 +1019,11 @@ import {
   CircleCheck,
   CircleX,
   Grid,
-  List
+  List,
+  Info,
+  Link,
+  ExternalLink,
+  Database
 } from 'lucide-react';
 import Sidebar from '../Sidebar/Sidebar';
 
@@ -1030,7 +1032,10 @@ const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://dev-evcmsnew
 const CPO_APP_ID = process.env.REACT_APP_CPO_APP_ID || 'cpo_dummy_5f75674f57829da5f3cae19ef4238d56';
 
 const API_CONFIG = {
-  SESSIONS_API: `${API_BASE_URL}/api/v1/app/auth/sessions`,
+  SESSIONS_API: `${API_BASE_URL}/api/v1/cpo/charging-sessions`,
+  SESSION_DETAIL_API: `${API_BASE_URL}/api/v1/cpo/charging-sessions`,
+  STREAM_API: `${API_BASE_URL}/api/v1/cpo/operations/realtime/stream`,
+  FLEET_API: `${API_BASE_URL}/api/v1/cpo/operations/fleet`,
   USER_INFO_API: `${API_BASE_URL}/api/v1/auth/me`
 };
 
@@ -1042,7 +1047,7 @@ const Sessions = () => {
     isRefreshing,
     isAuthenticated,
     user,
-    refreshToken  // ✅ যোগ করুন
+    refreshToken
   } = useAuth();
   
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -1054,14 +1059,18 @@ const Sessions = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   
+  // Tab state
+  const [activeTab, setActiveTab] = useState('all'); // 'all' | 'ongoing'
+  
   // Sessions state
   const [sessions, setSessions] = useState([]);
+  const [allSessions, setAllSessions] = useState([]);
+  const [ongoingSessions, setOngoingSessions] = useState([]);
   const [pagination, setPagination] = useState({
-    before: null,
-    before_id: null,
-    limit: 50,
-    has_more: false,
-    total: 0
+    next_before: null,
+    next_before_id: null,
+    limit: 20,
+    has_more: false
   });
   const [loadingMore, setLoadingMore] = useState(false);
   
@@ -1069,150 +1078,26 @@ const Sessions = () => {
   const [selectedFilter, setSelectedFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
   const [sessionTypeFilter, setSessionTypeFilter] = useState('All');
-
-  // Dummy sessions data (fallback)
-  const dummySessions = [
-    {
-      id: "SES-001",
-      session_id: "SES-2026-001",
-      hub_name: "Newtown Hub",
-      charger_id: "CH-001",
-      charger_name: "Benny 7.4kWh",
-      connector_id: "CON-001",
-      connector_type: "Type 2",
-      start_time: "2026-08-03T14:30:00+05:30",
-      end_time: "2026-08-03T16:45:00+05:30",
-      duration_minutes: 135,
-      energy_consumed: 45.5,
-      status: "Completed",
-      vehicle_details: "Tesla Model 3",
-      driver_name: "John Doe",
-      driver_email: "john@example.com",
-      id_tag: "RFID-12345",
-      mac_id: "AA:BB:CC:DD:EE:FF",
-      firmware_version: "v2.1.3",
-      protocol: "OCPP",
-      segment: "Premium",
-      start_criteria: "RFID",
-      address: "Action Area III",
-      city: "Kolkata",
-      state: "West Bengal",
-      cost: "₹ 386.75",
-      anomaly_detected: false
-    },
-    {
-      id: "SES-002",
-      session_id: "SES-2026-002",
-      hub_name: "Salt Lake Hub",
-      charger_id: "CH-004",
-      charger_name: "PowerMax 150kWh",
-      connector_id: "CON-004",
-      connector_type: "CCS",
-      start_time: "2026-08-03T10:15:00+05:30",
-      end_time: "2026-08-03T11:30:00+05:30",
-      duration_minutes: 75,
-      energy_consumed: 78.2,
-      status: "Completed",
-      vehicle_details: "Hyundai IONIQ 5",
-      driver_name: "Jane Smith",
-      driver_email: "jane@example.com",
-      id_tag: "RFID-67890",
-      mac_id: "FF:EE:DD:CC:BB:AA",
-      firmware_version: "v3.0.0",
-      protocol: "OCPP",
-      segment: "Premium",
-      start_criteria: "App",
-      address: "Salt Lake Sector V",
-      city: "Kolkata",
-      state: "West Bengal",
-      cost: "₹ 625.60",
-      anomaly_detected: false
-    },
-    {
-      id: "SES-003",
-      session_id: "SES-2026-003",
-      hub_name: "Rajarhat Hub",
-      charger_id: "CH-002",
-      charger_name: "Transev 60kWh",
-      connector_id: "CON-002",
-      connector_type: "Type 2",
-      start_time: "2026-08-02T09:00:00+05:30",
-      end_time: "2026-08-02T11:30:00+05:30",
-      duration_minutes: 150,
-      energy_consumed: 55.8,
-      status: "Ongoing",
-      vehicle_details: "MG ZS EV",
-      driver_name: "Raj Kumar",
-      driver_email: "raj@example.com",
-      id_tag: "RFID-11111",
-      mac_id: "AA:BB:CC:DD:EE:11",
-      firmware_version: "v1.8.2",
-      protocol: "OCPP",
-      segment: "Standard",
-      start_criteria: "RFID",
-      address: "Rajarhat Main Road",
-      city: "Kolkata",
-      state: "West Bengal",
-      cost: "₹ 446.40",
-      anomaly_detected: false
-    },
-    {
-      id: "SES-004",
-      session_id: "SES-2026-004",
-      hub_name: "Airport Hub",
-      charger_id: "CH-003",
-      charger_name: "EcoCharge 22kWh",
-      connector_id: "CON-003",
-      connector_type: "Type 1",
-      start_time: "2026-08-01T13:00:00+05:30",
-      end_time: "2026-08-01T13:45:00+05:30",
-      duration_minutes: 45,
-      energy_consumed: 12.3,
-      status: "Completed",
-      vehicle_details: "Tata Nexon EV",
-      driver_name: "Priya Singh",
-      driver_email: "priya@example.com",
-      id_tag: "RFID-22222",
-      mac_id: "BB:CC:DD:EE:FF:22",
-      firmware_version: "v1.0.1",
-      protocol: "Kazam",
-      segment: "Standard",
-      start_criteria: "App",
-      address: "Airport Road",
-      city: "Kolkata",
-      state: "West Bengal",
-      cost: "₹ 83.03",
-      anomaly_detected: true
-    },
-    {
-      id: "SES-005",
-      session_id: "SES-2026-005",
-      hub_name: "Eco Park Hub",
-      charger_id: "CH-005",
-      charger_name: "Delta 75kWh",
-      connector_id: "CON-005",
-      connector_type: "CCS",
-      start_time: "2026-08-02T16:00:00+05:30",
-      end_time: "2026-08-02T17:30:00+05:30",
-      duration_minutes: 90,
-      energy_consumed: 65.4,
-      status: "Completed",
-      vehicle_details: "BYD Atto 3",
-      driver_name: "Amit Das",
-      driver_email: "amit@example.com",
-      id_tag: "RFID-33333",
-      mac_id: "CC:DD:EE:FF:AA:33",
-      firmware_version: "v2.0.5",
-      protocol: "OCPP",
-      segment: "Premium",
-      start_criteria: "RFID",
-      address: "Eco Park, New Town",
-      city: "Kolkata",
-      state: "West Bengal",
-      cost: "₹ 523.20",
-      anomaly_detected: false
-    }
-  ];
+  
+  // SSE Stream state
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamEvents, setStreamEvents] = useState([]);
+  const [liveUpdates, setLiveUpdates] = useState([]);
+  const eventSourceRef = useRef(null);
+  const [showLiveIndicator, setShowLiveIndicator] = useState(false);
+  const streamRetryTimeoutRef = useRef(null);
+  
+  // Fleet state for live ongoing sessions
+  const [fleetData, setFleetData] = useState({
+    total_chargers: 0,
+    online_chargers: 0,
+    offline_chargers: 0,
+    unknown_chargers: 0,
+    available_connectors: 0,
+    charging_connectors: 0,
+    faulted_connectors: 0,
+    active_sessions: 0
+  });
 
   // Check authentication on mount
   useEffect(() => {
@@ -1222,7 +1107,26 @@ const Sessions = () => {
     }
     fetchUserInfo();
     fetchSessions();
+    startSSEStream();
+    fetchFleetData();
+    
+    // Poll fleet data every 30 seconds for updates
+    const fleetInterval = setInterval(fetchFleetData, 30000);
+    
+    return () => {
+      stopSSEStream();
+      clearInterval(fleetInterval);
+    };
   }, [isAuthenticated, navigate]);
+
+  // Update displayed sessions when tab or data changes
+  useEffect(() => {
+    if (activeTab === 'all') {
+      setSessions(allSessions);
+    } else {
+      setSessions(ongoingSessions);
+    }
+  }, [activeTab, allSessions, ongoingSessions]);
 
   const fetchUserInfo = async () => {
     try {
@@ -1241,6 +1145,278 @@ const Sessions = () => {
     }
   };
 
+  // Fetch fleet data for live ongoing sessions
+  const fetchFleetData = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(API_CONFIG.FLEET_API, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'X-CPO-App-ID': CPO_APP_ID,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('📊 Fleet data:', data);
+        
+        const fleet = data.fleet || data.data || data;
+        setFleetData({
+          total_chargers: fleet.total_chargers || 0,
+          online_chargers: fleet.online_chargers || 0,
+          offline_chargers: fleet.offline_chargers || 0,
+          unknown_chargers: fleet.unknown_chargers || 0,
+          available_connectors: fleet.available_connectors || 0,
+          charging_connectors: fleet.charging_connectors || 0,
+          faulted_connectors: fleet.faulted_connectors || 0,
+          active_sessions: fleet.active_sessions || 0
+        });
+
+        // Update ongoing sessions count if needed
+        if (fleet.active_sessions && fleet.active_sessions > 0) {
+          if (activeTab === 'ongoing') {
+            fetchSessions();
+          }
+        }
+      } else {
+        console.error('Failed to fetch fleet data:', response.status);
+      }
+    } catch (error) {
+      console.error('Error fetching fleet data:', error);
+    }
+  };
+
+  // SSE Stream using fetch with ReadableStream (supports headers)
+  const startSSEStream = () => {
+    try {
+      // Close existing connection
+      if (eventSourceRef.current) {
+        eventSourceRef.current.abort?.();
+        eventSourceRef.current = null;
+      }
+
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.warn('No token found for SSE stream');
+        return;
+      }
+
+      const url = `${API_CONFIG.STREAM_API}?cpo_app_id=${CPO_APP_ID}`;
+      console.log('📡 Connecting to SSE stream with headers:', url);
+
+      // Use fetch with headers instead of EventSource
+      const controller = new AbortController();
+      eventSourceRef.current = controller;
+
+      fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'X-CPO-App-ID': CPO_APP_ID,
+          'Accept': 'text/event-stream',
+          'Cache-Control': 'no-cache'
+        },
+        signal: controller.signal
+      })
+      .then(response => {
+        if (!response.ok) {
+          if (response.status === 401) {
+            console.error('❌ SSE Stream 401 Unauthorized');
+            setIsStreaming(false);
+            setShowLiveIndicator(false);
+            // Try to refresh token and reconnect
+            refreshToken().then(newToken => {
+              if (newToken) {
+                setTimeout(startSSEStream, 1000);
+              }
+            });
+            return;
+          }
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        console.log('📡 SSE Stream connected');
+        setIsStreaming(true);
+        setShowLiveIndicator(true);
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        const readStream = () => {
+          reader.read().then(({ done, value }) => {
+            if (done) {
+              console.log('📡 SSE Stream ended');
+              setIsStreaming(false);
+              setShowLiveIndicator(false);
+              // Attempt to reconnect after delay
+              if (!streamRetryTimeoutRef.current) {
+                streamRetryTimeoutRef.current = setTimeout(() => {
+                  streamRetryTimeoutRef.current = null;
+                  if (!eventSourceRef.current || eventSourceRef.current.signal.aborted) {
+                    startSSEStream();
+                  }
+                }, 5000);
+              }
+              return;
+            }
+
+            // Decode the chunk
+            const chunk = decoder.decode(value, { stream: true });
+            buffer += chunk;
+            
+            // Process complete events
+            const events = buffer.split('\n\n');
+            buffer = events.pop() || '';
+
+            for (const event of events) {
+              if (event.trim()) {
+                processSSEEvent(event);
+              }
+            }
+
+            // Continue reading
+            readStream();
+          }).catch(error => {
+            if (error.name === 'AbortError') {
+              console.log('📡 SSE Stream aborted');
+            } else {
+              console.error('📡 SSE Stream error:', error);
+              setIsStreaming(false);
+              setShowLiveIndicator(false);
+            }
+          });
+        };
+
+        readStream();
+      })
+      .catch(error => {
+        if (error.name === 'AbortError') {
+          console.log('📡 SSE Stream aborted');
+        } else {
+          console.error('📡 SSE Stream fetch error:', error);
+          setIsStreaming(false);
+          setShowLiveIndicator(false);
+        }
+      });
+
+    } catch (error) {
+      console.error('Error starting SSE stream:', error);
+      setIsStreaming(false);
+      setShowLiveIndicator(false);
+    }
+  };
+
+  const processSSEEvent = (eventText) => {
+    try {
+      // Parse SSE event format
+      const lines = eventText.split('\n');
+      let eventType = 'message';
+      let eventData = '';
+      
+      for (const line of lines) {
+        if (line.startsWith('event:')) {
+          eventType = line.substring(6).trim();
+        } else if (line.startsWith('data:')) {
+          eventData += line.substring(5).trim();
+        } else if (line.startsWith('id:')) {
+          // Event ID
+        }
+      }
+
+      if (eventData) {
+        try {
+          const data = JSON.parse(eventData);
+          console.log('📡 SSE Event received:', { type: eventType, data });
+          handleStreamEvent(data);
+        } catch (parseError) {
+          // If not JSON, try to use as raw data
+          console.log('📡 SSE Raw event:', eventData);
+          handleStreamEvent({ raw: eventData });
+        }
+      }
+    } catch (error) {
+      console.error('Error processing SSE event:', error);
+    }
+  };
+
+  const stopSSEStream = () => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.abort?.();
+      eventSourceRef.current = null;
+    }
+    if (streamRetryTimeoutRef.current) {
+      clearTimeout(streamRetryTimeoutRef.current);
+      streamRetryTimeoutRef.current = null;
+    }
+    setIsStreaming(false);
+    setShowLiveIndicator(false);
+  };
+
+  const handleStreamEvent = (event) => {
+    setStreamEvents(prev => [event, ...prev].slice(0, 50));
+    
+    // Check if this is a session update event
+    const sessionId = event.session_id || event.sessionId || event.id || event.transaction_id;
+    
+    if (sessionId) {
+      const updatedSession = {
+        id: sessionId,
+        session_id: sessionId,
+        status: event.status || event.new_status || event.state || 'Unknown',
+        energy_consumed: event.energy_consumed || event.energy || 0,
+        duration_minutes: event.duration_minutes || event.duration || 0,
+        hub_name: event.hub_name || event.location || 'N/A',
+        charger_name: event.charger_name || 'N/A',
+        ...event
+      };
+
+      // Update all sessions
+      setAllSessions(prev => {
+        const existingIndex = prev.findIndex(s => s.id === sessionId || s.session_id === sessionId);
+        if (existingIndex >= 0) {
+          const updated = [...prev];
+          updated[existingIndex] = { ...updated[existingIndex], ...updatedSession };
+          return updated;
+        } else {
+          return [updatedSession, ...prev];
+        }
+      });
+
+      // Update ongoing sessions if status is ongoing or charging
+      const isOngoing = updatedSession.status === 'Ongoing' || 
+                        updatedSession.status === 'Charging' || 
+                        updatedSession.status === 'In Progress' ||
+                        updatedSession.status === 'START_PENDING' ||
+                        updatedSession.status === 'CHARGING';
+      
+      if (isOngoing) {
+        setOngoingSessions(prev => {
+          const existingIndex = prev.findIndex(s => s.id === sessionId || s.session_id === sessionId);
+          if (existingIndex >= 0) {
+            const updated = [...prev];
+            updated[existingIndex] = { ...updated[existingIndex], ...updatedSession };
+            return updated;
+          } else {
+            return [updatedSession, ...prev];
+          }
+        });
+      } else {
+        // Remove from ongoing if status changed
+        setOngoingSessions(prev => prev.filter(s => s.id !== sessionId && s.session_id !== sessionId));
+      }
+
+      // Add to live updates
+      setLiveUpdates(prev => [{
+        ...updatedSession,
+        received_at: new Date().toISOString()
+      }, ...prev].slice(0, 20));
+    }
+  };
+
   const fetchSessions = useCallback(async (before = null, before_id = null) => {
     if (loadingMore) return;
     
@@ -1248,17 +1424,34 @@ const Sessions = () => {
     setError('');
     
     try {
+      const token = localStorage.getItem('token');
       let url = `${API_CONFIG.SESSIONS_API}?limit=${pagination.limit}`;
+      
       if (before) {
         url += `&before=${before}`;
       }
       if (before_id) {
         url += `&before_id=${before_id}`;
       }
+      
+      if (statusFilter !== 'All') {
+        url += `&status=${statusFilter}`;
+      }
+      
+      if (selectedFilter !== 'All') {
+        url += `&protocol=${selectedFilter}`;
+      }
 
-      console.log('📤 Fetching sessions:', url);
-      const response = await authenticatedRequest(url, {
-        method: 'GET'
+      console.log('📤 Fetching sessions from CPO API:', url);
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'X-CPO-App-ID': CPO_APP_ID,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
       });
 
       console.log('📥 Sessions response status:', response.status);
@@ -1267,91 +1460,184 @@ const Sessions = () => {
         const data = await response.json();
         console.log('📥 Sessions data:', data);
         
-        const sessionsData = data.sessions || data.data || data || dummySessions;
+        let sessionsArray = data.sessions || data.data || data || [];
+        if (!Array.isArray(sessionsArray)) {
+          sessionsArray = [];
+        }
+
+        // Transform data to match our format based on actual API response
+        const transformedSessions = sessionsArray.map((session, index) => ({
+          id: session.id || `SES-${Date.now()}-${index}`,
+          session_id: session.id || `SES-${Date.now()}-${index}`,
+          transaction_id: session.transaction_id || 'N/A',
+          customer_id: session.customer_id || 'N/A',
+          charger_id: session.charger_id || 'N/A',
+          charger_name: session.charger_name || session.charger?.name || `Charger ${session.charger_id || 'N/A'}`,
+          connector_id: session.connector_id || 'N/A',
+          connector_type: session.connector_type || session.connector?.type || 'N/A',
+          start_time: session.start_time || session.started_at,
+          end_time: session.end_time || session.ended_at,
+          duration_minutes: session.start_time && session.end_time ? 
+            Math.round((new Date(session.end_time) - new Date(session.start_time)) / 60000) : 
+            session.duration_minutes || 0,
+          energy_consumed: session.total_kwh || session.energy_consumed || session.energy || 0,
+          total_kwh: session.total_kwh || '0',
+          total_amount: session.total_amount || '0',
+          currency: session.currency || 'INR',
+          status: session.status || 'UNKNOWN',
+          stop_reason: session.stop_reason || 'N/A',
+          created_at: session.created_at || session.start_time,
+          hub_name: session.hub_name || session.hub?.name || 'N/A',
+          driver_name: session.driver_name || session.driver?.name || session.customer_id || 'N/A',
+          driver_email: session.driver_email || session.driver?.email || 'N/A',
+          cost: session.total_amount || '0',
+          anomaly_detected: session.anomaly_detected || false,
+          protocol: session.protocol || 'OCPP',
+          ...session
+        }));
+
         const hasMore = data.has_more || false;
         const nextBefore = data.next_before || null;
         const nextBeforeId = data.next_before_id || null;
-        const total = data.total || sessionsData.length;
 
-        setSessions(prev => before ? [...prev, ...sessionsData] : sessionsData);
+        // Set all sessions
+        if (before) {
+          setAllSessions(prev => [...prev, ...transformedSessions]);
+        } else {
+          setAllSessions(transformedSessions);
+        }
+        
+        // Filter ongoing sessions based on status
+        const ongoingStatuses = ['Ongoing', 'Charging', 'In Progress', 'START_PENDING', 'CHARGING', 'STARTED'];
+        const ongoing = transformedSessions.filter(s => 
+          ongoingStatuses.includes(s.status) || 
+          (s.status && s.status.toLowerCase().includes('start')) ||
+          (s.status && s.status.toLowerCase().includes('charg'))
+        );
+        
+        if (before) {
+          setOngoingSessions(prev => [...prev, ...ongoing]);
+        } else {
+          setOngoingSessions(ongoing);
+        }
+
         setPagination({
-          before: nextBefore,
-          before_id: nextBeforeId,
+          next_before: nextBefore,
+          next_before_id: nextBeforeId,
           limit: pagination.limit,
-          has_more: hasMore,
-          total: total
+          has_more: hasMore
         });
       } else if (response.status === 401) {
         console.error('❌ 401 Unauthorized - Session expired');
         setError('Session expired. Please login again.');
-        // Try to refresh token
         const newToken = await refreshToken();
         if (newToken) {
-          // Retry the request
-          const retryResponse = await authenticatedRequest(url, {
-            method: 'GET'
+          // Retry once with new token
+          const retryResponse = await fetch(url, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${newToken}`,
+              'X-CPO-App-ID': CPO_APP_ID,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+            }
           });
           if (retryResponse.ok) {
             const data = await retryResponse.json();
-            const sessionsData = data.sessions || data.data || data || dummySessions;
-            setSessions(sessionsData);
+            let sessionsArray = data.sessions || data.data || data || [];
+            if (!Array.isArray(sessionsArray)) sessionsArray = [];
+            
+            const transformed = sessionsArray.map((session, index) => ({
+              id: session.id || `SES-${Date.now()}-${index}`,
+              session_id: session.id || `SES-${Date.now()}-${index}`,
+              transaction_id: session.transaction_id || 'N/A',
+              charger_id: session.charger_id || 'N/A',
+              charger_name: session.charger_name || `Charger ${session.charger_id || 'N/A'}`,
+              start_time: session.start_time,
+              end_time: session.end_time,
+              total_kwh: session.total_kwh || '0',
+              total_amount: session.total_amount || '0',
+              currency: session.currency || 'INR',
+              status: session.status || 'UNKNOWN',
+              stop_reason: session.stop_reason || 'N/A',
+              created_at: session.created_at,
+              hub_name: session.hub_name || 'N/A',
+              cost: session.total_amount || '0',
+              ...session
+            }));
+            
+            setAllSessions(transformed);
+            const ongoingStatuses = ['Ongoing', 'Charging', 'In Progress', 'START_PENDING', 'CHARGING'];
+            const ongoing = transformed.filter(s => ongoingStatuses.includes(s.status));
+            setOngoingSessions(ongoing);
+            
             setPagination({
-              before: null,
-              before_id: null,
-              limit: 50,
-              has_more: false,
-              total: sessionsData.length
+              next_before: null,
+              next_before_id: null,
+              limit: 20,
+              has_more: false
             });
             setLoading(false);
             setLoadingMore(false);
             return;
           }
         }
-        // If refresh fails, use dummy data
-        setSessions(dummySessions);
+        // No data available
+        setAllSessions([]);
+        setOngoingSessions([]);
         setPagination({
-          before: null,
-          before_id: null,
-          limit: 50,
-          has_more: false,
-          total: dummySessions.length
+          next_before: null,
+          next_before_id: null,
+          limit: 20,
+          has_more: false
         });
       } else {
         console.error('❌ Failed to fetch sessions:', response.status);
-        setSessions(dummySessions);
+        setAllSessions([]);
+        setOngoingSessions([]);
         setPagination({
-          before: null,
-          before_id: null,
-          limit: 50,
-          has_more: false,
-          total: dummySessions.length
+          next_before: null,
+          next_before_id: null,
+          limit: 20,
+          has_more: false
         });
       }
     } catch (error) {
       console.error('❌ Error fetching sessions:', error);
-      setSessions(dummySessions);
+      setAllSessions([]);
+      setOngoingSessions([]);
       setPagination({
-        before: null,
-        before_id: null,
-        limit: 50,
-        has_more: false,
-        total: dummySessions.length
+        next_before: null,
+        next_before_id: null,
+        limit: 20,
+        has_more: false
       });
     } finally {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [pagination.limit, authenticatedRequest, refreshToken]);
+  }, [pagination.limit, refreshToken, statusFilter, selectedFilter]);
 
   const loadMoreSessions = () => {
     if (pagination.has_more && !loadingMore && !loading) {
       setLoadingMore(true);
-      fetchSessions(pagination.before, pagination.before_id);
+      fetchSessions(pagination.next_before, pagination.next_before_id);
     }
+  };
+
+  const handleSessionClick = (sessionId) => {
+    if (sessionId) {
+      navigate(`/sessions/${sessionId}`);
+    }
+  };
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
   };
 
   const handleLogout = async () => {
     try {
+      stopSSEStream();
       await logout();
     } catch (error) {
       console.error('Logout error:', error);
@@ -1368,6 +1654,7 @@ const Sessions = () => {
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'N/A';
     return date.toLocaleString('en-US', {
       day: '2-digit',
       month: 'short',
@@ -1378,7 +1665,7 @@ const Sessions = () => {
   };
 
   const formatDuration = (minutes) => {
-    if (!minutes) return 'N/A';
+    if (!minutes || minutes === 0) return 'N/A';
     const hrs = Math.floor(minutes / 60);
     const mins = minutes % 60;
     if (hrs > 0) {
@@ -1389,29 +1676,105 @@ const Sessions = () => {
 
   const getStatusColor = (status) => {
     const colors = {
-      'Completed': 'bg-green-100 text-green-700 border-green-200',
+      'COMPLETED': 'bg-green-100 text-green-700 border-green-200',
+      'START_PENDING': 'bg-yellow-100 text-yellow-700 border-yellow-200',
+      'CHARGING': 'bg-blue-100 text-blue-700 border-blue-200',
+      'STOP_PENDING': 'bg-orange-100 text-orange-700 border-orange-200',
+      'STOPPED': 'bg-gray-100 text-gray-700 border-gray-200',
+      'FAILED': 'bg-red-100 text-red-700 border-red-200',
+      'CANCELLED': 'bg-gray-100 text-gray-700 border-gray-200',
       'Ongoing': 'bg-blue-100 text-blue-700 border-blue-200',
+      'Completed': 'bg-green-100 text-green-700 border-green-200',
       'Pending': 'bg-yellow-100 text-yellow-700 border-yellow-200',
-      'Failed': 'bg-red-100 text-red-700 border-red-200',
-      'Cancelled': 'bg-gray-100 text-gray-700 border-gray-200',
+      'Charging': 'bg-blue-100 text-blue-700 border-blue-200',
+      'In Progress': 'bg-blue-100 text-blue-700 border-blue-200',
+      'Started': 'bg-green-100 text-green-700 border-green-200'
     };
     return colors[status] || 'bg-gray-100 text-gray-700 border-gray-200';
   };
 
   const getStatusIcon = (status) => {
-    switch(status) {
-      case 'Completed':
+    const statusUpper = status?.toUpperCase() || '';
+    switch(statusUpper) {
+      case 'COMPLETED':
         return <CheckCircle className="w-3 h-3" />;
-      case 'Ongoing':
-        return <Activity className="w-3 h-3" />;
-      case 'Pending':
+      case 'START_PENDING':
         return <Clock className="w-3 h-3" />;
-      case 'Failed':
+      case 'CHARGING':
+        return <Activity className="w-3 h-3" />;
+      case 'STOP_PENDING':
         return <AlertCircle className="w-3 h-3" />;
+      case 'STOPPED':
+      case 'FAILED':
+        return <CircleX className="w-3 h-3" />;
       default:
         return <Circle className="w-3 h-3" />;
     }
   };
+
+  const getStatusDisplayName = (status) => {
+    const statusMap = {
+      'START_PENDING': 'Start Pending',
+      'CHARGING': 'Charging',
+      'STOP_PENDING': 'Stop Pending',
+      'STOPPED': 'Stopped',
+      'COMPLETED': 'Completed',
+      'FAILED': 'Failed',
+      'CANCELLED': 'Cancelled'
+    };
+    return statusMap[status] || status || 'Unknown';
+  };
+
+  const handleRefresh = () => {
+    setAllSessions([]);
+    setOngoingSessions([]);
+    fetchSessions();
+    fetchFleetData();
+  };
+
+  // Helper function to safely truncate string
+  const truncateId = (id) => {
+    if (!id) return 'N/A';
+    const strId = String(id);
+    if (strId.length > 12) {
+      return strId.substring(0, 12) + '...';
+    }
+    return strId;
+  };
+
+  // Get current sessions based on active tab
+  const currentSessions = activeTab === 'all' ? allSessions : ongoingSessions;
+  
+  // Filter sessions based on search
+  const filteredSessions = currentSessions.filter(session => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    const idStr = String(session.id || '');
+    const transactionIdStr = String(session.transaction_id || '');
+    const chargerIdStr = String(session.charger_id || '');
+    const chargerNameStr = String(session.charger_name || '');
+    const hubNameStr = String(session.hub_name || '');
+    const driverNameStr = String(session.driver_name || '');
+    const customerIdStr = String(session.customer_id || '');
+    
+    return (
+      idStr.toLowerCase().includes(query) ||
+      transactionIdStr.toLowerCase().includes(query) ||
+      chargerIdStr.toLowerCase().includes(query) ||
+      chargerNameStr.toLowerCase().includes(query) ||
+      hubNameStr.toLowerCase().includes(query) ||
+      driverNameStr.toLowerCase().includes(query) ||
+      customerIdStr.toLowerCase().includes(query)
+    );
+  });
+
+  // Stats
+  const totalSessions = allSessions.length;
+  const completedSessions = allSessions.filter(s => 
+    s.status === 'COMPLETED' || s.status === 'Completed'
+  ).length;
+  const ongoingCount = ongoingSessions.length || fleetData.active_sessions || 0;
+  const anomalySessions = allSessions.filter(s => s.anomaly_detected).length;
 
   // Settings Dropdown Menu
   const SettingsMenu = () => (
@@ -1525,11 +1888,13 @@ const Sessions = () => {
               className="w-full px-3 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
             >
               <option value="All">All Status</option>
-              <option value="Completed">Completed</option>
-              <option value="Ongoing">Ongoing</option>
-              <option value="Pending">Pending</option>
-              <option value="Failed">Failed</option>
-              <option value="Cancelled">Cancelled</option>
+              <option value="COMPLETED">Completed</option>
+              <option value="CHARGING">Charging</option>
+              <option value="START_PENDING">Start Pending</option>
+              <option value="STOP_PENDING">Stop Pending</option>
+              <option value="STOPPED">Stopped</option>
+              <option value="FAILED">Failed</option>
+              <option value="CANCELLED">Cancelled</option>
             </select>
           </div>
 
@@ -1563,6 +1928,7 @@ const Sessions = () => {
             <button
               onClick={() => {
                 setShowFilterPopup(false);
+                fetchSessions();
               }}
               className="flex-1 py-2.5 rounded-xl bg-green-600 text-white font-medium hover:bg-green-700 transition shadow-lg shadow-green-500/25"
             >
@@ -1573,6 +1939,7 @@ const Sessions = () => {
                 setStatusFilter('All');
                 setSessionTypeFilter('All');
                 setSelectedFilter('All');
+                setSearchQuery('');
               }}
               className="px-6 py-2.5 rounded-xl bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 transition"
             >
@@ -1584,30 +1951,6 @@ const Sessions = () => {
     </div>
   );
 
-  // Filter sessions
-  const filteredSessions = sessions.filter(session => {
-    const matchesSearch = 
-      (session.session_id || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (session.hub_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (session.charger_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (session.driver_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (session.charger_id || '').toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'All' || session.status === statusFilter;
-    const matchesType = sessionTypeFilter === 'All' || 
-                        (sessionTypeFilter === 'Anomaly' && session.anomaly_detected) ||
-                        (sessionTypeFilter === 'Normal' && !session.anomaly_detected);
-    const matchesProtocol = selectedFilter === 'All' || session.protocol === selectedFilter;
-    
-    return matchesSearch && matchesStatus && matchesType && matchesProtocol;
-  });
-
-  // Stats
-  const totalSessions = sessions.length;
-  const completedSessions = sessions.filter(s => s.status === 'Completed').length;
-  const ongoingSessions = sessions.filter(s => s.status === 'Ongoing').length;
-  const anomalySessions = sessions.filter(s => s.anomaly_detected).length;
-
   // Show loading if refreshing
   if (isRefreshing && loading) {
     return (
@@ -1616,7 +1959,7 @@ const Sessions = () => {
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="w-12 h-12 border-4 border-green-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
-            <p className="mt-4 text-gray-600">Refreshing session...</p>
+            <p className="mt-4 text-gray-600">Loading sessions...</p>
           </div>
         </div>
       </div>
@@ -1640,11 +1983,31 @@ const Sessions = () => {
             <div className="flex items-center gap-4">
               <div>
                 <h1 className="text-2xl font-bold text-gray-800">Sessions</h1>
-                <p className="text-sm text-gray-500">View all charging sessions</p>
+                <p className="text-sm text-gray-500 flex items-center gap-2">
+                  View all charging sessions
+                  {showLiveIndicator && (
+                    <span className="flex items-center gap-1 text-green-600">
+                      <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                      <span className="text-xs font-medium">Live</span>
+                    </span>
+                  )}
+                  {isStreaming && (
+                    <span className="text-xs text-green-500 ml-1">● Connected</span>
+                  )}
+                </p>
               </div>
             </div>
             
             <div className="flex items-center gap-2 relative">
+              <button
+                onClick={handleRefresh}
+                className="p-2 hover:bg-gray-100 rounded-xl transition flex items-center gap-1.5 text-gray-600"
+                title="Refresh"
+                disabled={loading}
+              >
+                <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+              </button>
+
               <div className="relative">
                 <button
                   onClick={() => setShowSettingsMenu(!showSettingsMenu)}
@@ -1699,7 +2062,7 @@ const Sessions = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-500">Ongoing</p>
-                  <p className="text-2xl font-bold text-blue-600 mt-1">{ongoingSessions}</p>
+                  <p className="text-2xl font-bold text-blue-600 mt-1">{ongoingCount}</p>
                 </div>
                 <div className="w-11 h-11 bg-blue-50 rounded-xl flex items-center justify-center">
                   <Clock className="w-5 h-5 text-blue-600" />
@@ -1719,20 +2082,60 @@ const Sessions = () => {
             </div>
           </div>
 
+          {/* Tabs */}
+          <div className="flex items-center gap-1 mb-4 bg-gray-100 rounded-xl p-1 w-fit">
+            <button
+              onClick={() => handleTabChange('all')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                activeTab === 'all'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Grid size={16} />
+                All Sessions
+                <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">
+                  {allSessions.length}
+                </span>
+              </div>
+            </button>
+            <button
+              onClick={() => handleTabChange('ongoing')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
+                activeTab === 'ongoing'
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <Activity size={16} />
+                Ongoing
+                <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">
+                  {ongoingCount}
+                </span>
+              </div>
+            </button>
+          </div>
+
           {/* Search and Filters */}
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  setStatusFilter('All');
-                  setSessionTypeFilter('All');
-                  setSelectedFilter('All');
-                  setSearchQuery('');
-                }}
-                className="text-xs px-3 py-1.5 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 transition"
-              >
-                Clear Filters
-              </button>
+              {(statusFilter !== 'All' || selectedFilter !== 'All' || sessionTypeFilter !== 'All') && (
+                <button
+                  onClick={() => {
+                    setStatusFilter('All');
+                    setSessionTypeFilter('All');
+                    setSelectedFilter('All');
+                    setSearchQuery('');
+                    fetchSessions();
+                  }}
+                  className="text-xs px-3 py-1.5 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 transition flex items-center gap-1"
+                >
+                  <X size={12} />
+                  Clear Filters
+                </button>
+              )}
             </div>
 
             <div className="flex items-center gap-2">
@@ -1740,10 +2143,10 @@ const Sessions = () => {
                 <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Search sessions..."
+                  placeholder="Search by ID, Charger..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 pr-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm w-56 bg-gray-50"
+                  className="pl-9 pr-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm w-64 bg-gray-50"
                 />
               </div>
               <button
@@ -1757,9 +2160,9 @@ const Sessions = () => {
             </div>
           </div>
 
-          {/* Table */}
+          {/* Table - Always show table structure even when empty */}
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            {loading && sessions.length === 0 ? (
+            {loading && currentSessions.length === 0 ? (
               <div className="flex items-center justify-center py-16">
                 <div className="text-center">
                   <div className="w-12 h-12 border-4 border-green-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
@@ -1780,16 +2183,6 @@ const Sessions = () => {
                   Retry
                 </button>
               </div>
-            ) : filteredSessions.length === 0 ? (
-              <div className="flex items-center justify-center py-16">
-                <div className="text-center">
-                  <Activity className="w-16 h-16 text-gray-300 mx-auto mb-3" />
-                  <p className="text-gray-500 font-medium">No Sessions Found</p>
-                  <p className="text-sm text-gray-400 mt-1">
-                    {searchQuery ? 'Try adjusting your search' : 'No sessions available'}
-                  </p>
-                </div>
-              </div>
             ) : (
               <>
                 <div className="overflow-x-auto">
@@ -1798,75 +2191,106 @@ const Sessions = () => {
                       <tr className="bg-gray-50 border-b border-gray-200">
                         <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">#</th>
                         <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Session ID</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Hub</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Charger</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Driver</th>
+                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Transaction ID</th>
+                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Charger ID</th>
                         <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Start Time</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Duration</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Energy</th>
+                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">End Time</th>
+                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Energy (kWh)</th>
+                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount</th>
                         <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Anomaly</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Cost</th>
                         <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredSessions.map((session, index) => (
-                        <tr key={session.id} className="border-b border-gray-100 hover:bg-gray-50/50 transition">
-                          <td className="px-3 py-2.5 text-sm text-gray-500">{index + 1}</td>
-                          <td className="px-3 py-2.5 text-sm font-mono text-gray-600">
-                            {session.session_id || session.id}
-                          </td>
-                          <td className="px-3 py-2.5 text-sm text-gray-700">{session.hub_name || 'N/A'}</td>
-                          <td className="px-3 py-2.5 text-sm text-gray-700">
-                            {session.charger_name || session.charger_id || 'N/A'}
-                          </td>
-                          <td className="px-3 py-2.5 text-sm text-gray-700">{session.driver_name || 'N/A'}</td>
-                          <td className="px-3 py-2.5 text-sm text-gray-600">{formatDate(session.start_time)}</td>
-                          <td className="px-3 py-2.5 text-sm text-gray-700">
-                            {formatDuration(session.duration_minutes)}
-                          </td>
-                          <td className="px-3 py-2.5 text-sm text-gray-700">
-                            {session.energy_consumed || 0} kWh
-                          </td>
-                          <td className="px-3 py-2.5 text-sm">
-                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(session.status)}`}>
-                              {getStatusIcon(session.status)}
-                              {session.status || 'N/A'}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2.5 text-sm">
-                            {session.anomaly_detected ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">
-                                <AlertCircle size={12} />
-                                Yes
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                                <CheckCircle size={12} />
-                                No
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2.5 text-sm font-medium text-gray-700">
-                            {session.cost || 'N/A'}
-                          </td>
-                          <td className="px-3 py-2.5 text-sm">
-                            <button
-                              className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition"
-                              title="View Details"
-                            >
-                              <Eye size={16} />
-                            </button>
+                      {filteredSessions.length === 0 ? (
+                        <tr>
+                          <td colSpan="10" className="px-3 py-12 text-center">
+                            <div className="flex flex-col items-center justify-center">
+                              <Database size={48} className="text-gray-300 mb-3" />
+                              <p className="text-gray-500 font-medium">No Sessions Found</p>
+                              <p className="text-sm text-gray-400 mt-1">
+                                {activeTab === 'all' 
+                                  ? 'No charging sessions available at the moment.'
+                                  : 'No ongoing charging sessions at the moment.'}
+                              </p>
+                              {searchQuery && (
+                                <p className="text-sm text-gray-400 mt-1">
+                                  Try adjusting your search or filters
+                                </p>
+                              )}
+                              <button
+                                onClick={handleRefresh}
+                                className="mt-4 px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 transition shadow-lg shadow-green-500/25 flex items-center gap-2 text-sm"
+                              >
+                                <RefreshCw size={16} />
+                                Refresh
+                              </button>
+                            </div>
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        filteredSessions.map((session, index) => {
+                          // Safely convert id to string for display
+                          const sessionId = session.id ? String(session.id) : 'N/A';
+                          const chargerId = session.charger_id ? String(session.charger_id) : 'N/A';
+                          const transactionId = session.transaction_id ? String(session.transaction_id) : 'N/A';
+                          
+                          return (
+                            <tr 
+                              key={session.id || session.transaction_id || index} 
+                              className="border-b border-gray-100 hover:bg-gray-50/50 transition cursor-pointer"
+                              onClick={() => handleSessionClick(session.id)}
+                            >
+                              <td className="px-3 py-2.5 text-sm text-gray-500">{index + 1}</td>
+                              <td className="px-3 py-2.5 text-sm font-mono text-gray-600">
+                                {truncateId(sessionId)}
+                              </td>
+                              <td className="px-3 py-2.5 text-sm text-gray-700">
+                                {transactionId !== 'N/A' ? truncateId(transactionId) : 'N/A'}
+                              </td>
+                              <td className="px-3 py-2.5 text-sm font-mono text-gray-700">
+                                {chargerId !== 'N/A' ? truncateId(chargerId) : 'N/A'}
+                              </td>
+                              <td className="px-3 py-2.5 text-sm text-gray-600">{formatDate(session.start_time)}</td>
+                              <td className="px-3 py-2.5 text-sm text-gray-600">
+                                {session.end_time ? formatDate(session.end_time) : 'N/A'}
+                              </td>
+                              <td className="px-3 py-2.5 text-sm text-gray-700">
+                                {session.total_kwh || session.energy_consumed || 0}
+                              </td>
+                              <td className="px-3 py-2.5 text-sm font-medium text-gray-700">
+                                {session.total_amount && session.total_amount !== '0' && session.total_amount !== 0
+                                  ? `${session.currency || '₹'} ${session.total_amount}` 
+                                  : 'N/A'}
+                              </td>
+                              <td className="px-3 py-2.5 text-sm">
+                                <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(session.status)}`}>
+                                  {getStatusIcon(session.status)}
+                                  {getStatusDisplayName(session.status)}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2.5 text-sm">
+                                <button
+                                  className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition"
+                                  title="View Details"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSessionClick(session.id);
+                                  }}
+                                >
+                                  <Eye size={16} />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
                     </tbody>
                   </table>
                 </div>
 
                 {/* Pagination / Load More */}
-                {pagination.has_more && (
+                {pagination.has_more && filteredSessions.length > 0 && (
                   <div className="px-4 py-4 border-t border-gray-200 flex items-center justify-center">
                     <button
                       onClick={loadMoreSessions}
@@ -1888,9 +2312,17 @@ const Sessions = () => {
                   </div>
                 )}
 
-                {/* Total count */}
-                <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 text-xs text-gray-500">
-                  Showing {filteredSessions.length} of {pagination.total || sessions.length} sessions
+                {/* Total count - Show even when empty */}
+                <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 text-xs text-gray-500 flex justify-between items-center">
+                  <span>
+                    {filteredSessions.length === 0 
+                      ? 'No sessions available'
+                      : `Showing ${filteredSessions.length} of ${currentSessions.length} sessions`
+                    }
+                  </span>
+                  {pagination.has_more && filteredSessions.length > 0 && (
+                    <span>Load more available</span>
+                  )}
                 </div>
               </>
             )}
@@ -1904,8 +2336,15 @@ const Sessions = () => {
           from { opacity: 0; transform: scale(0.95); }
           to { opacity: 1; transform: scale(1); }
         }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
         .animate-fadeIn {
           animation: fadeIn 0.2s ease-out forwards;
+        }
+        .animate-pulse {
+          animation: pulse 1.5s ease-in-out infinite;
         }
       `}</style>
     </div>

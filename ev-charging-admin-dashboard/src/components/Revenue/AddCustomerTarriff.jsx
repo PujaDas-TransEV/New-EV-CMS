@@ -127,8 +127,8 @@ import {
   CloudGalaxy,
   CloudUniverse,
   CloudMultiverse,
-  AlertCircle,
-  Shield
+  Shield,
+  AlertCircle
 } from 'lucide-react';
 import Sidebar from '../Sidebar/Sidebar';
 
@@ -140,8 +140,47 @@ const API_CONFIG = {
   USER_GROUP_TARIFFS_API: (groupId) => `${API_BASE_URL}/api/v1/cpo/user-groups/${groupId}/tariffs`,
   HUBS_API: `${API_BASE_URL}/api/v1/cpo/hubs`,
   CHARGERS_API: `${API_BASE_URL}/api/v1/cpo/chargers`,
-  GST_API: `${API_BASE_URL}/api/v1/cpo/gst`,
   USER_INFO_API: `${API_BASE_URL}/api/v1/auth/me`
+};
+
+// Mapping UI labels to Backend Enum Values - Based on contract
+const TARIFF_TYPE_MAP = {
+  'Standard': 'fixed',
+  'Premium': 'premium',
+  'Discount': 'discount',
+  'Peak': 'peak',
+  'Off-Peak': 'off_peak'
+};
+
+const PRICE_TYPE_MAP = {
+  'Energy': 'energy',
+  'Time': 'time',
+  'Sessions': 'sessions'
+};
+
+const UNITS_MAP = {
+  'kWh': 'kwh',
+  'minutes': 'minutes'
+};
+
+// Reverse mappings for display
+const TARIFF_TYPE_DISPLAY = {
+  'fixed': 'Standard',
+  'premium': 'Premium',
+  'discount': 'Discount',
+  'peak': 'Peak',
+  'off_peak': 'Off-Peak'
+};
+
+const PRICE_TYPE_DISPLAY = {
+  'energy': 'Energy',
+  'time': 'Time',
+  'sessions': 'Sessions'
+};
+
+const UNITS_DISPLAY = {
+  'kwh': 'kWh',
+  'minutes': 'Minutes'
 };
 
 const AddCustomerTariff = () => {
@@ -160,27 +199,27 @@ const AddCustomerTariff = () => {
   const [userGroups, setUserGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [showGroupDropdown, setShowGroupDropdown] = useState(false);
+  const [activeTariffExists, setActiveTariffExists] = useState(false);
+  const [checkingActiveTariff, setCheckingActiveTariff] = useState(false);
   
-  // Hubs, Chargers and GST states
+  // Optional resources - only for display, not required for creation
   const [hubs, setHubs] = useState([]);
   const [chargers, setChargers] = useState([]);
-  const [gstList, setGstList] = useState([]);
   const [loadingHubs, setLoadingHubs] = useState(false);
   const [loadingChargers, setLoadingChargers] = useState(false);
-  const [loadingGST, setLoadingGST] = useState(false);
   const [filteredChargers, setFilteredChargers] = useState([]);
   
   // Form state - Matches backend CreateUserGroupTariff request
   const [formData, setFormData] = useState({
-    hub_id: '',
-    charger_id: '',
-    gst_id: '',
-    price_per_kwh: '',
+    price_per_unit: '',
     idle_fee_per_min: '0',
     currency: 'INR',
     is_active: true,
     start_date: '',
-    end_date: ''
+    end_date: '',
+    tariff_type: 'Standard',
+    price_type: 'Energy',
+    units: 'kWh'
   });
 
   // Form validation errors
@@ -196,15 +235,14 @@ const AddCustomerTariff = () => {
     fetchUserGroups();
     fetchHubs();
     fetchChargers();
-    fetchGSTList();
     
     const state = location.state;
     if (state && state.groupId) {
-      // Wait for groups to load before setting selected group
       const checkGroup = () => {
         const group = userGroups.find(g => g.id === state.groupId);
         if (group) {
           setSelectedGroup(group);
+          checkActiveTariff(group.id);
         } else {
           setTimeout(checkGroup, 100);
         }
@@ -240,6 +278,15 @@ const AddCustomerTariff = () => {
         const data = await response.json();
         const groups = data.user_groups || data.data || data || [];
         setUserGroups(groups);
+        
+        const state = location.state;
+        if (state && state.groupId) {
+          const group = groups.find(g => g.id === state.groupId);
+          if (group) {
+            setSelectedGroup(group);
+            checkActiveTariff(group.id);
+          }
+        }
       } else {
         setError('Failed to fetch customer groups');
       }
@@ -249,9 +296,8 @@ const AddCustomerTariff = () => {
     } finally {
       setLoading(false);
     }
-  }, [authenticatedRequest]);
+  }, [authenticatedRequest, location.state]);
 
-  // Fetch hubs using GET /api/v1/cpo/hubs
   const fetchHubs = useCallback(async () => {
     setLoadingHubs(true);
     try {
@@ -274,7 +320,6 @@ const AddCustomerTariff = () => {
     }
   }, [authenticatedRequest]);
 
-  // Fetch chargers using GET /api/v1/cpo/chargers
   const fetchChargers = useCallback(async () => {
     setLoadingChargers(true);
     try {
@@ -297,30 +342,32 @@ const AddCustomerTariff = () => {
     }
   }, [authenticatedRequest]);
 
-  // Fetch GST list using GET /api/v1/cpo/gst
-  const fetchGSTList = useCallback(async () => {
-    setLoadingGST(true);
+  // Check if there's an active tariff for the group
+  const checkActiveTariff = useCallback(async (groupId) => {
+    if (!groupId) return;
+    setCheckingActiveTariff(true);
     try {
-      const response = await authenticatedRequest(API_CONFIG.GST_API, {
+      const response = await authenticatedRequest(API_CONFIG.USER_GROUP_TARIFFS_API(groupId), {
         method: 'GET'
       });
 
       if (response.ok) {
         const data = await response.json();
-        const gstData = data.gsts || data.data || data || [];
-        setGstList(gstData);
+        const tariffData = data.tariffs || data.data || data || [];
+        const hasActive = tariffData.some(t => t.is_active === true);
+        setActiveTariffExists(hasActive);
       } else {
-        setGstList([]);
+        setActiveTariffExists(false);
       }
     } catch (error) {
-      console.error('Error fetching GST list:', error);
-      setGstList([]);
+      console.error('Error checking active tariff:', error);
+      setActiveTariffExists(false);
     } finally {
-      setLoadingGST(false);
+      setCheckingActiveTariff(false);
     }
   }, [authenticatedRequest]);
 
-  // Filter chargers based on selected hub
+  // Filter chargers based on selected hub (only for display)
   useEffect(() => {
     if (formData.hub_id) {
       const filtered = chargers.filter(c => c.hub_id === formData.hub_id);
@@ -344,18 +391,7 @@ const AddCustomerTariff = () => {
   const handleGroupSelect = (group) => {
     setSelectedGroup(group);
     setShowGroupDropdown(false);
-  };
-
-  const handleHubChange = (e) => {
-    const hubId = e.target.value;
-    setFormData(prev => ({ 
-      ...prev, 
-      hub_id: hubId,
-      charger_id: '' // Reset charger when hub changes
-    }));
-    if (formErrors.hub_id) {
-      setFormErrors(prev => ({ ...prev, hub_id: '' }));
-    }
+    checkActiveTariff(group.id);
   };
 
   const validateForm = () => {
@@ -363,13 +399,10 @@ const AddCustomerTariff = () => {
     if (!selectedGroup) {
       errors.group = 'Please select a customer group';
     }
-    if (!formData.hub_id) {
-      errors.hub_id = 'Hub is required';
-    }
-    if (!formData.price_per_kwh) {
-      errors.price_per_kwh = 'Price per kWh is required';
-    } else if (isNaN(formData.price_per_kwh) || parseFloat(formData.price_per_kwh) < 0) {
-      errors.price_per_kwh = 'Please enter a valid price';
+    if (formData.price_per_unit === '' || formData.price_per_unit === null || formData.price_per_unit === undefined) {
+      errors.price_per_unit = 'Price is required';
+    } else if (isNaN(formData.price_per_unit) || parseFloat(formData.price_per_unit) < 0) {
+      errors.price_per_unit = 'Please enter a valid price';
     }
     if (formData.idle_fee_per_min && (isNaN(formData.idle_fee_per_min) || parseFloat(formData.idle_fee_per_min) < 0)) {
       errors.idle_fee_per_min = 'Please enter a valid idle fee';
@@ -386,11 +419,48 @@ const AddCustomerTariff = () => {
     return Object.keys(errors).length === 0;
   };
 
-  // Submit to CreateUserGroupTariff API - matches backend exactly
+  // Build API payload based on contract
+  const buildApiPayload = () => {
+    const pricePerUnit = parseFloat(formData.price_per_unit) || 0;
+    const idleFeePerMin = parseFloat(formData.idle_fee_per_min) || 0;
+    
+    const payload = {
+      price_per_unit: Number(pricePerUnit.toFixed(4)).toString(),
+      idle_fee_per_min: Number(idleFeePerMin.toFixed(4)).toString(),
+      currency: formData.currency,
+      is_active: formData.is_active,
+      tariff_type: 'fixed', // Always fixed as per contract
+      price_type: PRICE_TYPE_MAP[formData.price_type] || 'energy',
+    };
+
+    // FIXED: Units mapping based on price type
+    if (formData.price_type === 'Energy') {
+      payload.units = 'kwh';
+    } else if (formData.price_type === 'Time') {
+      payload.units = 'minutes';
+    }
+    // For Sessions, omit units
+
+    // Add date range if provided
+    if (formData.start_date && formData.end_date) {
+      payload.start_date = new Date(formData.start_date).toISOString();
+      payload.end_date = new Date(formData.end_date).toISOString();
+    }
+
+    return payload;
+  };
+
+  // Submit to CreateUserGroupTariff API
   const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (!validateForm()) {
+      return;
+    }
+
+    // Check if active tariff exists
+    if (activeTariffExists) {
+      setError('Cannot create new tariff. Please deactivate the existing active tariff first.');
       return;
     }
 
@@ -399,66 +469,76 @@ const AddCustomerTariff = () => {
     setSuccess('');
 
     try {
-      // Build payload matching backend CreateUserGroupTariff request
-      const payload = {
-        hub_id: formData.hub_id,
-        price_per_kwh: parseFloat(formData.price_per_kwh),
-        idle_fee_per_min: parseFloat(formData.idle_fee_per_min) || 0,
-        currency: formData.currency,
-        is_active: formData.is_active
-      };
+      const apiPayload = buildApiPayload();
 
-      // Optional fields - only include if provided
-      if (formData.charger_id) {
-        payload.charger_id = formData.charger_id;
-      }
-      if (formData.gst_id) {
-        payload.gst_id = formData.gst_id;
-      }
-      if (formData.start_date) {
-        payload.start_date = formData.start_date;
-      }
-      if (formData.end_date) {
-        payload.end_date = formData.end_date;
-      }
-
-      console.log('📤 Creating user group tariff payload:', payload);
+      console.log('📤 UI Display Values:', {
+        tariff_type_display: formData.tariff_type,
+        price_type_display: formData.price_type,
+        units_display: formData.units || 'omitted'
+      });
+      console.log('📤 Full API Payload:', JSON.stringify(apiPayload, null, 2));
 
       const response = await authenticatedRequest(
         API_CONFIG.USER_GROUP_TARIFFS_API(selectedGroup.id),
         {
           method: 'POST',
-          body: JSON.stringify(payload)
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(apiPayload)
         }
       );
 
-      const data = await response.json();
-      console.log('📥 Response:', data);
+      let data;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { message: text };
+        }
+      }
+
+      console.log('📥 Response Status:', response.status);
+      console.log('📥 Response Data:', data);
 
       if (response.ok) {
-        setSuccess('Tariff created successfully!');
+        setSuccess('User group tariff created successfully!');
         // Reset form
         setFormData({
-          hub_id: '',
-          charger_id: '',
-          gst_id: '',
-          price_per_kwh: '',
+          price_per_unit: '',
           idle_fee_per_min: '0',
           currency: 'INR',
           is_active: true,
           start_date: '',
-          end_date: ''
+          end_date: '',
+          tariff_type: 'Standard',
+          price_type: 'Energy',
+          units: 'kWh'
         });
+        setActiveTariffExists(false);
         // Navigate back to tariffs list after delay
         setTimeout(() => {
           navigate('/revenue/customer-tariffs');
         }, 2000);
       } else {
-        setError(data.message || data.error?.message || 'Failed to create tariff');
+        let errorMessage = 'Failed to create tariff';
+        if (data.message) {
+          errorMessage = data.message;
+        } else if (data.error?.message) {
+          errorMessage = data.error.message;
+        } else if (data.error?.code) {
+          errorMessage = `${data.error.code}: ${data.error.message || 'Unknown error'}`;
+        }
+        setError(errorMessage);
       }
     } catch (error) {
       console.error('Error creating tariff:', error);
-      setError('An error occurred while creating the tariff');
+      setError(error.message || 'An error occurred while creating the tariff');
     } finally {
       setIsSubmitting(false);
     }
@@ -578,7 +658,7 @@ const AddCustomerTariff = () => {
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-bold text-gray-800">Add Customer Tariff</h1>
                 <span className="text-gray-300 text-xl">/</span>
-                <span className="text-sm text-blue-500 font-medium mt-1">New Tariff</span>
+                <span className="text-sm text-green-500 font-medium mt-1">User Group Tariff</span>
               </div>
             </div>
             
@@ -607,11 +687,11 @@ const AddCustomerTariff = () => {
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
                 <h2 className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-                  <Tag size={24} className="text-green-600" />
-                  Create New Customer Tariff
+                  <Users size={24} className="text-green-600" />
+                  Create User Group Tariff
                 </h2>
                 <p className="text-sm text-gray-600 mt-1">
-                  Set up pricing for a specific customer group (User Group Tariff)
+                  Set up pricing for a specific customer group
                 </p>
               </div>
               <div className="flex items-center gap-3 text-sm">
@@ -627,6 +707,19 @@ const AddCustomerTariff = () => {
             </div>
           </div>
 
+          {/* Active Tariff Warning */}
+          {activeTariffExists && (
+            <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-4 mb-6 flex items-start gap-3">
+              <AlertCircle size={20} className="text-yellow-600 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-yellow-800">Active Tariff Exists</p>
+                <p className="text-sm text-yellow-700">
+                  This customer group already has an active tariff. Please deactivate the existing active tariff before creating a new one.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Form Card */}
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-green-50 to-white">
@@ -634,11 +727,11 @@ const AddCustomerTariff = () => {
                 <Sparkles size={20} className="text-green-600" />
                 Tariff Configuration
               </h3>
-              <p className="text-sm text-gray-500 mt-1">Configure the pricing and rules for this customer group tariff</p>
+              <p className="text-sm text-gray-500 mt-1">Configure the pricing and rules for this user group tariff</p>
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              {/* Customer Group Selection */}
+              {/* Customer Group Selection - Required */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   Customer Group <span className="text-red-500 text-lg">*</span>
@@ -704,119 +797,10 @@ const AddCustomerTariff = () => {
                 )}
               </div>
 
-              {/* Hub Selection - Required */}
+              {/* Price per Unit - Required */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Hub <span className="text-red-500 text-lg">*</span>
-                </label>
-                <div className="relative">
-                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-                    <Layers size={18} />
-                  </div>
-                  <select
-                    name="hub_id"
-                    value={formData.hub_id}
-                    onChange={handleHubChange}
-                    className={`w-full pl-10 pr-10 py-3 rounded-xl border ${
-                      formErrors.hub_id ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-green-500'
-                    } focus:outline-none focus:ring-2 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white`}
-                  >
-                    <option value="">Select a hub</option>
-                    {loadingHubs ? (
-                      <option value="" disabled>Loading hubs...</option>
-                    ) : (
-                      hubs.map((hub) => (
-                        <option key={hub.id} value={hub.id}>
-                          {hub.name}
-                        </option>
-                      ))
-                    )}
-                  </select>
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
-                    <ChevronDown size={18} />
-                  </div>
-                </div>
-                {formErrors.hub_id && (
-                  <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
-                    <AlertCircle size={14} />
-                    {formErrors.hub_id}
-                  </p>
-                )}
-                <p className="mt-1 text-xs text-gray-400">Select the hub where this tariff will apply</p>
-              </div>
-
-              {/* Charger Selection (Optional) - Filtered by Hub */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Charger <span className="text-gray-400 text-sm">(optional)</span>
-                </label>
-                <div className="relative">
-                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-                    <Zap size={18} />
-                  </div>
-                  <select
-                    name="charger_id"
-                    value={formData.charger_id}
-                    onChange={handleChange}
-                    className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white"
-                  >
-                    <option value="">Select a charger (optional)</option>
-                    {loadingChargers ? (
-                      <option value="" disabled>Loading chargers...</option>
-                    ) : filteredChargers.length > 0 ? (
-                      filteredChargers.map((charger) => (
-                        <option key={charger.id} value={charger.id}>
-                          {charger.charger_name || charger.charger_id || charger.id}
-                        </option>
-                      ))
-                    ) : (
-                      <option value="" disabled>No chargers available for this hub</option>
-                    )}
-                  </select>
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
-                    <ChevronDown size={18} />
-                  </div>
-                </div>
-                <p className="mt-1 text-xs text-gray-400">Optional: Apply tariff to a specific charger</p>
-              </div>
-
-              {/* GST Selection (Optional) */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  GST Profile <span className="text-gray-400 text-sm">(optional)</span>
-                </label>
-                <div className="relative">
-                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-                    <Receipt size={18} />
-                  </div>
-                  <select
-                    name="gst_id"
-                    value={formData.gst_id}
-                    onChange={handleChange}
-                    className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white"
-                  >
-                    <option value="">Select GST profile (optional)</option>
-                    {loadingGST ? (
-                      <option value="" disabled>Loading GST profiles...</option>
-                    ) : (
-                      gstList.map((gst) => (
-                        <option key={gst.id} value={gst.id}>
-                          {gst.name} (SGST: {gst.sgst_rate}%, CGST: {gst.cgst_rate}%, IGST: {gst.igst_rate}%)
-                        </option>
-                      ))
-                    )}
-                  </select>
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
-                    <ChevronDown size={18} />
-                  </div>
-                </div>
-                <p className="mt-1 text-xs text-gray-400">Optional: Apply GST rates to this tariff</p>
-              </div>
-
-              {/* Price per kWh - Required */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Price per kWh <span className="text-red-500 text-lg">*</span>
+                  Price per Unit <span className="text-red-500 text-lg">*</span>
                 </label>
                 <div className="relative">
                   <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
@@ -824,24 +808,29 @@ const AddCustomerTariff = () => {
                   </div>
                   <input
                     type="number"
-                    name="price_per_kwh"
-                    value={formData.price_per_kwh}
+                    name="price_per_unit"
+                    value={formData.price_per_unit}
                     onChange={handleChange}
-                    placeholder="0.00"
-                    step="0.01"
+                    placeholder="0.0000"
+                    step="0.0001"
                     min="0"
                     className={`w-full pl-10 pr-4 py-3 rounded-xl border ${
-                      formErrors.price_per_kwh ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-green-500'
+                      formErrors.price_per_unit ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-green-500'
                     } focus:outline-none focus:ring-2 focus:border-transparent transition bg-gray-50 hover:bg-white`}
                     required
                   />
                 </div>
-                {formErrors.price_per_kwh && (
+                {formErrors.price_per_unit && (
                   <p className="mt-1 text-sm text-red-600 flex items-center gap-1">
                     <AlertCircle size={14} />
-                    {formErrors.price_per_kwh}
+                    {formErrors.price_per_unit}
                   </p>
                 )}
+                <p className="mt-1 text-xs text-gray-400">
+                  {formData.price_type === 'Energy' && 'Enter price per kWh (e.g., 18.50)'}
+                  {formData.price_type === 'Time' && 'Enter price per minute (e.g., 2.50)'}
+                  {formData.price_type === 'Sessions' && 'Enter price per session (e.g., 100.00)'}
+                </p>
               </div>
 
               {/* Idle Fee per Minute - Optional */}
@@ -858,8 +847,8 @@ const AddCustomerTariff = () => {
                     name="idle_fee_per_min"
                     value={formData.idle_fee_per_min}
                     onChange={handleChange}
-                    placeholder="0.00"
-                    step="0.01"
+                    placeholder="0.0000"
+                    step="0.0001"
                     min="0"
                     className={`w-full pl-10 pr-4 py-3 rounded-xl border ${
                       formErrors.idle_fee_per_min ? 'border-red-300 focus:ring-red-500' : 'border-gray-300 focus:ring-green-500'
@@ -872,34 +861,129 @@ const AddCustomerTariff = () => {
                     {formErrors.idle_fee_per_min}
                   </p>
                 )}
-                <p className="mt-1 text-xs text-gray-400">Fee charged per minute when charger is idle</p>
+                <p className="mt-1 text-xs text-gray-400">Must be 0 (idle fee is not supported for new tariffs)</p>
               </div>
 
-              {/* Currency */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Currency
-                </label>
-                <div className="relative">
-                  <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-                    <Globe size={18} />
-                  </div>
-                  <select
-                    name="currency"
-                    value={formData.currency}
-                    onChange={handleChange}
-                    className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white"
-                  >
-                    <option value="INR">INR - Indian Rupee</option>
-                    <option value="USD">USD - US Dollar</option>
-                    <option value="EUR">EUR - Euro</option>
-                    <option value="GBP">GBP - British Pound</option>
-                  </select>
-                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
-                    <ChevronDown size={18} />
+              {/* Currency, Tariff Type, Price Type - Required */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Currency <span className="text-red-500 text-lg">*</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                      <Globe size={18} />
+                    </div>
+                    <select
+                      name="currency"
+                      value={formData.currency}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white"
+                    >
+                      <option value="INR">INR - Indian Rupee</option>
+                      <option value="USD">USD - US Dollar</option>
+                      <option value="EUR">EUR - Euro</option>
+                      <option value="GBP">GBP - British Pound</option>
+                    </select>
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
+                      <ChevronDown size={18} />
+                    </div>
                   </div>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Tariff Type <span className="text-red-500 text-lg">*</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                      <Tag size={18} />
+                    </div>
+                    <select
+                      name="tariff_type"
+                      value={formData.tariff_type}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white"
+                    >
+                      <option value="Standard">Standard</option>
+                      <option value="Premium">Premium</option>
+                      <option value="Discount">Discount</option>
+                      <option value="Peak">Peak</option>
+                      <option value="Off-Peak">Off-Peak</option>
+                    </select>
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
+                      <ChevronDown size={18} />
+                    </div>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-400">UI Label: {formData.tariff_type} → API: {TARIFF_TYPE_MAP[formData.tariff_type]}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Price Type <span className="text-red-500 text-lg">*</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                      <DollarSign size={18} />
+                    </div>
+                    <select
+                      name="price_type"
+                      value={formData.price_type}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white"
+                    >
+                      <option value="Energy">Energy (per kWh)</option>
+                      <option value="Time">Time (per minute)</option>
+                      <option value="Sessions">Sessions (per session)</option>
+                    </select>
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
+                      <ChevronDown size={18} />
+                    </div>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-400">UI Label: {formData.price_type} → API: {PRICE_TYPE_MAP[formData.price_type]}</p>
+                </div>
               </div>
+
+              {/* Units - Required for Energy and Time */}
+              {formData.price_type !== 'Sessions' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Units <span className="text-red-500 text-lg">*</span>
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                      <Gauge size={18} />
+                    </div>
+                    <select
+                      name="units"
+                      value={formData.units}
+                      onChange={handleChange}
+                      className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white"
+                    >
+                      {formData.price_type === 'Energy' && (
+                        <option value="kWh">kWh</option>
+                      )}
+                      {formData.price_type === 'Time' && (
+                        <option value="minutes">Minutes</option>
+                      )}
+                    </select>
+                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
+                      <ChevronDown size={18} />
+                    </div>
+                  </div>
+                  <p className="mt-1 text-xs text-gray-400">
+                    {formData.price_type === 'Energy' && 'UI Label: {formData.units} → API: kwh'}
+                    {formData.price_type === 'Time' && 'UI Label: {formData.units} → API: minutes'}
+                  </p>
+                </div>
+              )}
+
+              {formData.price_type === 'Sessions' && (
+                <div className="bg-blue-50 rounded-xl p-3 border border-blue-200">
+                  <p className="text-xs text-blue-700">
+                    <Info size={14} className="inline mr-1" />
+                    Sessions pricing: One fixed amount for one completed session. Units are omitted.
+                  </p>
+                </div>
+              )}
 
               {/* Date Range (Optional) */}
               <div className="grid grid-cols-2 gap-4">
@@ -991,16 +1075,20 @@ const AddCustomerTariff = () => {
                 <div className="flex items-start gap-3">
                   <Info size={18} className="text-green-600 mt-0.5 flex-shrink-0" />
                   <div>
-                    <p className="text-sm font-medium text-green-800">What is a Customer Group Tariff?</p>
+                    <p className="text-sm font-medium text-green-800">What is a User Group Tariff?</p>
                     <p className="text-sm text-green-700 mt-1">
-                      Customer group tariffs define the pricing structure for specific user groups.
-                      This tariff will be applied to all customers belonging to the selected group.
-                      You can optionally restrict it to a specific hub, charger, or apply GST rates.
-                      The tariff includes price per kWh and optional idle fees with a validity period.
+                      User group tariffs define the pricing structure for specific customer groups.
+                      This tariff applies to all customers belonging to the selected group and takes precedence over
+                      Hub and Charger tariffs.
                     </p>
                     <p className="text-sm text-green-700 mt-2">
-                      <strong>Note:</strong> This is a User Group Tariff which is applied at the customer group level
-                      and can be optionally scoped to a specific hub or charger.
+                      <strong>Note:</strong> Tariff precedence: UserGroup &gt; Charger &gt; Hub.
+                      GST is managed separately at the Hub level and is not included in tariff creation.
+                    </p>
+                    <p className="text-sm text-green-700 mt-2">
+                      <strong>API Mapping:</strong> Tariff Type: {formData.tariff_type} → {TARIFF_TYPE_MAP[formData.tariff_type]}, 
+                      Price Type: {formData.price_type} → {PRICE_TYPE_MAP[formData.price_type]}, 
+                      Units: {formData.price_type === 'Sessions' ? 'omitted' : (formData.units || 'kWh')}
                     </p>
                   </div>
                 </div>
@@ -1025,17 +1113,24 @@ const AddCustomerTariff = () => {
               <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-gray-200">
                 <button
                   type="submit"
-                  disabled={isSubmitting}
-                  className="flex-1 px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 transition flex items-center justify-center gap-2 font-medium shadow-lg shadow-green-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={isSubmitting || activeTariffExists}
+                  className={`flex-1 px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl transition flex items-center justify-center gap-2 font-medium shadow-lg shadow-green-500/25 disabled:opacity-50 disabled:cursor-not-allowed ${
+                    !activeTariffExists ? 'hover:from-green-700 hover:to-emerald-700' : ''
+                  }`}
                 >
                   {isSubmitting ? (
                     <>
                       <Loader2 className="w-5 h-5 animate-spin" />
                       Creating Tariff...
                     </>
+                  ) : activeTariffExists ? (
+                    <>
+                      <AlertCircle size={20} />
+                      Deactivate Active Tariff First
+                    </>
                   ) : (
                     <>
-                      <Tag size={20} />
+                      <Users size={20} />
                       Create Tariff
                       <ArrowRight size={18} className="group-hover:translate-x-1 transition" />
                     </>
@@ -1057,12 +1152,12 @@ const AddCustomerTariff = () => {
             <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition group">
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-10 h-10 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl flex items-center justify-center group-hover:scale-110 transition">
-                  <Tag className="w-5 h-5 text-green-600" />
+                  <Users className="w-5 h-5 text-green-600" />
                 </div>
                 <h4 className="font-semibold text-gray-900">Group Specific Pricing</h4>
               </div>
               <p className="text-sm text-gray-500 leading-relaxed">
-                Create custom pricing structures for different customer groups and usage patterns
+                Create custom pricing structures for different customer groups
               </p>
             </div>
             <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition group">
@@ -1070,21 +1165,21 @@ const AddCustomerTariff = () => {
                 <div className="w-10 h-10 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl flex items-center justify-center group-hover:scale-110 transition">
                   <CalendarDays className="w-5 h-5 text-blue-600" />
                 </div>
-                <h4 className="font-semibold text-gray-900">Hub & Charger Specific</h4>
+                <h4 className="font-semibold text-gray-900">Flexible Pricing</h4>
               </div>
               <p className="text-sm text-gray-500 leading-relaxed">
-                Apply tariffs to specific hubs or individual chargers within the hub
+                Support for Energy (per kWh), Time (per minute), and Sessions pricing models
               </p>
             </div>
             <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition group">
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-10 h-10 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl flex items-center justify-center group-hover:scale-110 transition">
-                  <Receipt className="w-5 h-5 text-purple-600" />
+                  <Infinity className="w-5 h-5 text-purple-600" />
                 </div>
-                <h4 className="font-semibold text-gray-900">GST Integration</h4>
+                <h4 className="font-semibold text-gray-900">Validity Period</h4>
               </div>
               <p className="text-sm text-gray-500 leading-relaxed">
-                Automatically apply GST rates (SGST, CGST, IGST) to your tariffs
+                Set optional start and end dates for tariff validity
               </p>
             </div>
           </div>
