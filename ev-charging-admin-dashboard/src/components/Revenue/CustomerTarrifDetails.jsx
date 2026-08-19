@@ -25,6 +25,7 @@ import {
   BarChart,
   PieChart,
   Zap,
+  Calendar,
   Clock,
   X,
   AlertCircle,
@@ -38,7 +39,7 @@ import {
   DollarSign,
   RefreshCw,
   Infinity,
-  Calendar,
+  Calendar as CalendarIcon,
   MoreVertical,
   Filter,
   Power,
@@ -46,11 +47,16 @@ import {
   Activity,
   Pencil,
   Save,
-  Gauge
+  Gauge,
+  Crown,
+  Timer,
+  CalendarRange
 } from 'lucide-react';
 import Sidebar from '../Sidebar/Sidebar';
 
+// ============================================================================
 // API Configuration
+// ============================================================================
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://dev-evcmsnew.transev.site';
 
 const API_CONFIG = {
@@ -62,15 +68,9 @@ const API_CONFIG = {
   CHARGERS_API: `${API_BASE_URL}/api/v1/cpo/chargers`,
 };
 
-// Mapping UI labels to Backend Enum Values
-const TARIFF_TYPE_MAP = {
-  'Standard': 'fixed',
-  'Premium': 'premium',
-  'Discount': 'discount',
-  'Peak': 'peak',
-  'Off-Peak': 'off_peak'
-};
-
+// ============================================================================
+// SECTION 12 - Canonical Pricing Model
+// ============================================================================
 const PRICE_TYPE_MAP = {
   'Energy': 'energy',
   'Time': 'time',
@@ -82,15 +82,6 @@ const UNITS_MAP = {
   'minutes': 'minutes'
 };
 
-// Reverse mappings for display
-const TARIFF_TYPE_DISPLAY = {
-  'fixed': 'Standard',
-  'premium': 'Premium',
-  'discount': 'Discount',
-  'peak': 'Peak',
-  'off_peak': 'Off-Peak'
-};
-
 const PRICE_TYPE_DISPLAY = {
   'energy': 'Energy',
   'time': 'Time',
@@ -100,6 +91,105 @@ const PRICE_TYPE_DISPLAY = {
 const UNITS_DISPLAY = {
   'kwh': 'kWh',
   'minutes': 'Minutes'
+};
+
+// ============================================================================
+// SECTION 55 - Recommended Terminology Glossary
+// ============================================================================
+const TARIFF_ROLE_DISPLAY = {
+  'root': 'Root Fallback',
+  'baseline': 'Open-ended Baseline',
+  'temporary': 'Temporary Override'
+};
+
+const TARIFF_ROLE_COLORS = {
+  'root': 'purple',
+  'baseline': 'blue',
+  'temporary': 'orange'
+};
+
+const TARIFF_ROLE_ICONS = {
+  'root': Crown,
+  'baseline': CalendarRange,
+  'temporary': Timer
+};
+
+// ============================================================================
+// SECTION 10 - Derived Frontend Display States
+// ============================================================================
+const getDerivedStatus = (tariff, now = new Date()) => {
+  if (!tariff.is_active) {
+    return { 
+      label: 'Disabled', 
+      color: 'gray', 
+      icon: XCircle, 
+      description: 'Ignored by resolver',
+      badgeColor: 'bg-gray-100 text-gray-700'
+    };
+  }
+
+  const isRoot = !tariff.start_date && !tariff.end_date;
+  
+  if (isRoot) {
+    return { 
+      label: 'Root', 
+      color: 'purple', 
+      icon: Crown, 
+      description: 'Timeless fallback',
+      badgeColor: 'bg-purple-100 text-purple-700'
+    };
+  }
+
+  const startDate = tariff.start_date ? new Date(tariff.start_date) : null;
+  const endDate = tariff.end_date ? new Date(tariff.end_date) : null;
+
+  if (startDate && startDate > now) {
+    return { 
+      label: 'Scheduled', 
+      color: 'blue', 
+      icon: Calendar, 
+      description: 'Future tariff',
+      badgeColor: 'bg-blue-100 text-blue-700'
+    };
+  }
+
+  if (endDate && endDate <= now) {
+    return { 
+      label: 'Expired', 
+      color: 'red', 
+      icon: XCircle, 
+      description: 'Past validity',
+      badgeColor: 'bg-red-100 text-red-700'
+    };
+  }
+
+  if (startDate && startDate <= now && (!endDate || endDate > now)) {
+    return { 
+      label: 'Time-applicable', 
+      color: 'green', 
+      icon: CheckCircle, 
+      description: 'Currently valid',
+      badgeColor: 'bg-green-100 text-green-700'
+    };
+  }
+
+  return { 
+    label: 'Enabled', 
+    color: 'blue', 
+    icon: CheckCircle, 
+    description: 'Enabled for resolution',
+    badgeColor: 'bg-blue-100 text-blue-700'
+  };
+};
+
+// ============================================================================
+// SECTION 5 - Temporal Roles
+// ============================================================================
+const getTemporalRole = (tariff) => {
+  if (!tariff.start_date && !tariff.end_date) return 'root';
+  if (tariff.start_date && !tariff.end_date) return 'baseline';
+  if (tariff.start_date && tariff.end_date) return 'temporary';
+  return 'unknown';
 };
 
 const CustomerTariff = () => {
@@ -124,7 +214,10 @@ const CustomerTariff = () => {
   const [chargers, setChargers] = useState([]);
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateSuccess, setUpdateSuccess] = useState('');
-  const [activeTariffExists, setActiveTariffExists] = useState(false);
+  const [rootTariffExists, setRootTariffExists] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingTariffId, setDeletingTariffId] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const isModalOpeningRef = useRef(false);
 
   // Edit form state
@@ -135,7 +228,9 @@ const CustomerTariff = () => {
     is_active: true,
     tariff_type: 'Standard',
     price_type: 'Energy',
-    units: 'kWh'
+    units: 'kWh',
+    start_date: '',
+    end_date: ''
   });
 
   const tabs = [
@@ -156,6 +251,7 @@ const CustomerTariff = () => {
     fetchUserGroups();
     fetchHubs();
     fetchChargers();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, navigate]);
 
   const fetchUserInfo = async () => {
@@ -240,16 +336,18 @@ const CustomerTariff = () => {
         const data = await response.json();
         const tariffData = data.tariffs || data.data || data || [];
         setTariffs(tariffData);
-        const hasActive = tariffData.some(t => t.is_active === true);
-        setActiveTariffExists(hasActive);
+        
+        // Check if there's a root tariff
+        const hasRoot = tariffData.some(t => !t.start_date && !t.end_date && t.is_active === true);
+        setRootTariffExists(hasRoot);
       } else {
         setTariffs([]);
-        setActiveTariffExists(false);
+        setRootTariffExists(false);
       }
     } catch (error) {
       console.error('Error fetching tariffs:', error);
       setTariffs([]);
-      setActiveTariffExists(false);
+      setRootTariffExists(false);
     } finally {
       setLoadingTariffs(false);
     }
@@ -290,7 +388,6 @@ const CustomerTariff = () => {
         setShowTariffDetail(true);
         setIsEditing(false);
         
-        const displayTariffType = TARIFF_TYPE_DISPLAY[fullTariff.tariff_type] || fullTariff.tariff_type || 'Standard';
         const displayPriceType = PRICE_TYPE_DISPLAY[fullTariff.price_type] || fullTariff.price_type || 'Energy';
         const displayUnits = UNITS_DISPLAY[fullTariff.units] || fullTariff.units || 'kWh';
         
@@ -299,9 +396,11 @@ const CustomerTariff = () => {
           idle_fee_per_min: fullTariff.idle_fee_per_min || '0',
           currency: fullTariff.currency || 'INR',
           is_active: fullTariff.is_active !== undefined ? fullTariff.is_active : true,
-          tariff_type: displayTariffType,
+          tariff_type: 'Standard',
           price_type: displayPriceType,
-          units: displayUnits
+          units: displayUnits,
+          start_date: fullTariff.start_date || '',
+          end_date: fullTariff.end_date || ''
         });
       }
     } catch (error) {
@@ -324,7 +423,6 @@ const CustomerTariff = () => {
   const handleEditToggle = () => {
     setIsEditing(!isEditing);
     if (!isEditing && selectedTariff) {
-      const displayTariffType = TARIFF_TYPE_DISPLAY[selectedTariff.tariff_type] || selectedTariff.tariff_type || 'Standard';
       const displayPriceType = PRICE_TYPE_DISPLAY[selectedTariff.price_type] || selectedTariff.price_type || 'Energy';
       const displayUnits = UNITS_DISPLAY[selectedTariff.units] || selectedTariff.units || 'kWh';
       
@@ -333,9 +431,11 @@ const CustomerTariff = () => {
         idle_fee_per_min: selectedTariff.idle_fee_per_min || '0',
         currency: selectedTariff.currency || 'INR',
         is_active: selectedTariff.is_active !== undefined ? selectedTariff.is_active : true,
-        tariff_type: displayTariffType,
+        tariff_type: 'Standard',
         price_type: displayPriceType,
-        units: displayUnits
+        units: displayUnits,
+        start_date: selectedTariff.start_date || '',
+        end_date: selectedTariff.end_date || ''
       });
     }
   };
@@ -348,6 +448,44 @@ const CustomerTariff = () => {
     }));
   };
 
+  // ============================================================================
+  // SECTION 20 - PATCH Semantics (Omitted vs Null)
+  // ============================================================================
+  const buildUpdatePayload = () => {
+    const pricePerUnit = parseFloat(editFormData.price_per_unit) || 0;
+    const idleFeePerMin = parseFloat(editFormData.idle_fee_per_min) || 0;
+    
+    const payload = {
+      price_per_unit: Number(pricePerUnit.toFixed(4)).toString(),
+      idle_fee_per_min: Number(idleFeePerMin.toFixed(4)).toString(),
+      currency: editFormData.currency,
+      is_active: editFormData.is_active,
+      tariff_type: 'fixed',
+      price_type: PRICE_TYPE_MAP[editFormData.price_type] || 'energy',
+    };
+
+    // SECTION 12 - Sessions pricing omits units
+    if (editFormData.price_type !== 'Sessions') {
+      payload.units = UNITS_MAP[editFormData.units] || 'kwh';
+    }
+
+    // SECTION 5 - Temporal roles
+    if (editFormData.start_date !== undefined && editFormData.end_date !== undefined) {
+      if (!editFormData.start_date && !editFormData.end_date) {
+        payload.start_date = null;
+        payload.end_date = null;
+      } else if (editFormData.start_date && !editFormData.end_date) {
+        payload.start_date = new Date(editFormData.start_date).toISOString();
+        payload.end_date = null;
+      } else if (editFormData.start_date && editFormData.end_date) {
+        payload.start_date = new Date(editFormData.start_date).toISOString();
+        payload.end_date = new Date(editFormData.end_date).toISOString();
+      }
+    }
+
+    return payload;
+  };
+
   const handleUpdateTariff = async (e) => {
     e.preventDefault();
     setIsUpdating(true);
@@ -355,23 +493,7 @@ const CustomerTariff = () => {
     setUpdateSuccess('');
 
     try {
-      const pricePerUnit = parseFloat(editFormData.price_per_unit) || 0;
-      const idleFeePerMin = parseFloat(editFormData.idle_fee_per_min) || 0;
-      
-      const apiPayload = {
-        price_per_unit: Number(pricePerUnit.toFixed(4)).toString(),
-        idle_fee_per_min: Number(idleFeePerMin.toFixed(4)).toString(),
-        currency: editFormData.currency,
-        is_active: editFormData.is_active,
-        tariff_type: 'fixed',
-        price_type: PRICE_TYPE_MAP[editFormData.price_type] || 'energy',
-      };
-
-      if (editFormData.price_type === 'Energy') {
-        apiPayload.units = 'kwh';
-      } else if (editFormData.price_type === 'Time') {
-        apiPayload.units = 'minutes';
-      }
+      const apiPayload = buildUpdatePayload();
 
       console.log('📤 Update Payload:', JSON.stringify(apiPayload, null, 2));
 
@@ -417,6 +539,14 @@ const CustomerTariff = () => {
           errorMessage = data.message;
         } else if (data.error?.message) {
           errorMessage = data.error.message;
+        } else if (data.error?.code) {
+          if (data.error.code === 'tariff_temporal_conflict') {
+            errorMessage = 'This tariff conflicts with another tariff on the same target. Adjust the schedule or keep it disabled.';
+          } else if (data.error.code === 'tariff_in_use') {
+            errorMessage = 'This tariff is referenced by charging/commercial history and cannot be deleted. Disable it instead.';
+          } else {
+            errorMessage = `${data.error.code}: ${data.error.message || 'Unknown error'}`;
+          }
         }
         setError(errorMessage);
       }
@@ -425,6 +555,60 @@ const CustomerTariff = () => {
       setError(error.message || 'An error occurred while updating the tariff');
     } finally {
       setIsUpdating(false);
+    }
+  };
+
+  // ============================================================================
+  // SECTION 24 - Delete Semantics
+  // ============================================================================
+  const handleDeleteTariff = async () => {
+    if (!deletingTariffId) return;
+    
+    setIsDeleting(true);
+    setError('');
+
+    try {
+      const response = await authenticatedRequest(
+        API_CONFIG.USER_GROUP_TARIFF_DETAIL_API(selectedGroup.id, deletingTariffId),
+        {
+          method: 'DELETE',
+          headers: {
+            'Accept': 'application/json'
+          }
+        }
+      );
+
+      if (response.ok) {
+        setUpdateSuccess('Tariff deleted successfully!');
+        await fetchTariffs(selectedGroup.id);
+        setShowTariffDetail(false);
+        setSelectedTariff(null);
+        setShowDeleteConfirm(false);
+        setDeletingTariffId(null);
+        setTimeout(() => setUpdateSuccess(''), 3000);
+      } else {
+        let errorMessage = 'Failed to delete tariff';
+        const data = await response.json();
+        if (data.message) {
+          errorMessage = data.message;
+        } else if (data.error?.message) {
+          errorMessage = data.error.message;
+        } else if (data.error?.code) {
+          if (data.error.code === 'tariff_in_use') {
+            errorMessage = 'This tariff is referenced by charging/commercial history and cannot be deleted. Disable it instead.';
+          } else {
+            errorMessage = `${data.error.code}: ${data.error.message || 'Unknown error'}`;
+          }
+        }
+        setError(errorMessage);
+      }
+    } catch (error) {
+      console.error('Error deleting tariff:', error);
+      setError(error.message || 'An error occurred while deleting the tariff');
+    } finally {
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+      setDeletingTariffId(null);
     }
   };
 
@@ -489,8 +673,8 @@ const CustomerTariff = () => {
 
   const getStatusColor = (isActive) => {
     return isActive 
-      ? 'bg-green-100 text-green-700 border-green-200'
-      : 'bg-red-100 text-red-700 border-red-200';
+      ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+      : 'bg-gray-100 text-gray-700 border-gray-200';
   };
 
   const getStatusIcon = (isActive) => {
@@ -509,23 +693,138 @@ const CustomerTariff = () => {
     return charger ? charger.charger_name || charger.charger_id : chargerId;
   };
 
-  const getAssignedToLabel = (assignedTo) => {
-    const map = {
-      'hub': 'Hub Tariff',
-      'charger': 'Charger Tariff',
-      'usergroup': 'User Group Tariff'
-    };
-    return map[assignedTo] || assignedTo;
-  };
+  // Settings Dropdown Menu
+  const SettingsMenu = () => (
+    <div className="absolute top-full right-0 mt-2 bg-white rounded-2xl w-80 shadow-2xl border border-gray-100 z-50 overflow-hidden">
+      <div className="bg-gradient-to-r from-green-600 to-emerald-600 px-5 py-4">
+        <div className="flex items-center gap-3">
+          <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-2xl font-bold text-white border-2 border-white/30 flex-shrink-0">
+            {userData?.user?.full_name?.charAt(0) || user?.name?.charAt(0) || 'U'}
+          </div>
+          <div className="flex-1 min-w-0">
+            <h4 className="text-base font-semibold text-white truncate">
+              {userData?.user?.full_name || user?.name || 'User'}
+            </h4>
+            <p className="text-sm text-white/80 truncate">
+              {userData?.user?.email || user?.email || 'user@transev.com'}
+            </p>
+            {userData?.role && (
+              <span className="inline-block mt-1 px-2 py-0.5 bg-white/20 rounded-full text-xs text-white border border-white/30">
+                {userData.role}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      <div className="p-2">
+        <button onClick={() => { setShowSettingsMenu(false); navigate('/profile'); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-50 text-sm font-medium text-gray-700 hover:text-gray-900 flex items-center gap-3 transition">
+          <User size={16} className="text-gray-400" /> <span>Profile</span>
+        </button>
+        <button onClick={() => { setShowSettingsMenu(false); navigate('/organization'); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-50 text-sm font-medium text-gray-700 hover:text-gray-900 flex items-center gap-3 transition">
+          <Building size={16} className="text-gray-400" /> <span>Organization</span>
+        </button>
+        <div className="border-t border-gray-100 my-1"></div>
+        <button onClick={() => { setShowSettingsMenu(false); handleLogout(); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-red-50 text-sm font-medium text-red-600 hover:text-red-700 flex items-center gap-3 transition">
+          <LogOut size={16} className="text-red-500" /> <span>Sign Out</span>
+        </button>
+      </div>
+    </div>
+  );
+
+  // Add Dropdown Menu
+  const AddMenu = () => (
+    <div className="absolute top-full right-0 mt-2 bg-white rounded-2xl w-64 shadow-2xl border border-gray-100 z-50">
+      <div className="p-3">
+        <button onClick={() => { setShowAddMenu(false); navigate("/add-hub"); }} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-50 text-sm font-medium text-gray-700 hover:text-gray-900 flex items-center gap-3 transition">
+          <Zap size={18} className="text-gray-400" /> Add Hub
+        </button>
+        <button onClick={() => { setShowAddMenu(false); navigate("/add-charger"); }} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-50 text-sm font-medium text-gray-700 hover:text-gray-900 flex items-center gap-3 transition">
+          <Zap size={18} className="text-gray-400" /> Add Charger
+        </button>
+      </div>
+    </div>
+  );
+
+  // Delete Confirmation Modal
+  const DeleteConfirmModal = () => (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+      <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-slideUp">
+        <div className="bg-gradient-to-r from-red-500 to-rose-600 px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
+              <Trash2 className="w-5 h-5 text-white" />
+            </div>
+            <h3 className="text-lg font-bold text-white">Delete Tariff</h3>
+          </div>
+        </div>
+        
+        <div className="p-6">
+          <p className="text-gray-700 text-sm leading-relaxed">
+            Delete this tariff permanently? If it is currently selected, new pricing will immediately fall back to the next eligible tariff.
+          </p>
+          <p className="text-gray-500 text-xs mt-2">
+            Tariffs referenced by charging history cannot be deleted.
+          </p>
+          
+          {error && (
+            <div className="mt-4 bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2 text-red-700">
+              <AlertCircle size={16} className="flex-shrink-0" />
+              <span className="text-sm">{error}</span>
+            </div>
+          )}
+          
+          <div className="flex gap-3 mt-6">
+            <button
+              onClick={handleDeleteTariff}
+              disabled={isDeleting}
+              className="flex-1 px-6 py-3 bg-red-600 text-white rounded-xl hover:bg-red-700 transition flex items-center justify-center gap-2 font-medium disabled:opacity-50"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 size={18} />
+                  Delete Permanently
+                </>
+              )}
+            </button>
+            <button
+              onClick={() => {
+                setShowDeleteConfirm(false);
+                setDeletingTariffId(null);
+                setError('');
+              }}
+              className="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition font-medium"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
   // Tariff Detail Modal Component
-  const TariffDetailModal = ({ tariff, onClose, onEditToggle, isEditing, editFormData, onEditChange, onUpdate, isUpdating, error, updateSuccess }) => {
+  const TariffDetailModal = ({ tariff, onClose, onEditToggle, isEditing, editFormData, onEditChange, onUpdate, isUpdating, error, updateSuccess, onDelete }) => {
     if (!tariff) return null;
+
+    const temporalRole = getTemporalRole(tariff);
+    const derivedStatus = getDerivedStatus(tariff);
+    const isRoot = temporalRole === 'root';
+    const isBaseline = temporalRole === 'baseline';
+    const isTemporary = temporalRole === 'temporary';
+    const RoleIcon = TARIFF_ROLE_ICONS[temporalRole] || Tag;
+    const roleColor = TARIFF_ROLE_COLORS[temporalRole] || 'blue';
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fadeIn">
         <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl animate-slideUp">
-          <div className="bg-gradient-to-r from-green-600 to-emerald-600 px-6 py-5 flex items-center justify-between">
+          {/* Modal Header - Green Gradient */}
+          <div className="bg-gradient-to-r from-green-600 via-emerald-600 to-teal-600 px-6 py-5 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
                 <Users className="w-5 h-5 text-white" />
@@ -558,6 +857,7 @@ const CustomerTariff = () => {
             </div>
           </div>
 
+          {/* Modal Body */}
           <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
             {error && (
               <div className="mb-4 bg-red-50 border border-red-200 rounded-xl p-4 flex items-center gap-2 text-red-700">
@@ -566,13 +866,14 @@ const CustomerTariff = () => {
               </div>
             )}
             {updateSuccess && (
-              <div className="mb-4 bg-green-50 border border-green-200 rounded-xl p-4 flex items-center gap-2 text-green-700">
+              <div className="mb-4 bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-center gap-2 text-emerald-700">
                 <CheckCircle size={18} className="flex-shrink-0" />
                 <span>{updateSuccess}</span>
               </div>
             )}
 
             {isEditing ? (
+              // Edit Form
               <form onSubmit={onUpdate} className="space-y-5">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div>
@@ -651,31 +952,6 @@ const CustomerTariff = () => {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                      Tariff Type <span className="text-red-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-                        <Tag size={18} />
-                      </div>
-                      <select
-                        name="tariff_type"
-                        value={editFormData.tariff_type}
-                        onChange={onEditChange}
-                        className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white"
-                      >
-                        <option value="Standard">Standard</option>
-                        <option value="Premium">Premium</option>
-                        <option value="Discount">Discount</option>
-                        <option value="Peak">Peak</option>
-                        <option value="Off-Peak">Off-Peak</option>
-                      </select>
-                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
-                        <ChevronDown size={18} />
-                      </div>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
                       Price Type <span className="text-red-500">*</span>
                     </label>
                     <div className="relative">
@@ -697,9 +973,6 @@ const CustomerTariff = () => {
                       </div>
                     </div>
                   </div>
-                </div>
-
-                {editFormData.price_type !== 'Sessions' && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1.5">
                       Units <span className="text-red-500">*</span>
@@ -712,6 +985,7 @@ const CustomerTariff = () => {
                         name="units"
                         value={editFormData.units}
                         onChange={onEditChange}
+                        disabled={editFormData.price_type === 'Sessions'}
                         className="w-full pl-10 pr-10 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition appearance-none bg-gray-50 hover:bg-white"
                       >
                         {editFormData.price_type === 'Energy' && (
@@ -720,13 +994,16 @@ const CustomerTariff = () => {
                         {editFormData.price_type === 'Time' && (
                           <option value="minutes">Minutes</option>
                         )}
+                        {editFormData.price_type === 'Sessions' && (
+                          <option value="">Units omitted for Sessions</option>
+                        )}
                       </select>
                       <div className="absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-400">
                         <ChevronDown size={18} />
                       </div>
                     </div>
                   </div>
-                )}
+                </div>
 
                 {editFormData.price_type === 'Sessions' && (
                   <div className="bg-blue-50 rounded-xl p-3 border border-blue-200">
@@ -737,6 +1014,122 @@ const CustomerTariff = () => {
                   </div>
                 )}
 
+                {/* SECTION 29 - Temporal Role Selection */}
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                  <p className="text-xs font-medium text-gray-700 mb-2 flex items-center gap-2">
+                    <Calendar size={14} className="text-gray-500" />
+                    Temporal Role
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditFormData(prev => ({
+                          ...prev,
+                          start_date: '',
+                          end_date: ''
+                        }));
+                      }}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition border-2 ${
+                        !editFormData.start_date && !editFormData.end_date
+                          ? 'border-purple-500 bg-purple-50 text-purple-700'
+                          : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Crown size={14} className={!editFormData.start_date && !editFormData.end_date ? 'text-purple-500' : 'text-gray-400'} />
+                        Root
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-0.5">Timeless fallback</p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const today = new Date();
+                        setEditFormData(prev => ({
+                          ...prev,
+                          start_date: today.toISOString().split('T')[0],
+                          end_date: ''
+                        }));
+                      }}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition border-2 ${
+                        editFormData.start_date && !editFormData.end_date
+                          ? 'border-blue-500 bg-blue-50 text-blue-700'
+                          : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <CalendarRange size={14} className={editFormData.start_date && !editFormData.end_date ? 'text-blue-500' : 'text-gray-400'} />
+                        Baseline
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-0.5">Open-ended fallback</p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const today = new Date();
+                        const future = new Date();
+                        future.setMonth(future.getMonth() + 1);
+                        setEditFormData(prev => ({
+                          ...prev,
+                          start_date: today.toISOString().split('T')[0],
+                          end_date: future.toISOString().split('T')[0]
+                        }));
+                      }}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium transition border-2 ${
+                        editFormData.start_date && editFormData.end_date
+                          ? 'border-orange-500 bg-orange-50 text-orange-700'
+                          : 'border-gray-300 bg-white text-gray-600 hover:border-gray-400'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Timer size={14} className={editFormData.start_date && editFormData.end_date ? 'text-orange-500' : 'text-gray-400'} />
+                        Temporary
+                      </div>
+                      <p className="text-[10px] text-gray-400 mt-0.5">Bounded override</p>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Date Range */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                      Start Date
+                    </label>
+                    <div className="relative">
+                      <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                        <CalendarDays size={18} />
+                      </div>
+                      <input
+                        type="date"
+                        name="start_date"
+                        value={editFormData.start_date}
+                        onChange={onEditChange}
+                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition bg-gray-50 hover:bg-white"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                      End Date
+                    </label>
+                    <div className="relative">
+                      <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+                        <CalendarDays size={18} />
+                      </div>
+                      <input
+                        type="date"
+                        name="end_date"
+                        value={editFormData.end_date}
+                        onChange={onEditChange}
+                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition bg-gray-50 hover:bg-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* SECTION 9 - is_active semantics */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
                     Status
@@ -760,10 +1153,12 @@ const CustomerTariff = () => {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-700">
-                        {editFormData.is_active ? 'Active' : 'Inactive'}
+                        {editFormData.is_active ? 'Enabled' : 'Disabled'}
                       </p>
                       <p className="text-xs text-gray-400">
-                        {editFormData.is_active ? 'Tariff will be available for use' : 'Tariff will be hidden and inactive'}
+                        {editFormData.is_active 
+                          ? 'Tariff participates in resolution' 
+                          : 'Tariff ignored by resolver'}
                       </p>
                     </div>
                   </div>
@@ -797,14 +1192,16 @@ const CustomerTariff = () => {
                 </div>
               </form>
             ) : (
+              // View Mode
               <div className="space-y-5">
+                {/* Status, Price, Idle Fee */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-4 border border-green-200">
+                  <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-2xl p-4 border border-emerald-200">
                     <p className="text-xs text-gray-500 uppercase tracking-wider">Status</p>
                     <div className="flex items-center gap-2 mt-1">
                       <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(tariff.is_active)}`}>
                         {getStatusIcon(tariff.is_active)}
-                        {tariff.is_active ? 'Active' : 'Inactive'}
+                        {tariff.is_active ? 'Enabled' : 'Disabled'}
                       </span>
                     </div>
                   </div>
@@ -818,16 +1215,11 @@ const CustomerTariff = () => {
                   </div>
                 </div>
 
+                {/* Tariff Details */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
                     <p className="text-xs text-gray-500 uppercase tracking-wider">Currency</p>
                     <p className="text-sm font-semibold text-gray-900 mt-1">{tariff.currency || 'INR'}</p>
-                  </div>
-                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider">Tariff Type</p>
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-700 mt-1">
-                      {TARIFF_TYPE_DISPLAY[tariff.tariff_type] || tariff.tariff_type || 'Standard'}
-                    </span>
                   </div>
                   <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
                     <p className="text-xs text-gray-500 uppercase tracking-wider">Price Type</p>
@@ -835,36 +1227,107 @@ const CustomerTariff = () => {
                       {PRICE_TYPE_DISPLAY[tariff.price_type] || tariff.price_type || 'Energy'}
                     </span>
                   </div>
+                  <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Temporal Role</p>
+                    <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium bg-${roleColor}-100 text-${roleColor}-700 mt-1`}>
+                      <RoleIcon size={14} className={`text-${roleColor}-500`} />
+                      {TARIFF_ROLE_DISPLAY[temporalRole] || 'Unknown'}
+                    </span>
+                  </div>
                 </div>
 
+                {/* Units (if applicable) */}
                 {tariff.price_type !== 'sessions' && tariff.units && (
                   <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
                     <p className="text-xs text-gray-500 uppercase tracking-wider">Units</p>
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-indigo-100 text-indigo-700 mt-1">
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-cyan-100 text-cyan-700 mt-1">
                       {UNITS_DISPLAY[tariff.units] || tariff.units}
                     </span>
                   </div>
                 )}
 
-                {(tariff.start_date || tariff.end_date) && (
-                  <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-2xl p-4 border border-gray-200">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Validity Period</p>
-                    <div className="flex items-center gap-6 flex-wrap">
-                      <div>
-                        <p className="text-xs text-gray-400">Start</p>
-                        <p className="text-sm font-medium text-gray-900">{formatDate(tariff.start_date) || 'N/A'}</p>
-                      </div>
-                      <ArrowLeft size={16} className="text-gray-400 rotate-180" />
-                      <div>
-                        <p className="text-xs text-gray-400">End</p>
-                        <p className="text-sm font-medium text-gray-900">
-                          {formatDate(tariff.end_date) || <span className="text-green-600"><Infinity size={14} className="inline" /> No expiry</span>}
-                        </p>
-                      </div>
+                {/* Schedule / Validity Period */}
+                <div className={`rounded-2xl p-4 border ${
+                  isRoot ? 'bg-purple-50 border-purple-200' : 
+                  isBaseline ? 'bg-blue-50 border-blue-200' : 
+                  'bg-orange-50 border-orange-200'
+                }`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Validity Period</p>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex items-center gap-1 ${
+                      isRoot ? 'bg-purple-100 text-purple-700' :
+                      isBaseline ? 'bg-blue-100 text-blue-700' :
+                      'bg-orange-100 text-orange-700'
+                    }`}>
+                      <RoleIcon size={12} className={`text-${roleColor}-500`} />
+                      {TARIFF_ROLE_DISPLAY[temporalRole]}
+                    </span>
+                  </div>
+                  {isRoot && (
+                    <p className="text-xs text-purple-700 mt-1">
+                      <Info size={14} className="inline mr-1" />
+                      Root tariff is always active and provides a fallback.
+                    </p>
+                  )}
+                  <div className="flex items-center gap-6 flex-wrap mt-2">
+                    <div>
+                      <p className="text-xs text-gray-400">Start</p>
+                      <p className="text-sm font-medium text-gray-900">{formatDate(tariff.start_date) || '—'}</p>
+                    </div>
+                    <ArrowLeft size={16} className="text-gray-400 rotate-180" />
+                    <div>
+                      <p className="text-xs text-gray-400">End</p>
+                      <p className="text-sm font-medium text-gray-900">
+                        {formatDate(tariff.end_date) || <span className="text-emerald-600"><Infinity size={14} className="inline" /> No expiry</span>}
+                      </p>
                     </div>
                   </div>
-                )}
+                </div>
 
+                {/* Derived Status */}
+                <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-2xl p-4 border border-gray-200">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider">Derived Status</p>
+                  <div className="flex items-center gap-3 mt-1">
+                    <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium ${derivedStatus.badgeColor}`}>
+                      {React.createElement(derivedStatus.icon, { size: 14, className: `text-${derivedStatus.color}-500` })}
+                      {derivedStatus.label}
+                    </span>
+                    <span className="text-xs text-gray-500">{derivedStatus.description}</span>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2">
+                    <Info size={14} className="inline mr-1" />
+                    This is a UI projection. Backend resolver is authoritative for billing.
+                  </p>
+                </div>
+
+                {/* SECTION 4 - Scope Precedence Info */}
+                <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl p-4 border border-green-200">
+                  <p className="text-xs font-medium text-green-800 flex items-center gap-2">
+                    <Info size={14} className="text-green-600" />
+                    Scope Precedence
+                  </p>
+                  <p className="text-xs text-green-700 mt-1">
+                    UserGroup &gt; Charger &gt; Hub. This tariff applies at the <strong>User Group</strong> level
+                    and takes precedence over Charger and Hub tariffs.
+                  </p>
+                  {isRoot && (
+                    <span className="block mt-1 font-medium text-purple-700">
+                      🔵 This is a Root Tariff - provides fallback when no other tariff applies.
+                    </span>
+                  )}
+                  {isBaseline && (
+                    <span className="block mt-1 font-medium text-blue-700">
+                      📅 This is an Open-ended Baseline - becomes eligible from its start date.
+                    </span>
+                  )}
+                  {isTemporary && (
+                    <span className="block mt-1 font-medium text-orange-700">
+                      ⚡ This is a Temporary Override - applies only within its date range.
+                    </span>
+                  )}
+                </div>
+
+                {/* Timestamps */}
                 <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200">
                   <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Timestamps</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
@@ -879,17 +1342,37 @@ const CustomerTariff = () => {
                   </div>
                 </div>
 
-                {/* Tariff Precedence Info */}
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-4 border border-blue-200">
-                  <p className="text-xs font-medium text-blue-800 flex items-center gap-2">
-                    <Info size={14} className="text-blue-600" />
-                    Tariff Precedence
-                  </p>
-                  <p className="text-xs text-blue-700 mt-1">
-                    UserGroup &gt; Charger &gt; Hub. This tariff applies at the <strong>User Group</strong> level
-                    and takes precedence over Charger and Hub tariffs.
-                  </p>
+                {/* Action Buttons */}
+                <div className="flex items-center gap-3 pt-2 border-t border-gray-200">
+                  <button
+                    onClick={onEditToggle}
+                    className="flex-1 px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 transition text-sm flex items-center justify-center gap-2 shadow-lg shadow-green-500/25"
+                  >
+                    <Edit size={16} />
+                    Edit Tariff
+                  </button>
+                  <button
+                    onClick={() => {
+                      setDeletingTariffId(tariff.id);
+                      setShowDeleteConfirm(true);
+                      setError('');
+                    }}
+                    className="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition text-sm flex items-center justify-center gap-2"
+                  >
+                    <Trash2 size={16} />
+                    Delete
+                  </button>
+                  <button
+                    onClick={onClose}
+                    className="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition text-sm"
+                  >
+                    Close
+                  </button>
                 </div>
+                <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
+                  <Info size={14} className="text-gray-400" />
+                  This change affects future tariff resolution and new charging starts. Existing started sessions keep their frozen tariff snapshot.
+                </p>
               </div>
             )}
           </div>
@@ -897,56 +1380,6 @@ const CustomerTariff = () => {
       </div>
     );
   };
-
-  const SettingsMenu = () => (
-    <div className="absolute top-full right-0 mt-2 bg-black rounded-2xl w-80 shadow-2xl border border-gray-800 z-50 overflow-hidden">
-      <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-5 py-4">
-        <div className="flex items-center gap-3">
-          <div className="w-14 h-14 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-2xl font-bold text-white border-2 border-white/30 flex-shrink-0">
-            {userData?.user?.full_name?.charAt(0) || user?.name?.charAt(0) || 'U'}
-          </div>
-          <div className="flex-1 min-w-0">
-            <h4 className="text-base font-semibold text-white truncate">
-              {userData?.user?.full_name || user?.name || 'User'}
-            </h4>
-            <p className="text-sm text-gray-400 truncate">
-              {userData?.user?.email || user?.email || 'user@transev.com'}
-            </p>
-            {userData?.role && (
-              <span className="inline-block mt-1 px-2 py-0.5 bg-white/10 rounded-full text-xs text-gray-300 border border-gray-600">
-                {userData.role}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-      <div className="p-2">
-        <button onClick={() => { setShowSettingsMenu(false); navigate('/profile'); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
-          <User size={16} className="text-gray-500" /> <span>Profile</span>
-        </button>
-        <button onClick={() => { setShowSettingsMenu(false); navigate('/organization'); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
-          <Building size={16} className="text-gray-500" /> <span>Organization</span>
-        </button>
-        <div className="border-t border-gray-700 my-1"></div>
-        <button onClick={() => { setShowSettingsMenu(false); handleLogout(); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-red-900/30 text-sm font-medium text-red-400 hover:text-red-300 flex items-center gap-3 transition">
-          <LogOut size={16} className="text-red-500" /> <span>Sign Out</span>
-        </button>
-      </div>
-    </div>
-  );
-
-  const AddMenu = () => (
-    <div className="absolute top-full right-0 mt-2 bg-black rounded-2xl w-64 shadow-2xl border border-gray-800 z-50">
-      <div className="p-3">
-        <button onClick={() => { setShowAddMenu(false); navigate("/add-hub"); }} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
-          <Zap size={18} className="text-gray-400" /> Add Hub
-        </button>
-        <button onClick={() => { setShowAddMenu(false); navigate("/add-charger"); }} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
-          <Zap size={18} className="text-gray-400" /> Add Charger
-        </button>
-      </div>
-    </div>
-  );
 
   if (isRefreshing && loading) {
     return (
@@ -973,7 +1406,8 @@ const CustomerTariff = () => {
       />
 
       <div className="flex-1 min-w-0">
-        <header className="bg-white border-b-2 border-gray-200 px-6 py-4 sticky top-0 z-30 shadow-sm">
+        {/* HEADER */}
+        <header className="bg-white border-b-2 border-gray-100 px-6 py-4 sticky top-0 z-30 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
@@ -982,6 +1416,7 @@ const CustomerTariff = () => {
                 <span className="text-sm text-green-600 font-medium mt-1">Customer Tariffs</span>
               </div>
             </div>
+            
             <div className="flex items-center gap-2 relative">
               <button
                 onClick={() => {
@@ -1002,7 +1437,7 @@ const CustomerTariff = () => {
                 {showSettingsMenu && <SettingsMenu />}
               </div>
               <div className="relative">
-                <button onClick={() => setShowAddMenu(!showAddMenu)} className="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center hover:bg-blue-700 transition shadow-lg shadow-blue-500/25">
+                <button onClick={() => setShowAddMenu(!showAddMenu)} className="w-9 h-9 rounded-full bg-gradient-to-r from-green-600 to-emerald-600 text-white flex items-center justify-center hover:from-green-700 hover:to-emerald-700 transition shadow-lg shadow-green-500/25">
                   <Plus size={18} />
                 </button>
                 {showAddMenu && <AddMenu />}
@@ -1011,7 +1446,8 @@ const CustomerTariff = () => {
           </div>
         </header>
 
-        <div className="border-b border-gray-200 bg-white px-6">
+        {/* TABS */}
+        <div className="border-b border-gray-100 bg-white px-6">
           <div className="flex flex-wrap items-center gap-1">
             {tabs.map((tab) => {
               const Icon = tab.icon;
@@ -1034,17 +1470,19 @@ const CustomerTariff = () => {
           </div>
         </div>
 
+        {/* CONTENT */}
         <div className="p-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left Column - User Groups List */}
             <div className="lg:col-span-1">
-              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden sticky top-24">
-                <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden sticky top-24">
+                <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-green-50 to-emerald-50">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Users className="w-5 h-5 text-green-600" />
                       <h3 className="font-semibold text-gray-900">Customer Groups</h3>
                     </div>
-                    <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
+                    <span className="text-xs bg-gradient-to-r from-green-600 to-emerald-600 text-white px-2.5 py-1 rounded-full font-medium">
                       {userGroups.length}
                     </span>
                   </div>
@@ -1058,7 +1496,7 @@ const CustomerTariff = () => {
                       placeholder="Search by group name..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+                      className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm bg-gray-50 hover:bg-white transition"
                     />
                   </div>
 
@@ -1072,26 +1510,28 @@ const CustomerTariff = () => {
                       <p className="text-gray-500 text-sm">No groups found</p>
                     </div>
                   ) : (
-                    <div className="space-y-2 max-h-[500px] overflow-y-auto">
+                    <div className="space-y-2 max-h-[500px] overflow-y-auto pr-1">
                       {userGroups
                         .filter(g => g.name?.toLowerCase().includes(searchQuery.toLowerCase()))
                         .map((group) => (
                           <button
                             key={group.id}
                             onClick={() => handleGroupSelect(group)}
-                            className={`w-full text-left p-3 rounded-xl border transition ${
+                            className={`w-full text-left p-3 rounded-xl border transition-all ${
                               selectedGroup?.id === group.id
-                                ? 'border-green-500 bg-green-50 shadow-sm'
-                                : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                                ? 'border-green-500 bg-gradient-to-r from-green-50 to-emerald-50 shadow-md ring-2 ring-green-500/20'
+                                : 'border-gray-200 hover:border-green-300 hover:bg-gray-50'
                             }`}
                           >
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0">
+                                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-xs font-bold text-white flex-shrink-0 shadow-lg shadow-green-500/25">
                                   {group.name?.charAt(0) || 'G'}
                                 </div>
                                 <div>
-                                  <p className="text-sm font-medium text-gray-900">{group.name}</p>
+                                  <p className="text-sm font-semibold text-gray-900 truncate max-w-[120px]">
+                                    {group.name}
+                                  </p>
                                   <p className="text-xs text-gray-500 truncate max-w-[120px]">
                                     {group.description || 'No description'}
                                   </p>
@@ -1114,49 +1554,53 @@ const CustomerTariff = () => {
               </div>
             </div>
 
+            {/* Right Column - Tariffs List */}
             <div className="lg:col-span-2">
               {selectedGroup ? (
                 <>
-                  <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 mb-4">
+                  {/* Group Info Card */}
+                  <div className="bg-gradient-to-r from-green-600 via-emerald-600 to-teal-600 rounded-2xl p-5 mb-5 shadow-lg shadow-green-500/25">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-green-500/25">
-                          <UserCog className="w-6 h-6 text-white" />
+                      <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center shadow-lg">
+                          <Users className="w-8 h-8 text-white" />
                         </div>
                         <div>
-                          <h3 className="text-lg font-bold text-gray-900">{selectedGroup.name}</h3>
-                          <p className="text-sm text-gray-500">{selectedGroup.description || 'No description'}</p>
-                          <div className="flex items-center gap-3 mt-1 text-xs text-gray-500">
-                            <span>Total Members: {selectedGroup.member_count || 0}</span>
+                          <h3 className="text-xl font-bold text-white">
+                            {selectedGroup.name}
+                          </h3>
+                          <p className="text-sm text-white/80">{selectedGroup.description || 'No description'}</p>
+                          <div className="flex items-center gap-3 mt-1 text-xs text-white/70">
+                            <span>Members: {selectedGroup.member_count || 0}</span>
+                            <span>•</span>
                             <span>Created: {formatDate(selectedGroup.created_at)}</span>
+                            <span>•</span>
+                            <span className={`flex items-center gap-1 ${rootTariffExists ? 'text-yellow-300' : 'text-gray-400'}`}>
+                              <Crown size={12} />
+                              {rootTariffExists ? 'Root ✓' : 'No Root'}
+                            </span>
                           </div>
                         </div>
                       </div>
-                      {!activeTariffExists ? (
-                        <button
-                          onClick={handleAddTariff}
-                          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 transition shadow-lg shadow-green-500/25"
-                        >
-                          <Plus size={18} />
-                          Add Tariff
-                        </button>
-                      ) : (
-                        <div className="flex items-center gap-2 px-4 py-2 bg-yellow-100 text-yellow-700 rounded-xl border border-yellow-300">
-                          <AlertCircle size={16} />
-                          <span className="text-sm font-medium">Active tariff exists</span>
-                        </div>
-                      )}
+                      <button
+                        onClick={handleAddTariff}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-white text-green-600 rounded-xl hover:bg-green-50 transition shadow-lg font-medium"
+                      >
+                        <Plus size={18} />
+                        Add Tariff
+                      </button>
                     </div>
-                    {activeTariffExists && (
-                      <div className="mt-3 text-xs text-gray-600 bg-yellow-50 rounded-lg p-2 border border-yellow-200">
-                        <Info size={14} className="inline mr-1 text-yellow-600" />
-                        To add a new tariff, please deactivate the existing active tariff first.
+                    {!rootTariffExists && tariffs.length > 0 && (
+                      <div className="mt-3 text-xs text-white/70 bg-yellow-500/30 rounded-lg p-2 flex items-center gap-2">
+                        <Info size={14} className="text-white/90" />
+                        <span>ℹ️ No root tariff. Fallback will go to Charger/Hub level.</span>
                       </div>
                     )}
                   </div>
 
+                  {/* Tariffs List */}
                   {loadingTariffs ? (
-                    <div className="flex items-center justify-center py-12 bg-white rounded-2xl border border-gray-200">
+                    <div className="flex items-center justify-center py-12 bg-white rounded-2xl border border-gray-100">
                       <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
                     </div>
                   ) : tariffs.length === 0 ? (
@@ -1166,7 +1610,7 @@ const CustomerTariff = () => {
                       <p className="text-sm text-gray-400 mt-1">Create your first tariff for this group</p>
                       <button
                         onClick={handleAddTariff}
-                        className="mt-4 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                        className="mt-4 px-5 py-2.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 transition shadow-lg shadow-green-500/25 font-medium"
                       >
                         <Plus size={16} className="inline mr-1" />
                         Create Tariff
@@ -1174,95 +1618,122 @@ const CustomerTariff = () => {
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 gap-4">
-                      {tariffs.map((tariff) => (
-                        <div
-                          key={tariff.id}
-                          onClick={() => handleTariffClick(tariff)}
-                          className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden hover:border-green-300"
-                        >
-                          <div className="p-5">
-                            <div className="flex items-start justify-between">
-                              <div className="flex items-center gap-3 flex-1 min-w-0">
-                                <div className="w-10 h-10 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-green-500/25 flex-shrink-0">
-                                  <Tag className="w-5 h-5 text-white" />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <h4 className="font-semibold text-gray-900 truncate">
-                                      Tariff #{tariff.id?.slice(0, 8) || 'N/A'}
-                                    </h4>
-                                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(tariff.is_active)}`}>
-                                      {getStatusIcon(tariff.is_active)}
-                                      {tariff.is_active ? 'Active' : 'Inactive'}
-                                    </span>
-                                    <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
-                                      User Group
-                                    </span>
+                      {tariffs.map((tariff) => {
+                        const temporalRole = getTemporalRole(tariff);
+                        const derivedStatus = getDerivedStatus(tariff);
+                        const isRoot = temporalRole === 'root';
+                        const RoleIcon = TARIFF_ROLE_ICONS[temporalRole] || Tag;
+                        const roleColor = TARIFF_ROLE_COLORS[temporalRole] || 'blue';
+
+                        return (
+                          <div
+                            key={tariff.id}
+                            onClick={() => handleTariffClick(tariff)}
+                            className={`bg-white rounded-2xl border shadow-sm hover:shadow-xl transition-all cursor-pointer overflow-hidden group ${
+                              isRoot 
+                                ? 'border-purple-200 hover:border-purple-300' 
+                                : temporalRole === 'baseline'
+                                ? 'border-blue-200 hover:border-blue-300'
+                                : 'border-gray-200 hover:border-green-300'
+                            }`}
+                          >
+                            <div className="p-5">
+                              <div className="flex items-start justify-between">
+                                <div className="flex items-center gap-4 flex-1 min-w-0">
+                                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg flex-shrink-0 group-hover:scale-110 transition ${
+                                    isRoot 
+                                      ? 'bg-gradient-to-br from-purple-500 to-indigo-600' 
+                                      : temporalRole === 'baseline'
+                                      ? 'bg-gradient-to-br from-blue-500 to-cyan-600'
+                                      : 'bg-gradient-to-br from-green-500 to-emerald-600'
+                                  }`}>
+                                    <RoleIcon className="w-6 h-6 text-white" />
                                   </div>
-                                  <p className="text-sm text-gray-500">
-                                    Price: {getPriceDisplay(tariff)}
-                                  </p>
-                                  <div className="flex flex-wrap items-center gap-2 mt-1">
-                                    {tariff.tariff_type && (
-                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
-                                        {TARIFF_TYPE_DISPLAY[tariff.tariff_type] || tariff.tariff_type}
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <h4 className="font-semibold text-gray-900 truncate">
+                                        Tariff #{tariff.id?.slice(0, 8) || 'N/A'}
+                                      </h4>
+                                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${getStatusColor(tariff.is_active)}`}>
+                                        {getStatusIcon(tariff.is_active)}
+                                        {tariff.is_active ? 'Enabled' : 'Disabled'}
                                       </span>
-                                    )}
+                                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-${roleColor}-100 text-${roleColor}-700`}>
+                                        <RoleIcon size={12} className={`text-${roleColor}-500`} />
+                                        {TARIFF_ROLE_DISPLAY[temporalRole]}
+                                      </span>
+                                      <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${derivedStatus.badgeColor}`}>
+                                        {React.createElement(derivedStatus.icon, { size: 12, className: `text-${derivedStatus.color}-500` })}
+                                        {derivedStatus.label}
+                                      </span>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-3 mt-1.5">
+                                      <span className="text-sm font-bold text-green-600">
+                                        {getPriceDisplay(tariff)}
+                                      </span>
+                                      <span className="text-xs text-gray-300">|</span>
+                                      <span className="text-sm text-gray-500">
+                                        Idle: {formatCurrency(tariff.idle_fee_per_min || 0)}/min
+                                      </span>
+                                    </div>
                                   </div>
                                 </div>
+                                <div className="text-right flex-shrink-0 ml-4">
+                                  <p className="text-xs text-gray-500">Currency</p>
+                                  <p className="text-sm font-semibold text-gray-900">{tariff.currency || 'INR'}</p>
+                                </div>
                               </div>
-                              <div className="text-right flex-shrink-0 ml-4">
-                                <p className="text-xs text-gray-500">Idle Fee</p>
-                                <p className="text-sm font-bold text-orange-600">{formatCurrency(tariff.idle_fee_per_min || 0)}/min</p>
-                                <p className="text-xs text-gray-400">{tariff.currency || 'INR'}</p>
-                              </div>
-                            </div>
-                            
-                            <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
-                              <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
-                                {tariff.start_date && (
-                                  <span className="flex items-center gap-1">
-                                    <CalendarDays size={12} />
-                                    Valid: {formatDate(tariff.start_date)}
-                                    {tariff.end_date ? ` → ${formatDate(tariff.end_date)}` : ' → ∞'}
-                                  </span>
-                                )}
-                                {!tariff.start_date && !tariff.end_date && (
-                                  <span className="flex items-center gap-1 text-green-600">
-                                    <Infinity size={12} />
-                                    No expiry
-                                  </span>
-                                )}
-                                <span className="text-gray-300">|</span>
-                                <span>Price Type: {PRICE_TYPE_DISPLAY[tariff.price_type] || tariff.price_type || 'Energy'}</span>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleTariffClick(tariff);
-                                  }}
-                                  className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition"
-                                  title="View Details"
-                                >
-                                  <Eye size={16} />
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleTariffClick(tariff);
-                                    setTimeout(() => setIsEditing(true), 100);
-                                  }}
-                                  className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                                  title="Edit Tariff"
-                                >
-                                  <Edit size={16} />
-                                </button>
+                              
+                              <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
+                                  {isRoot ? (
+                                    <span className="flex items-center gap-1 text-purple-600 font-medium">
+                                      <Infinity size={12} />
+                                      No expiry (Root)
+                                    </span>
+                                  ) : tariff.start_date ? (
+                                    <span className="flex items-center gap-1">
+                                      <CalendarDays size={12} />
+                                      {formatDate(tariff.start_date)}
+                                      {tariff.end_date ? ` → ${formatDate(tariff.end_date)}` : ' → ∞'}
+                                    </span>
+                                  ) : (
+                                    <span className="flex items-center gap-1 text-emerald-600">
+                                      <Infinity size={12} />
+                                      No expiry
+                                    </span>
+                                  )}
+                                  <span className="text-gray-300">|</span>
+                                  <span>Price Type: {PRICE_TYPE_DISPLAY[tariff.price_type] || tariff.price_type || 'Energy'}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleTariffClick(tariff);
+                                    }}
+                                    className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-xl transition"
+                                    title="View Details"
+                                  >
+                                    <Eye size={16} />
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleTariffClick(tariff);
+                                      setTimeout(() => setIsEditing(true), 100);
+                                    }}
+                                    className="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition"
+                                    title="Edit Tariff"
+                                  >
+                                    <Edit size={16} />
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </>
@@ -1278,6 +1749,7 @@ const CustomerTariff = () => {
         </div>
       </div>
 
+      {/* Tariff Detail Modal */}
       {showTariffDetail && selectedTariff && (
         <TariffDetailModal
           tariff={selectedTariff}
@@ -1296,8 +1768,15 @@ const CustomerTariff = () => {
           isUpdating={isUpdating}
           error={error}
           updateSuccess={updateSuccess}
+          onDelete={() => {
+            setDeletingTariffId(selectedTariff.id);
+            setShowDeleteConfirm(true);
+          }}
         />
       )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && <DeleteConfirmModal />}
     </div>
   );
 };

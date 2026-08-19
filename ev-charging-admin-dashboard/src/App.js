@@ -46,6 +46,7 @@ import HubTariff from './components/Revenue/HubTarrif';
 import AddHubTariff from './components/Revenue/AddHubTarriff';
 import ChargerTariff from './components/Revenue/Chargertarrifs';
 import AddChargerTariff from './components/Revenue/AddChargerTarrif';
+import AppWalletSettings from './components/AppManagement/Wallet';
 import './index.css';
 
 function App() {
@@ -106,6 +107,7 @@ function App() {
           <Route path="/payment-integration" element={<ProtectedRoute><PaymentIntegration /></ProtectedRoute>} />
           <Route path="/revenue/charger-tariffs" element={<ProtectedRoute><ChargerTariff /></ProtectedRoute>} />
           <Route path="/revenue/add-charger-tariff" element={<ProtectedRoute><AddChargerTariff /></ProtectedRoute>} />
+          <Route path="/app-management" element={<ProtectedRoute><AppWalletSettings/></ProtectedRoute>} />
         </Routes>
       </AuthProvider>
     </Router>
