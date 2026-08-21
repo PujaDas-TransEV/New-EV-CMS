@@ -1,3 +1,4 @@
+
 // src/components/Revenue/WalletSettings.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -138,7 +139,8 @@ import {
   Edit2,
   Save as SaveIcon,
   AppWindow,
-  Smartphone as SmartphoneIcon
+  Smartphone as SmartphoneIcon,
+  RefreshCw as RefreshIcon
 } from 'lucide-react';
 import Sidebar from '../Sidebar/Sidebar';
 
@@ -262,10 +264,23 @@ const WalletSettings = () => {
     const { name, value } = e.target;
     setEditFormData(prev => ({
       ...prev,
-      [name]: parseFloat(value) || 0
+      [name]: parseInt(value) || 0
     }));
     if (error) setError('');
     if (success) setSuccess('');
+  };
+
+  // ============================================================================
+  // Build FormData for multipart/form-data request
+  // ============================================================================
+  const buildFormData = () => {
+    const formData = new FormData();
+    
+    // Add wallet_min_balance as string
+    formData.append('wallet_min_balance', String(editFormData.wallet_min_balance));
+    formData.append('wallet_buffer_min_balance', String(editFormData.wallet_buffer_min_balance));
+    
+    return formData;
   };
 
   const handleSubmit = async (e) => {
@@ -275,22 +290,22 @@ const WalletSettings = () => {
     setSuccess('');
 
     try {
-      const payload = {
-        wallet_min_balance: editFormData.wallet_min_balance,
-        wallet_buffer_min_balance: editFormData.wallet_buffer_min_balance
-      };
+      const formData = buildFormData();
 
-      console.log('📤 Updating Wallet Settings:', JSON.stringify(payload, null, 2));
+      console.log('📤 Updating Wallet Settings (FormData):');
+      for (let [key, value] of formData.entries()) {
+        console.log(`  ${key}: ${value}`);
+      }
 
       const response = await authenticatedRequest(
         API_CONFIG.SETTINGS_API,
         {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
+            // Do NOT set Content-Type header - browser will set it with boundary
             'Accept': 'application/json'
           },
-          body: JSON.stringify(payload)
+          body: formData
         }
       );
 
@@ -437,7 +452,7 @@ const WalletSettings = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
-               
+                <AppWindow size={24} className="text-blue-600" />
                 <h1 className="text-2xl font-bold text-gray-800">App Management</h1>
                 <span className="text-gray-300 text-xl">/</span>
                 <span className="text-sm text-blue-600 font-medium mt-1">Wallet Settings</span>
@@ -450,7 +465,7 @@ const WalletSettings = () => {
                 className="p-2 hover:bg-gray-100 rounded-xl transition text-gray-600 hover:text-gray-800"
                 title="Refresh settings"
               >
-              
+                <RefreshIcon size={18} className={loading ? 'animate-spin' : ''} />
               </button>
               <div className="relative">
                 <button onClick={() => setShowSettingsMenu(!showSettingsMenu)} className="p-2 hover:bg-gray-100 rounded-xl transition flex items-center gap-1.5">
@@ -472,7 +487,7 @@ const WalletSettings = () => {
         {/* SINGLE TAB - Wallet Settings */}
         <div className="border-b border-gray-100 bg-white px-6">
           <div className="flex flex-wrap items-center gap-1">
-            <button
+            <button 
               className="flex items-center gap-2 px-5 py-5 rounded-t-xl text-sm font-medium transition bg-blue-50 text-blue-600 border-b-2 border-blue-600"
             >
               <SmartphoneIcon size={18} />
@@ -603,16 +618,16 @@ const WalletSettings = () => {
                     </p>
                   </div>
                   {!isEditing ? (
-                    <button
-                      onClick={handleEditToggle}
+                    <button 
+                      onClick={handleEditToggle} 
                       className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 transition flex items-center gap-2 font-medium shadow-lg shadow-blue-500/25"
                     >
                       <Edit2 size={16} />
                       Edit Settings
                     </button>
                   ) : (
-                    <button
-                      onClick={handleEditToggle}
+                    <button 
+                      onClick={handleEditToggle} 
                       className="px-4 py-2 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition flex items-center gap-2 font-medium"
                     >
                       <XCircle size={16} />
@@ -640,15 +655,15 @@ const WalletSettings = () => {
                               name="wallet_min_balance"
                               value={editFormData.wallet_min_balance}
                               onChange={handleEditChange}
-                              placeholder="0.00"
-                              step="0.01"
+                              placeholder="0"
+                              step="1"
                               min="0"
                               className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition bg-gray-50 hover:bg-white"
                               required
                             />
                           </div>
                           <p className="mt-1 text-xs text-gray-400">
-                            Minimum wallet balance users must maintain
+                            Minimum wallet balance users must maintain (whole currency amount)
                           </p>
                         </div>
 
@@ -666,15 +681,15 @@ const WalletSettings = () => {
                               name="wallet_buffer_min_balance"
                               value={editFormData.wallet_buffer_min_balance}
                               onChange={handleEditChange}
-                              placeholder="0.00"
-                              step="0.01"
+                              placeholder="0"
+                              step="1"
                               min="0"
                               className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition bg-gray-50 hover:bg-white"
                               required
                             />
                           </div>
                           <p className="mt-1 text-xs text-gray-400">
-                            Buffer amount for pending transactions
+                            Buffer amount for pending transactions (whole currency amount)
                           </p>
                         </div>
                       </div>
@@ -693,6 +708,9 @@ const WalletSettings = () => {
                             </p>
                             <p className="text-sm text-blue-700 mt-1">
                               These settings help maintain smooth wallet operations and transaction processing.
+                            </p>
+                            <p className="text-xs text-blue-600 mt-2">
+                              ⚡ Values are stored as whole currency amounts (e.g., 100 = ₹100)
                             </p>
                           </div>
                         </div>
@@ -768,8 +786,8 @@ const WalletSettings = () => {
                               These wallet settings determine the balance requirements for all users on your CPO platform.
                             </p>
                             <ul className="text-sm text-gray-500 mt-2 list-disc list-inside space-y-1">
-                              <li><strong>Minimum Balance:</strong> ₹{walletSettings.wallet_min_balance.toFixed(2)}</li>
-                              <li><strong>Buffer Balance:</strong> ₹{walletSettings.wallet_buffer_min_balance.toFixed(2)}</li>
+                              <li><strong>Minimum Balance:</strong> {formatCurrency(walletSettings.wallet_min_balance)}</li>
+                              <li><strong>Buffer Balance:</strong> {formatCurrency(walletSettings.wallet_buffer_min_balance)}</li>
                             </ul>
                             <p className="text-xs text-gray-400 mt-2">
                               Click "Edit Settings" to update these values

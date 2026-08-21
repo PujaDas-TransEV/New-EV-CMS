@@ -433,68 +433,73 @@ const CustomerGroups = () => {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredGroups.map((group) => (
-                <div
-                  key={group.id}
-                  className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden hover:border-green-300"
-                  onClick={() => navigate(`/customer-group-detail/${group.id}`)}
-                >
-                  <div className="p-5">
-                    <div className="flex items-start justify-between">
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/25 flex-shrink-0">
-                          <UserCog className="w-6 h-6 text-white" />
+              {filteredGroups.map((group) => {
+                // Get member count from the members array
+                const memberCount = group.members ? group.members.length : 0;
+                
+                return (
+                  <div
+                    key={group.id}
+                    className="bg-white rounded-2xl border border-gray-200 shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden hover:border-green-300"
+                    onClick={() => navigate(`/customer-group-detail/${group.id}`)}
+                  >
+                    <div className="p-5">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/25 flex-shrink-0">
+                            <UserCog className="w-6 h-6 text-white" />
+                          </div>
+                          <div>
+                            <h3 className="font-semibold text-gray-900">{group.name}</h3>
+                            <p className="text-sm text-gray-500 truncate max-w-[150px]">
+                              {group.description || 'No description'}
+                            </p>
+                          </div>
                         </div>
-                        <div>
-                          <h3 className="font-semibold text-gray-900">{group.name}</h3>
-                          <p className="text-sm text-gray-500 truncate max-w-[150px]">
-                            {group.description || 'No description'}
-                          </p>
-                        </div>
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(group.is_active)}`}>
+                          {getStatusIcon(group.is_active)}
+                          {group.is_active ? 'Active' : 'Inactive'}
+                        </span>
                       </div>
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(group.is_active)}`}>
-                        {getStatusIcon(group.is_active)}
-                        {group.is_active ? 'Active' : 'Inactive'}
-                      </span>
-                    </div>
-                    
-                    <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div>
-                          <p className="text-xs text-gray-500">Members</p>
-                          <p className="text-sm font-semibold text-gray-900">{group.member_count || 0}</p>
+                      
+                      <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div>
+                            <p className="text-xs text-gray-500">Members</p>
+                            <p className="text-sm font-semibold text-gray-900">{memberCount}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500">Created</p>
+                            <p className="text-sm font-medium text-gray-700">{formatDate(group.created_at)}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-xs text-gray-500">Created</p>
-                          <p className="text-sm font-medium text-gray-700">{formatDate(group.created_at)}</p>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/customer-group-detail/${group.id}`);
+                            }}
+                            className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition"
+                            title="View Details"
+                          >
+                            <Eye size={16} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowDeleteConfirm(group);
+                            }}
+                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                            title="Delete Group"
+                          >
+                            <Trash2 size={16} />
+                          </button>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            navigate(`/customer-group-detail/${group.id}`);
-                          }}
-                          className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition"
-                          title="View Details"
-                        >
-                          <Eye size={16} />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowDeleteConfirm(group);
-                          }}
-                          className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
-                          title="Delete Group"
-                        >
-                          <Trash2 size={16} />
-                        </button>
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
