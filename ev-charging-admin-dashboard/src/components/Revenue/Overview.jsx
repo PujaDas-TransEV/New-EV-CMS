@@ -737,12 +737,45 @@ const RevenueManagement = () => {
                       <td className="px-3 py-3 text-sm font-medium text-gray-900 max-w-[120px] truncate">
                         {transactionId}
                       </td>
-                      <td className="px-3 py-3">
+                      {/* <td className="px-3 py-3">
                         <span className={`px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 w-fit ${getStatusColor(transaction.payment_status)}`}>
                           {getStatusIcon(transaction.payment_status)}
                           {transaction.payment_status || 'N/A'}
                         </span>
-                      </td>
+                      </td> */}
+                      <td className="px-3 py-3">
+  <span className={`px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 w-fit ${
+    transaction.payment_status?.toUpperCase() === 'COMPLETED' || 
+    transaction.payment_status?.toUpperCase() === 'SUCCESS' || 
+    transaction.payment_status?.toUpperCase() === 'PAID'
+      ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
+      : transaction.payment_status?.toUpperCase() === 'PENDING'
+      ? 'bg-amber-100 text-amber-700 border-amber-200'
+      : transaction.payment_status?.toUpperCase() === 'FAILED'
+      ? 'bg-red-100 text-red-700 border-red-200'
+      : transaction.payment_status?.toUpperCase() === 'REFUNDED'
+      ? 'bg-blue-100 text-blue-700 border-blue-200'
+      : 'bg-gray-100 text-gray-700 border-gray-200'
+  }`}>
+    {transaction.payment_status?.toUpperCase() === 'COMPLETED' || 
+     transaction.payment_status?.toUpperCase() === 'SUCCESS' || 
+     transaction.payment_status?.toUpperCase() === 'PAID' ? (
+      <CheckCircle className="w-3 h-3" />
+    ) : transaction.payment_status?.toUpperCase() === 'PENDING' ? (
+      <Clock className="w-3 h-3" />
+    ) : transaction.payment_status?.toUpperCase() === 'FAILED' ? (
+      <AlertCircle className="w-3 h-3" />
+    ) : transaction.payment_status?.toUpperCase() === 'REFUNDED' ? (
+      <RefreshCw className="w-3 h-3" />
+    ) : (
+      <Circle className="w-3 h-3" />
+    )}
+    {transaction.payment_status?.toUpperCase() === 'COMPLETED' || 
+     transaction.payment_status?.toUpperCase() === 'SUCCESS' || 
+     transaction.payment_status?.toUpperCase() === 'PAID' ? 'Success' 
+     : transaction.payment_status || 'N/A'}
+  </span>
+</td>
                       <td className="px-3 py-3 text-sm font-medium text-gray-900">
                         {formatCurrency(transaction.billed_amount || 0)}
                       </td>

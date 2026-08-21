@@ -268,6 +268,9 @@ const CustomerTariff = () => {
     }
   };
 
+  // ============================================================================
+  // UPDATED: fetchUserGroups with member count from members array
+  // ============================================================================
   const fetchUserGroups = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -279,10 +282,20 @@ const CustomerTariff = () => {
       if (response.ok) {
         const data = await response.json();
         const groups = data.user_groups || data.data || data || [];
-        setUserGroups(groups);
-        if (groups.length > 0) {
-          setSelectedGroup(groups[0]);
-          fetchTariffs(groups[0].id);
+        
+        // Extract member count from the members array
+        const groupsWithMemberCount = groups.map(group => ({
+          ...group,
+          member_count: group.members ? group.members.length : 0,
+          members_list: group.members || []
+        }));
+        
+        console.log('📊 User groups with member count:', groupsWithMemberCount);
+        
+        setUserGroups(groupsWithMemberCount);
+        if (groupsWithMemberCount.length > 0) {
+          setSelectedGroup(groupsWithMemberCount[0]);
+          fetchTariffs(groupsWithMemberCount[0].id);
         }
       } else {
         setError('Failed to fetch customer groups');
@@ -1543,7 +1556,7 @@ const CustomerTariff = () => {
                               </span>
                             </div>
                             <div className="mt-2 flex items-center gap-4 text-xs text-gray-500">
-                              <span>Members: {group.member_count || 0}</span>
+                              <span>Members: {group.members?.length || group.member_count || 0}</span>
                               <span>Created: {formatDate(group.created_at)}</span>
                             </div>
                           </button>
@@ -1571,7 +1584,7 @@ const CustomerTariff = () => {
                           </h3>
                           <p className="text-sm text-white/80">{selectedGroup.description || 'No description'}</p>
                           <div className="flex items-center gap-3 mt-1 text-xs text-white/70">
-                            <span>Members: {selectedGroup.member_count || 0}</span>
+                            <span>Members: {selectedGroup.members?.length || selectedGroup.member_count || 0}</span>
                             <span>•</span>
                             <span>Created: {formatDate(selectedGroup.created_at)}</span>
                             <span>•</span>
