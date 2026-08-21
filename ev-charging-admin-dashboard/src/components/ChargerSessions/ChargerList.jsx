@@ -1,4 +1,4 @@
-// src/components/Revenue/ChargerList.jsx
+
 import React, {
   useState,
   useEffect,
@@ -209,6 +209,30 @@ const getStatusDisplay = (status, config) => {
   );
 };
 
+// ============================================================================
+// Helper function to get connector color based on OCPP status
+// ============================================================================
+const getConnectorColorByOCPP = (ocppStatus) => {
+  const status = ocppStatus?.toUpperCase() || '';
+  
+  // Exact matches
+  if (status === 'AVAILABLE') return 'text-green-600';
+  if (status === 'CHARGING') return 'text-blue-600';
+  if (status === 'PREPARING') return 'text-yellow-600';
+  if (status === 'FINISHING') return 'text-purple-600';
+  if (status === 'FAULTED') return 'text-red-600';
+  
+  // Partial matches
+  if (status.includes('AVAIL')) return 'text-green-600';
+  if (status.includes('CHARG') || status.includes('OCCUP') || status.includes('IN USE')) return 'text-blue-600';
+  if (status.includes('PREP') || status.includes('START') || status.includes('INIT')) return 'text-yellow-600';
+  if (status.includes('FAULT') || status.includes('ERR')) return 'text-red-600';
+  if (status.includes('FINISH') || status.includes('COMPL') || status.includes('DONE')) return 'text-purple-600';
+  if (status.includes('UNAVAIL') || status.includes('OFFLINE') || status.includes('DISCON')) return 'text-gray-500';
+  
+  return 'text-gray-400';
+};
+
 const ChargersAndSessions = () => {
   const navigate = useNavigate();
 
@@ -267,22 +291,6 @@ const ChargersAndSessions = () => {
     useState('All');
   const [ocppStatusFilter, setOcppStatusFilter] =
     useState('All');
-
-  // const dummySessions = [
-  //   {
-  //     id: 'SES-001',
-  //     session_id: 'SES-2026-001',
-  //     hub_name: 'Newtown Hub',
-  //     charger_name: 'Benny 7.4kWh',
-  //     driver_name: 'John Doe',
-  //     start_time: '2026-08-03T14:30:00+05:30',
-  //     duration_minutes: 135,
-  //     energy_consumed: 45.5,
-  //     status: 'Completed',
-  //     cost: '₹ 386.75',
-  //     anomaly_detected: false
-  //   }
-  // ];
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -1983,36 +1991,10 @@ const ChargersAndSessions = () => {
                                           AVAILABILITY_STATUS_CONFIG
                                         );
 
-                                      const isAvailable =
-                                        availability === 'AVAILABLE';
-                                      const isCharging =
-                                        availability === 'CHARGING';
-                                      const isPreparing =
-                                        availability === 'PREPARING';
-                                      const isFaulted =
-                                        availability === 'FAULTED';
-                                      const isUnavailable =
-                                        availability === 'UNAVAILABLE';
-
-                                      let connectorIconColor =
-                                        'text-gray-400';
-
-                                      if (isAvailable) {
-                                        connectorIconColor =
-                                          'text-green-600';
-                                      } else if (isCharging) {
-                                        connectorIconColor =
-                                          'text-blue-600';
-                                      } else if (isPreparing) {
-                                        connectorIconColor =
-                                          'text-yellow-600';
-                                      } else if (isFaulted) {
-                                        connectorIconColor =
-                                          'text-red-600';
-                                      } else if (isUnavailable) {
-                                        connectorIconColor =
-                                          'text-gray-500';
-                                      }
+                                      // ============================================================
+                                      // UPDATED: Connector icon color based on OCPP status
+                                      // ============================================================
+                                      const connectorIconColor = getConnectorColorByOCPP(ocppStatus);
 
                                       return (
                                         <button
@@ -2161,4 +2143,3 @@ const ChargersAndSessions = () => {
 };
 
 export default ChargersAndSessions;
-

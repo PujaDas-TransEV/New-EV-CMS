@@ -2274,7 +2274,7 @@ const ChargerDetails = () => {
                           </div>
 
                           {/* Generation */}
-                          <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
+                          {/* <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
                             <p className="text-xs text-gray-500 flex items-center gap-1">
                               <Radio size={12} />
                               Generation
@@ -2285,7 +2285,7 @@ const ChargerDetails = () => {
                             <p className="text-[10px] text-gray-400 mt-1">
                               Sequence: {chargerConnection.connection_sequence || 'N/A'}
                             </p>
-                          </div>
+                          </div> */}
 
                           {/* Total Connectors Status */}
                           <div className="bg-gray-50 rounded-xl p-3 border border-gray-200">
