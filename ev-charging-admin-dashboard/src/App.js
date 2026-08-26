@@ -13,12 +13,11 @@ import Dashboard from './components/Dashboard/Dashboard';
 import Profile from './components/Profile/Profile';
 import Sidebar from './components/Sidebar/Sidebar';
 import ChargerSessions from './components/ChargerSessions/ChargerList';
-import RevenueManagement from './components/RevenueManagement';
+
 import AddChargerForm from './components/ChargerSessions/AddChargerForm';
-import DriversVehicles from './components/DriversVehicles';
+
 import Alerts from './components/Alerts';
-// import Support from './components/Support';
-import BillManagement from './components/BillManagement';
+
 import Organization from './components/Organization/Organization';
 import ManageHub from './components/Hubs/Managehubs';
 import Addhub from './components/Hubs/Addhub';
@@ -82,7 +81,7 @@ function App() {
           <Route path="/hub-details/:hubId" element={<ProtectedRoute><HubwiseDetails /></ProtectedRoute>} />
 
           {/* Revenue Management */}
-          <Route path="/revenue" element={<ProtectedRoute><RevenueManagement /></ProtectedRoute>} />
+        
           <Route path="/revenue/overview" element={<ProtectedRoute><RevenueOverview /></ProtectedRoute>} />
           <Route path="/revenue/customer-tariffs" element={<ProtectedRoute><CustomerTariff /></ProtectedRoute>} />
           <Route path="/revenue/add-customer-tariff" element={<ProtectedRoute><AddCustomerTariff /></ProtectedRoute>} />
@@ -94,7 +93,7 @@ function App() {
           <Route path="/revenue/create-invoice" element={<ProtectedRoute><CreateInvoice /></ProtectedRoute>} />
 
           {/* Customer & Vehicles */}
-          <Route path="/vd-management" element={<ProtectedRoute><DriversVehicles /></ProtectedRoute>} />
+        
           <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
           
           {/* Customer Groups */}
@@ -105,7 +104,7 @@ function App() {
           {/* Other Features */}
           <Route path="/alerts" element={<ProtectedRoute><Alerts /></ProtectedRoute>} />
        
-          <Route path="/bills" element={<ProtectedRoute><BillManagement /></ProtectedRoute>} />
+         
           <Route path="/help-support" element={<ProtectedRoute><HelpandSupportPage /></ProtectedRoute>} />
           <Route path="/payment-integration" element={<ProtectedRoute><PaymentIntegration /></ProtectedRoute>} />
           <Route path="/revenue/charger-tariffs" element={<ProtectedRoute><ChargerTariff /></ProtectedRoute>} />
