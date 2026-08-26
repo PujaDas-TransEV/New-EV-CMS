@@ -65,6 +65,47 @@ const API_CONFIG = {
   USER_INFO_API: `${API_BASE_URL}/api/v1/auth/me`
 };
 
+// Status color mapping for member status
+const getMemberStatusColor = (status) => {
+  const colors = {
+    'ACTIVE': 'bg-green-100 text-green-700 border-green-200',
+    'INACTIVE': 'bg-gray-100 text-gray-600 border-gray-200',
+    'SUSPENDED': 'bg-yellow-100 text-yellow-700 border-yellow-200',
+    'PENDING': 'bg-blue-100 text-blue-700 border-blue-200',
+    'REVOKED': 'bg-red-100 text-red-700 border-red-200'
+  };
+  return colors[status] || 'bg-gray-100 text-gray-600 border-gray-200';
+};
+
+const getMemberStatusIcon = (status) => {
+  const statusUpper = status?.toUpperCase() || '';
+  switch(statusUpper) {
+    case 'ACTIVE':
+      return <CheckCircle className="w-3 h-3" />;
+    case 'INACTIVE':
+      return <XCircle className="w-3 h-3" />;
+    case 'SUSPENDED':
+      return <AlertCircle className="w-3 h-3" />;
+    case 'PENDING':
+      return <Clock className="w-3 h-3" />;
+    case 'REVOKED':
+      return <XCircle className="w-3 h-3" />;
+    default:
+      return <Circle className="w-3 h-3" />;
+  }
+};
+
+const getMemberStatusDisplayName = (status) => {
+  const statusMap = {
+    'ACTIVE': 'Active',
+    'INACTIVE': 'Inactive',
+    'SUSPENDED': 'Suspended',
+    'PENDING': 'Pending',
+    'REVOKED': 'Revoked'
+  };
+  return statusMap[status] || status || 'Unknown';
+};
+
 const CustomerGroupDetail = () => {
   const navigate = useNavigate();
   const { userGroupId } = useParams();
@@ -313,7 +354,7 @@ const CustomerGroupDetail = () => {
     }
   };
 
-  // ✅ Remove member from group using DELETE API
+  // Remove member from group using DELETE API
   const handleRemoveMember = async () => {
     if (!memberToRemove) return;
     
@@ -465,7 +506,7 @@ const CustomerGroupDetail = () => {
     </div>
   );
 
-  // ✅ Remove Member Confirmation Modal - Clean design with Eye icon
+  // Remove Member Confirmation Modal
   const RemoveMemberConfirmModal = () => (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-fadeIn">
@@ -695,9 +736,9 @@ const CustomerGroupDetail = () => {
                           <span>{customer.phone || 'No phone'}</span>
                         </div>
                       </div>
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(customer.is_active)}`}>
-                        {getStatusIcon(customer.is_active)}
-                        {customer.is_active ? 'Active' : 'Inactive'}
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${getMemberStatusColor(customer.status)}`}>
+                        {getMemberStatusIcon(customer.status)}
+                        {getMemberStatusDisplayName(customer.status)}
                       </span>
                     </div>
                   );
@@ -1015,14 +1056,13 @@ const CustomerGroupDetail = () => {
                               <td className="px-4 py-3 text-gray-600">{member.email || 'N/A'}</td>
                               <td className="px-4 py-3 text-gray-600">{member.phone || 'N/A'}</td>
                               <td className="px-4 py-3">
-                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(member.is_active)}`}>
-                                  {getStatusIcon(member.is_active)}
-                                  {member.is_active ? 'Active' : 'Inactive'}
+                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${getMemberStatusColor(member.status)}`}>
+                                  {getMemberStatusIcon(member.status)}
+                                  {getMemberStatusDisplayName(member.status)}
                                 </span>
                               </td>
                               <td className="px-4 py-3 text-gray-500 text-xs">{formatDate(member.created_at)}</td>
                               <td className="px-4 py-3">
-                                {/* ✅ Remove Member button with Eye icon */}
                                 <button 
                                   onClick={() => handleOpenRemoveConfirm(member)}
                                   disabled={removingMember === member.id}
@@ -1055,7 +1095,7 @@ const CustomerGroupDetail = () => {
       {/* Delete Group Confirmation Modal */}
       {showDeleteConfirm && <DeleteGroupConfirmModal />}
       
-      {/* ✅ Remove Member Confirmation Modal */}
+      {/* Remove Member Confirmation Modal */}
       {showRemoveConfirm && <RemoveMemberConfirmModal />}
       
       {/* Add Member Popup - Green Theme */}

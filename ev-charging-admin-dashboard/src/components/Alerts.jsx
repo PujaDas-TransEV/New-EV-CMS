@@ -134,6 +134,7 @@ const CPO_APP_ID = process.env.REACT_APP_CPO_APP_ID || 'cpo_dummy_5f75674f57829d
 
 const API_CONFIG = {
   NOTIFICATIONS_API: `${API_BASE_URL}/api/v1/cpo/notifications`,
+  NOTIFICATION_READ_API: (notificationId) => `${API_BASE_URL}/api/v1/platform/notifications/${notificationId}/read`,
   USER_INFO_API: `${API_BASE_URL}/api/v1/auth/me`
 };
 
@@ -262,13 +263,16 @@ const Alerts = () => {
     setShowNotificationDetail(true);
   };
 
-  // Mark notification as read
+  // Mark notification as read using POST /api/v1/platform/notifications/{notification_id}/read
   const markAsRead = useCallback(async (notificationId) => {
+    if (!notificationId) return;
+    
     try {
-      const response = await authenticatedRequest(`${API_CONFIG.NOTIFICATIONS_API}/${notificationId}/read`, {
-        method: 'PATCH',
+      const response = await authenticatedRequest(API_CONFIG.NOTIFICATION_READ_API(notificationId), {
+        method: 'POST',
         headers: {
           'X-CPO-App-ID': CPO_APP_ID,
+          'Content-Type': 'application/json',
         }
       });
 
@@ -284,36 +288,64 @@ const Alerts = () => {
         }
         setSuccess('Notification marked as read');
         setTimeout(() => setSuccess(''), 3000);
+      } else if (response.status === 404) {
+        setError('Notification not found');
+        setTimeout(() => setError(''), 3000);
+      } else if (response.status === 403) {
+        setError('You do not have permission to mark this notification as read');
+        setTimeout(() => setError(''), 3000);
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        setError(errorData.message || 'Failed to mark notification as read');
+        setTimeout(() => setError(''), 3000);
       }
     } catch (error) {
       console.error('Error marking notification as read:', error);
+      setError('An error occurred while marking notification as read');
+      setTimeout(() => setError(''), 3000);
     }
   }, [authenticatedRequest, selectedNotification]);
 
-  // Mark all as read
+  // Mark all as read - Using the same endpoint for each notification
   const markAllAsRead = useCallback(async () => {
-    try {
-      const response = await authenticatedRequest(`${API_CONFIG.NOTIFICATIONS_API}/read-all`, {
-        method: 'PATCH',
-        headers: {
-          'X-CPO-App-ID': CPO_APP_ID,
-        }
-      });
+    const unreadNotifications = notifications.filter(n => !n.is_read);
+    if (unreadNotifications.length === 0) {
+      setSuccess('All notifications are already read');
+      setTimeout(() => setSuccess(''), 3000);
+      return;
+    }
 
-      if (response.ok) {
-        setNotifications(prev => 
-          prev.map(n => ({ ...n, is_read: true }))
-        );
-        if (selectedNotification) {
-          setSelectedNotification(prev => ({ ...prev, is_read: true }));
+    try {
+      // Mark each unread notification as read
+      for (const notification of unreadNotifications) {
+        const response = await authenticatedRequest(API_CONFIG.NOTIFICATION_READ_API(notification.id), {
+          method: 'POST',
+          headers: {
+            'X-CPO-App-ID': CPO_APP_ID,
+            'Content-Type': 'application/json',
+          }
+        });
+
+        if (!response.ok) {
+          console.error(`Failed to mark notification ${notification.id} as read`);
         }
-        setSuccess('All notifications marked as read');
-        setTimeout(() => setSuccess(''), 3000);
       }
+
+      // Update all notifications as read
+      setNotifications(prev => 
+        prev.map(n => ({ ...n, is_read: true }))
+      );
+      if (selectedNotification) {
+        setSelectedNotification(prev => ({ ...prev, is_read: true }));
+      }
+      setSuccess('All notifications marked as read');
+      setTimeout(() => setSuccess(''), 3000);
     } catch (error) {
       console.error('Error marking all as read:', error);
+      setError('An error occurred while marking all as read');
+      setTimeout(() => setError(''), 3000);
     }
-  }, [authenticatedRequest, selectedNotification]);
+  }, [authenticatedRequest, notifications, selectedNotification]);
 
   // Format date
   const formatDate = (dateString) => {
@@ -682,14 +714,14 @@ const Alerts = () => {
                 </button>
               </div>
               <div className="flex items-center gap-2 w-full sm:w-auto">
-                <button
+                {/* <button
                   onClick={markAllAsRead}
                   disabled={unreadCount === 0}
                   className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 transition text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Check size={16} />
                   Mark All Read
-                </button>
+                </button> */}
                 <button
                   onClick={() => {
                     setBefore(null);

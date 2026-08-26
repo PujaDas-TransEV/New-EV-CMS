@@ -1216,32 +1216,14 @@ const ChargersAndSessions = () => {
                 / Dashboard
               </button>
 
-              <span className="text-gray-400">/</span>
-              <span className="text-gray-700 font-medium">
+              <span className="text-blue-600">/</span>
+              <span className="text-blue-600 font-medium">
                 Chargers
               </span>
             </div>
 
             <div className="flex items-center gap-2 relative">
-              <button
-                onClick={() => {
-                  fetchChargers();
-                  fetchOperationalData();
-                }}
-                disabled={
-                  operationalLoading || loading                }
-                className="p-2 hover:bg-gray-100 rounded-xl text-gray-600 disabled:opacity-50"
-                title="Refresh live status"
-              >
-                <RefreshCw
-                  size={18}
-                  className={
-                    operationalLoading || loading
-                      ? 'animate-spin'
-                      : ''
-                  }
-                />
-              </button>
+            
 
               <div className="relative">
                 <button
@@ -1751,7 +1733,7 @@ const ChargersAndSessions = () => {
                         </th>
 
                         <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase">
-                          OCPP Identity
+                          Protocol
                         </th>
 
                         <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase">
@@ -1870,9 +1852,12 @@ const ChargersAndSessions = () => {
                                 {charger.ocpp_version || charger.protocol || 'N/A'}
                               </td>
 
-                              <td className="px-4 py-3 text-sm font-mono text-gray-500">
-                                {charger.ocpp_identity || 'N/A'}
-                              </td>
+                              {/* <td className="px-4 py-3 text-sm font-mono text-gray-500">
+                                {charger.protocol || 'N/A'}
+                              </td> */}
+                              <td className="px-4 py-3 text-sm font-mono text-gray-500 whitespace-nowrap">
+  {charger.protocol || 'N/A'}
+</td>
 
                               <td className="px-4 py-3 text-sm text-gray-600">
                                 {charger.charger_host_name || 'N/A'}

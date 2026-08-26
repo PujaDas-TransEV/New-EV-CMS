@@ -17,7 +17,7 @@ import RevenueManagement from './components/RevenueManagement';
 import AddChargerForm from './components/ChargerSessions/AddChargerForm';
 import DriversVehicles from './components/DriversVehicles';
 import Alerts from './components/Alerts';
-import Support from './components/Support';
+// import Support from './components/Support';
 import BillManagement from './components/BillManagement';
 import Organization from './components/Organization/Organization';
 import ManageHub from './components/Hubs/Managehubs';
@@ -47,6 +47,9 @@ import AddHubTariff from './components/Revenue/AddHubTarriff';
 import ChargerTariff from './components/Revenue/Chargertarrifs';
 import AddChargerTariff from './components/Revenue/AddChargerTarrif';
 import AppWalletSettings from './components/AppManagement/Wallet';
+import SupportTicket from './components/Support/SupportTicket';
+import UserAccess from './components/UserAccess/UserAccess';
+import AddStaff from './components/UserAccess/AddStaffAccess';
 import './index.css';
 
 function App() {
@@ -101,13 +104,16 @@ function App() {
 
           {/* Other Features */}
           <Route path="/alerts" element={<ProtectedRoute><Alerts /></ProtectedRoute>} />
-          <Route path="/support" element={<ProtectedRoute><Support /></ProtectedRoute>} />
+       
           <Route path="/bills" element={<ProtectedRoute><BillManagement /></ProtectedRoute>} />
           <Route path="/help-support" element={<ProtectedRoute><HelpandSupportPage /></ProtectedRoute>} />
           <Route path="/payment-integration" element={<ProtectedRoute><PaymentIntegration /></ProtectedRoute>} />
           <Route path="/revenue/charger-tariffs" element={<ProtectedRoute><ChargerTariff /></ProtectedRoute>} />
           <Route path="/revenue/add-charger-tariff" element={<ProtectedRoute><AddChargerTariff /></ProtectedRoute>} />
           <Route path="/app-management" element={<ProtectedRoute><AppWalletSettings/></ProtectedRoute>} />
+          <Route path="/support-ticket" element={<ProtectedRoute><SupportTicket/></ProtectedRoute>} />
+           <Route path="/user-access" element={<ProtectedRoute><UserAccess/></ProtectedRoute>} />
+              <Route path="/add-staff" element={<ProtectedRoute><AddStaff/></ProtectedRoute>} />
         </Routes>
       </AuthProvider>
     </Router>
