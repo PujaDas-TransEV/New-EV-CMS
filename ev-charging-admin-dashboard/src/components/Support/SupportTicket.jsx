@@ -1,4 +1,3 @@
-// src/components/Support/Support.jsx
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../Authentication/AuthContext';
@@ -117,11 +116,15 @@ import {
   Clock as ClockIcon,
   HelpCircle,
   AlertTriangle as AlertTriangleIcon,
-  CheckCircle as CheckCircleIcon2
+  CheckCircle as CheckCircleIcon2,
+  Copy,
+  RefreshCw as RefreshIcon
 } from 'lucide-react';
 import Sidebar from '../Sidebar/Sidebar';
 
+// ============================================================================
 // API Configuration
+// ============================================================================
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://dev-evcmsnew.transev.site';
 const CPO_APP_ID = process.env.REACT_APP_CPO_APP_ID || 'cpo_dummy_5f75674f57829da5f3cae19ef4238d56';
 
@@ -129,10 +132,13 @@ const API_CONFIG = {
   SUPPORT_TICKETS_API: `${API_BASE_URL}/api/v1/cpo/support`,
   SUPPORT_TICKET_DETAIL_API: (ticketId) => `${API_BASE_URL}/api/v1/cpo/support/${ticketId}`,
   SUPPORT_TICKET_REPLY_API: (ticketId) => `${API_BASE_URL}/api/v1/cpo/support/${ticketId}/replies`,
-  USER_INFO_API: `${API_BASE_URL}/api/v1/auth/me`
+  USER_INFO_API: `${API_BASE_URL}/api/v1/auth/me`,
+  ACCESS_ME_API: `${API_BASE_URL}/api/v1/cpo/access/me`
 };
 
-// Status color mapping for tickets
+// ============================================================================
+// Status Helpers
+// ============================================================================
 const getTicketStatusColor = (status) => {
   const colors = {
     'OPEN': 'bg-blue-100 text-blue-700 border-blue-200',
@@ -176,7 +182,6 @@ const getTicketStatusDisplayName = (status) => {
   return statusMap[status] || status || 'Unknown';
 };
 
-// Priority color mapping
 const getPriorityColor = (priority) => {
   const colors = {
     'LOW': 'bg-gray-100 text-gray-600 border-gray-200',
@@ -197,6 +202,16 @@ const getPriorityDisplayName = (priority) => {
   return priorityMap[priority] || priority || 'Low';
 };
 
+// ============================================================================
+// Permission Check Helper
+// ============================================================================
+const can = (access, permission) => {
+  return access?.effective?.includes(permission) || false;
+};
+
+// ============================================================================
+// Main Component
+// ============================================================================
 const Support = () => {
   const navigate = useNavigate();
   const { 
@@ -210,12 +225,14 @@ const Support = () => {
   
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [userData, setUserData] = useState(null);
+  const [accessData, setAccessData] = useState(null);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [showFilterPopup, setShowFilterPopup] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showToast, setShowToast] = useState({ visible: false, message: '', type: '' });
   
   // Tickets state
   const [tickets, setTickets] = useState([]);
@@ -240,6 +257,7 @@ const Support = () => {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [submittingReply, setSubmittingReply] = useState(false);
+  const [idempotencyKey, setIdempotencyKey] = useState('');
   
   // Create ticket modal
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -250,7 +268,9 @@ const Support = () => {
     priority: 'MEDIUM'
   });
 
-  // Fetch user info
+  // ============================================================================
+  // Fetch User Info & Access
+  // ============================================================================
   const fetchUserInfo = async () => {
     try {
       const response = await authenticatedRequest(API_CONFIG.USER_INFO_API, {
@@ -265,7 +285,26 @@ const Support = () => {
     }
   };
 
-  // Fetch tickets with pagination
+  const fetchAccessInfo = async () => {
+    try {
+      const response = await authenticatedRequest(API_CONFIG.ACCESS_ME_API, {
+        method: 'GET'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setAccessData(data);
+        console.log('✅ Access info loaded:', data);
+      } else {
+        console.error('❌ Failed to fetch access info');
+      }
+    } catch (error) {
+      console.error('❌ Error fetching access info:', error);
+    }
+  };
+
+  // ============================================================================
+  // Fetch Tickets with Pagination
+  // ============================================================================
   const fetchTickets = useCallback(async (before = null, beforeId = null, isLoadMore = false) => {
     if (isLoadMore && loadingMore) return;
     
@@ -281,12 +320,12 @@ const Support = () => {
       let url = `${API_CONFIG.SUPPORT_TICKETS_API}?limit=${pagination.limit}`;
       
       // Add pagination parameters if provided
-      if (before) url += `&next_before=${encodeURIComponent(before)}`;
-      if (beforeId) url += `&next_before_id=${encodeURIComponent(beforeId)}`;
+      if (before) url += `&before=${encodeURIComponent(before)}`;
+      if (beforeId) url += `&before_id=${encodeURIComponent(beforeId)}`;
       
       // Add filters
       if (statusFilter !== 'All') url += `&status=${statusFilter}`;
-      if (priorityFilter !== 'All') url += `&priority=${priorityFilter}`;
+      if (searchQuery) url += `&q=${encodeURIComponent(searchQuery)}`;
 
       console.log('📤 Fetching support tickets:', url);
       
@@ -304,27 +343,14 @@ const Support = () => {
         const data = await response.json();
         console.log('📥 Support tickets response:', data);
         
-        // Handle both array response and object response with tickets field
-        let ticketsArray = data;
-        let hasMore = false;
-        let nextBefore = null;
-        let nextBeforeId = null;
-        let total = ticketsArray.length;
-        
-        // If response is an object with tickets field
-        if (data && typeof data === 'object' && !Array.isArray(data)) {
-          ticketsArray = data.tickets || data.data || [];
-          hasMore = data.has_more || false;
-          nextBefore = data.next_before || null;
-          nextBeforeId = data.next_before_id || null;
-          total = data.total || ticketsArray.length;
-        } else if (Array.isArray(data)) {
-          // If response is directly an array
-          ticketsArray = data;
-          hasMore = data.length >= pagination.limit;
-        }
-        
+        // Handle response format
+        let ticketsArray = data.tickets || data.data || [];
         if (!Array.isArray(ticketsArray)) ticketsArray = [];
+        
+        const hasMore = data.has_more || false;
+        const nextBefore = data.next_before || null;
+        const nextBeforeId = data.next_before_id || null;
+        const total = data.total || ticketsArray.length;
 
         const transformedTickets = ticketsArray.map((ticket) => ({
           id: ticket.id,
@@ -332,13 +358,14 @@ const Support = () => {
           subject: ticket.subject || 'N/A',
           status: ticket.status || 'OPEN',
           priority: ticket.priority || 'MEDIUM',
-          created_at: ticket.created_at || ticket.createdAt,
-          updated_at: ticket.updated_at || ticket.updatedAt,
-          created_by_user_id: ticket.created_by_user_id || 'N/A',
+          created_at: ticket.created_at,
+          updated_at: ticket.updated_at,
+          created_by_user_id: ticket.created_by_user_id,
           messages: ticket.messages || [],
-          // First message body is the ticket body
-          body: ticket.messages && ticket.messages.length > 0 ? ticket.messages[0].body : 'N/A',
-          message_count: ticket.messages ? ticket.messages.length : 0,
+          message_count: ticket.message_count || (ticket.messages ? ticket.messages.length : 0),
+          last_message_at: ticket.last_message_at,
+          last_message_scope: ticket.last_message_scope,
+          cpo_name: ticket.cpo_name,
           ...ticket
         }));
 
@@ -371,7 +398,7 @@ const Support = () => {
       } else {
         const errorData = await response.json().catch(() => ({}));
         console.error('❌ Failed to fetch tickets:', response.status, errorData);
-        setError(errorData.message || 'Failed to fetch tickets');
+        setError(errorData.error?.message || 'Failed to fetch tickets');
       }
     } catch (error) {
       console.error('❌ Error fetching tickets:', error);
@@ -380,9 +407,11 @@ const Support = () => {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [pagination.limit, refreshToken, statusFilter, priorityFilter]);
+  }, [pagination.limit, refreshToken, statusFilter, searchQuery]);
 
-  // Fetch single ticket detail
+  // ============================================================================
+  // Fetch Ticket Detail
+  // ============================================================================
   const fetchTicketDetail = useCallback(async (ticketId) => {
     if (!ticketId) return;
     
@@ -405,10 +434,13 @@ const Support = () => {
 
       if (response.ok) {
         const data = await response.json();
+        // The API returns the ticket directly or nested
         const ticket = data.ticket || data.data || data;
         setSelectedTicket(ticket);
         setShowDetailModal(true);
         setReplyText('');
+        // Generate a new idempotency key for the reply
+        setIdempotencyKey(`reply_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`);
       } else if (response.status === 401) {
         setError('Session expired. Please refresh.');
         const newToken = await refreshToken();
@@ -428,11 +460,15 @@ const Support = () => {
             setSelectedTicket(ticket);
             setShowDetailModal(true);
             setReplyText('');
+            setIdempotencyKey(`reply_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`);
           }
         }
+      } else if (response.status === 404) {
+        setError('Ticket not found');
+        showToastMessage('Ticket not found', 'error');
       } else {
         const errorData = await response.json().catch(() => ({}));
-        setError(errorData.message || 'Failed to fetch ticket details');
+        setError(errorData.error?.message || 'Failed to fetch ticket details');
       }
     } catch (error) {
       console.error('❌ Error fetching ticket detail:', error);
@@ -442,68 +478,9 @@ const Support = () => {
     }
   }, [refreshToken]);
 
-  // Create new ticket
-  const createTicket = async () => {
-    if (!newTicket.subject.trim() || !newTicket.body.trim()) {
-      setError('Please fill in all required fields');
-      return;
-    }
-    
-    setCreatingTicket(true);
-    setError('');
-    
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(API_CONFIG.SUPPORT_TICKETS_API, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-CPO-App-ID': CPO_APP_ID,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-          subject: newTicket.subject,
-          body: newTicket.body,
-          priority: newTicket.priority
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log('✅ Ticket created:', data);
-        setShowCreateModal(false);
-        setNewTicket({ subject: '', body: '', priority: 'MEDIUM' });
-        fetchTickets();
-        
-        // Show success toast
-        const toast = document.createElement('div');
-        toast.className = 'fixed top-20 right-6 z-50 bg-green-500 text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-fadeIn';
-        toast.innerHTML = `
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-          </svg>
-          <span>Support ticket created successfully!</span>
-        `;
-        document.body.appendChild(toast);
-        setTimeout(() => {
-          toast.style.opacity = '0';
-          toast.style.transition = 'opacity 0.5s';
-          setTimeout(() => toast.remove(), 500);
-        }, 3000);
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        setError(errorData.message || 'Failed to create ticket');
-      }
-    } catch (error) {
-      console.error('❌ Error creating ticket:', error);
-      setError('An error occurred while creating the ticket');
-    } finally {
-      setCreatingTicket(false);
-    }
-  };
-
-  // Reply to ticket
+  // ============================================================================
+  // Reply to Ticket
+  // ============================================================================
   const replyToTicket = async () => {
     if (!replyText.trim()) {
       setError('Please enter a reply');
@@ -518,6 +495,11 @@ const Support = () => {
       const ticketId = selectedTicket.id || selectedTicket.ticket_id;
       const url = API_CONFIG.SUPPORT_TICKET_REPLY_API(ticketId);
       
+      const payload = {
+        body: replyText.trim(),
+        idempotency_key: idempotencyKey || `reply_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`
+      };
+      
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -526,38 +508,33 @@ const Support = () => {
           'Content-Type': 'application/json',
           'Accept': 'application/json'
         },
-        body: JSON.stringify({
-          body: replyText
-        })
+        body: JSON.stringify(payload)
       });
 
       if (response.ok) {
         const data = await response.json();
         console.log('✅ Reply sent:', data);
         setReplyText('');
-        // Refresh ticket detail
-        await fetchTicketDetail(ticketId);
+        // Generate new idempotency key for next reply
+        setIdempotencyKey(`reply_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`);
+        
+        // Refresh ticket detail - the response should contain the full ticket
+        const updatedTicket = data.ticket || data.data || data;
+        setSelectedTicket(updatedTicket);
+        
         // Refresh tickets list
         fetchTickets();
         
-        // Show success toast
-        const toast = document.createElement('div');
-        toast.className = 'fixed top-20 right-6 z-50 bg-green-500 text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-fadeIn';
-        toast.innerHTML = `
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-          </svg>
-          <span>Reply sent successfully!</span>
-        `;
-        document.body.appendChild(toast);
-        setTimeout(() => {
-          toast.style.opacity = '0';
-          toast.style.transition = 'opacity 0.5s';
-          setTimeout(() => toast.remove(), 500);
-        }, 3000);
+        showToastMessage('Reply sent successfully!', 'success');
+      } else if (response.status === 409) {
+        // Idempotency conflict - reply already exists
+        const errorData = await response.json().catch(() => ({}));
+        setError(errorData.error?.message || 'This reply was already sent');
+        showToastMessage('Reply already sent', 'info');
       } else {
         const errorData = await response.json().catch(() => ({}));
-        setError(errorData.message || 'Failed to send reply');
+        setError(errorData.error?.message || 'Failed to send reply');
+        showToastMessage(errorData.error?.message || 'Failed to send reply', 'error');
       }
     } catch (error) {
       console.error('❌ Error replying to ticket:', error);
@@ -567,12 +544,79 @@ const Support = () => {
     }
   };
 
+  // ============================================================================
+  // Create Ticket
+  // ============================================================================
+  const createTicket = async () => {
+    if (!newTicket.subject.trim() || !newTicket.body.trim()) {
+      setError('Please fill in all required fields');
+      return;
+    }
+    
+    setCreatingTicket(true);
+    setError('');
+    
+    try {
+      const token = localStorage.getItem('token');
+      
+      const payload = {
+        subject: newTicket.subject.trim(),
+        body: newTicket.body.trim()
+      };
+      
+      const response = await fetch(API_CONFIG.SUPPORT_TICKETS_API, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'X-CPO-App-ID': CPO_APP_ID,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ Ticket created:', data);
+        setShowCreateModal(false);
+        setNewTicket({ subject: '', body: '', priority: 'MEDIUM' });
+        fetchTickets();
+        showToastMessage('Support ticket created successfully!', 'success');
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        setError(errorData.error?.message || 'Failed to create ticket');
+        showToastMessage(errorData.error?.message || 'Failed to create ticket', 'error');
+      }
+    } catch (error) {
+      console.error('❌ Error creating ticket:', error);
+      setError('An error occurred while creating the ticket');
+    } finally {
+      setCreatingTicket(false);
+    }
+  };
+
+  // ============================================================================
+  // Toast Message Helper
+  // ============================================================================
+  const showToastMessage = (message, type = 'success') => {
+    setShowToast({ visible: true, message, type });
+    setTimeout(() => {
+      setShowToast({ visible: false, message: '', type: '' });
+    }, 4000);
+  };
+
+  // ============================================================================
+  // Load More Tickets
+  // ============================================================================
   const loadMoreTickets = () => {
     if (pagination.has_more && !loadingMore && !loading) {
       fetchTickets(pagination.next_before, pagination.next_before_id, true);
     }
   };
 
+  // ============================================================================
+  // Handlers
+  // ============================================================================
   const handleTicketClick = (ticketId) => {
     if (ticketId) {
       fetchTicketDetail(ticketId);
@@ -627,52 +671,106 @@ const Support = () => {
     });
   };
 
-  // Initial fetch
+  // ============================================================================
+  // Effects
+  // ============================================================================
   useEffect(() => {
     if (!isAuthenticated) {
       navigate('/signin');
       return;
     }
     
-    fetchUserInfo();
-    fetchTickets();
+    const bootstrap = async () => {
+      await fetchUserInfo();
+      await fetchAccessInfo();
+      await fetchTickets();
+    };
+    bootstrap();
   }, [isAuthenticated]);
 
-  // Filter tickets based on search
+  // ============================================================================
+  // Filtered Tickets
+  // ============================================================================
   const filteredTickets = useMemo(() => {
-    if (!searchQuery) return tickets;
-    const query = searchQuery.toLowerCase();
-    return tickets.filter(ticket => {
-      const idStr = String(ticket.id || ticket.ticket_id || '');
-      const subjectStr = String(ticket.subject || '');
-      const bodyStr = String(ticket.body || '');
-      
-      return (
-        idStr.toLowerCase().includes(query) ||
-        subjectStr.toLowerCase().includes(query) ||
-        bodyStr.toLowerCase().includes(query)
-      );
-    });
+    let result = tickets;
+    
+    // Apply search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(ticket => {
+        const idStr = String(ticket.id || ticket.ticket_id || '');
+        const subjectStr = String(ticket.subject || '');
+        const bodyStr = String(ticket.body || '');
+        return (
+          idStr.toLowerCase().includes(query) ||
+          subjectStr.toLowerCase().includes(query) ||
+          bodyStr.toLowerCase().includes(query)
+        );
+      });
+    }
+    
+    return result;
   }, [tickets, searchQuery]);
 
-  // Settings Dropdown Menu
+  // ============================================================================
+  // Check permissions
+  // ============================================================================
+  const canRead = can(accessData, 'support.read');
+  const canCreate = can(accessData, 'support.create');
+  const canReply = can(accessData, 'support.reply');
+
+  // ============================================================================
+  // Helper to truncate ID
+  // ============================================================================
+  const truncateId = (id) => {
+    if (!id) return 'N/A';
+    const strId = String(id);
+    if (strId.length > 12) {
+      return strId.substring(0, 12) + '...';
+    }
+    return strId;
+  };
+
+  // ============================================================================
+  // Toast Component
+  // ============================================================================
+  const Toast = () => {
+    if (!showToast.visible) return null;
+    const colors = {
+      success: 'bg-green-500',
+      error: 'bg-red-500',
+      info: 'bg-blue-500'
+    };
+    return (
+      <div className={`fixed top-20 right-6 z-50 ${colors[showToast.type] || 'bg-blue-500'} text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-fadeIn`}>
+        {showToast.type === 'success' && <CheckCircle className="w-5 h-5" />}
+        {showToast.type === 'error' && <AlertCircle className="w-5 h-5" />}
+        {showToast.type === 'info' && <Info className="w-5 h-5" />}
+        <span>{showToast.message}</span>
+      </div>
+    );
+  };
+
+  // ============================================================================
+  // Settings Menu
+  // ============================================================================
   const SettingsMenu = () => (
-    <div className="absolute top-full right-0 mt-2 bg-black rounded-2xl w-80 shadow-2xl border border-gray-800 z-50 overflow-hidden">
-      <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-5 py-4">
+    <div className="absolute top-full right-0 mt-2 bg-white rounded-2xl w-80 shadow-2xl border border-gray-100 z-50 overflow-hidden">
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-4">
         <div className="flex items-center gap-3">
-          <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-2xl font-bold text-white border-2 border-white/30 flex-shrink-0">
+          <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-2xl font-bold text-white border-2 border-white/30 flex-shrink-0">
             {userData?.user?.full_name?.charAt(0) || user?.name?.charAt(0) || 'U'}
           </div>
           <div className="flex-1 min-w-0">
             <h4 className="text-base font-semibold text-white truncate">
               {userData?.user?.full_name || user?.name || 'User'}
             </h4>
-            <p className="text-sm text-gray-400 truncate">
+            <p className="text-sm text-white/80 truncate">
               {userData?.user?.email || user?.email || 'user@transev.com'}
             </p>
-            {userData?.role && (
-              <span className="inline-block mt-1 px-2 py-0.5 bg-white/10 rounded-full text-xs text-gray-300 border border-gray-600">
-                {userData.role}
+            {accessData?.role && (
+              <span className="inline-block mt-1 px-2 py-0.5 bg-white/20 rounded-full text-xs text-white border border-white/30">
+                {accessData.role}
               </span>
             )}
           </div>
@@ -680,37 +778,44 @@ const Support = () => {
       </div>
       
       <div className="p-2">
-        <button onClick={() => { setShowSettingsMenu(false); navigate('/profile'); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
-          <UserIcon size={16} className="text-gray-500" /> <span>Profile</span>
+        <button onClick={() => { setShowSettingsMenu(false); navigate('/profile'); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-50 text-sm font-medium text-gray-700 hover:text-gray-900 flex items-center gap-3 transition">
+          <User size={16} className="text-gray-400" /> <span>Profile</span>
         </button>
-        <button onClick={() => { setShowSettingsMenu(false); navigate('/organization'); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
-          <Building size={16} className="text-gray-500" /> <span>Organization</span>
+        <button onClick={() => { setShowSettingsMenu(false); navigate('/organization'); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-50 text-sm font-medium text-gray-700 hover:text-gray-900 flex items-center gap-3 transition">
+          <Building size={16} className="text-gray-400" /> <span>Organization</span>
         </button>
-        <div className="border-t border-gray-700 my-1"></div>
-        <button onClick={() => { setShowSettingsMenu(false); handleLogout(); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-red-900/30 text-sm font-medium text-red-400 hover:text-red-300 flex items-center gap-3 transition">
+        <div className="border-t border-gray-100 my-1"></div>
+        <button onClick={() => { setShowSettingsMenu(false); handleLogout(); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-red-50 text-sm font-medium text-red-600 hover:text-red-700 flex items-center gap-3 transition">
           <LogOut size={16} className="text-red-500" /> <span>Sign Out</span>
         </button>
       </div>
     </div>
   );
 
+  // ============================================================================
+  // Add Menu
+  // ============================================================================
   const AddMenu = () => (
-    <div className="absolute top-full right-0 mt-2 bg-black rounded-2xl w-64 shadow-2xl border border-gray-800 z-50">
+    <div className="absolute top-full right-0 mt-2 bg-white rounded-2xl w-64 shadow-2xl border border-gray-100 z-50">
       <div className="p-3">
-        <button onClick={() => { setShowAddMenu(false); navigate("/add-hub"); }} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
-          <Plus size={18} className="text-gray-400" /> Add Hub
+        <button onClick={() => { setShowAddMenu(false); navigate("/add-hub"); }} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-50 text-sm font-medium text-gray-700 hover:text-gray-900 flex items-center gap-3 transition">
+          <Zap size={18} className="text-gray-400" /> Add Hub
         </button>
-        <button onClick={() => { setShowAddMenu(false); navigate("/add-charger"); }} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
+        <button onClick={() => { setShowAddMenu(false); navigate("/add-charger"); }} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-50 text-sm font-medium text-gray-700 hover:text-gray-900 flex items-center gap-3 transition">
           <Zap size={18} className="text-gray-400" /> Add Charger
         </button>
-        <button onClick={() => { setShowAddMenu(false); setShowCreateModal(true); }} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
-          <Ticket size={18} className="text-gray-400" /> New Support Ticket
-        </button>
+        {canCreate && (
+          <button onClick={() => { setShowAddMenu(false); setShowCreateModal(true); }} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-50 text-sm font-medium text-gray-700 hover:text-gray-900 flex items-center gap-3 transition">
+            <Ticket size={18} className="text-gray-400" /> New Support Ticket
+          </button>
+        )}
       </div>
     </div>
   );
 
+  // ============================================================================
   // Filter Popup
+  // ============================================================================
   const FilterPopup = () => (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl w-[500px] max-w-[90vw] shadow-2xl p-6 max-h-[80vh] overflow-y-auto animate-fadeIn">
@@ -742,25 +847,11 @@ const Support = () => {
             </select>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Priority</label>
-            <select
-              value={priorityFilter}
-              onChange={(e) => setPriorityFilter(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-            >
-              <option value="All">All Priority</option>
-              <option value="LOW">Low</option>
-              <option value="MEDIUM">Medium</option>
-              <option value="HIGH">High</option>
-              <option value="URGENT">Urgent</option>
-            </select>
-          </div>
-
           <div className="flex gap-3 pt-2">
             <button
               onClick={() => {
                 setShowFilterPopup(false);
+                setTickets([]);
                 fetchTickets();
               }}
               className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 transition shadow-lg shadow-blue-500/25"
@@ -770,8 +861,8 @@ const Support = () => {
             <button
               onClick={() => {
                 setStatusFilter('All');
-                setPriorityFilter('All');
                 setSearchQuery('');
+                setTickets([]);
                 fetchTickets();
               }}
               className="px-6 py-2.5 rounded-xl bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 transition"
@@ -784,18 +875,18 @@ const Support = () => {
     </div>
   );
 
+  // ============================================================================
   // Create Ticket Modal
+  // ============================================================================
   const CreateTicketModal = () => {
     const [localSubject, setLocalSubject] = useState('');
     const [localBody, setLocalBody] = useState('');
-    const [localPriority, setLocalPriority] = useState('MEDIUM');
     const [localError, setLocalError] = useState('');
 
     useEffect(() => {
       if (showCreateModal) {
         setLocalSubject(newTicket.subject || '');
         setLocalBody(newTicket.body || '');
-        setLocalPriority(newTicket.priority || 'MEDIUM');
         setLocalError('');
       }
     }, [showCreateModal]);
@@ -820,9 +911,8 @@ const Support = () => {
             'Accept': 'application/json'
           },
           body: JSON.stringify({
-            subject: localSubject,
-            body: localBody,
-            priority: localPriority
+            subject: localSubject.trim(),
+            body: localBody.trim()
           })
         });
 
@@ -833,26 +923,11 @@ const Support = () => {
           setNewTicket({ subject: '', body: '', priority: 'MEDIUM' });
           setLocalSubject('');
           setLocalBody('');
-          setLocalPriority('MEDIUM');
           fetchTickets();
-          
-          const toast = document.createElement('div');
-          toast.className = 'fixed top-20 right-6 z-50 bg-green-500 text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-fadeIn';
-          toast.innerHTML = `
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-            </svg>
-            <span>Support ticket created successfully!</span>
-          `;
-          document.body.appendChild(toast);
-          setTimeout(() => {
-            toast.style.opacity = '0';
-            toast.style.transition = 'opacity 0.5s';
-            setTimeout(() => toast.remove(), 500);
-          }, 3000);
+          showToastMessage('Support ticket created successfully!', 'success');
         } else {
           const errorData = await response.json().catch(() => ({}));
-          setLocalError(errorData.message || 'Failed to create ticket');
+          setLocalError(errorData.error?.message || 'Failed to create ticket');
         }
       } catch (error) {
         console.error('❌ Error creating ticket:', error);
@@ -867,7 +942,6 @@ const Support = () => {
       setNewTicket({ subject: '', body: '', priority: 'MEDIUM' });
       setLocalSubject('');
       setLocalBody('');
-      setLocalPriority('MEDIUM');
       setLocalError('');
     };
 
@@ -910,25 +984,11 @@ const Support = () => {
                   value={localSubject}
                   onChange={(e) => setLocalSubject(e.target.value)}
                   placeholder="Brief summary of your issue"
+                  maxLength={200}
                   className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition"
                   autoFocus
                 />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                  Priority <span className="text-red-500">*</span>
-                </label>
-                <select
-                  value={localPriority}
-                  onChange={(e) => setLocalPriority(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition appearance-none bg-white"
-                >
-                  <option value="LOW">Low</option>
-                  <option value="MEDIUM">Medium</option>
-                  <option value="HIGH">High</option>
-                  <option value="URGENT">Urgent</option>
-                </select>
+                <p className="text-xs text-gray-400 mt-1">{localSubject.length}/200</p>
               </div>
 
               <div>
@@ -940,8 +1000,10 @@ const Support = () => {
                   onChange={(e) => setLocalBody(e.target.value)}
                   placeholder="Detailed description of your issue"
                   rows={6}
+                  maxLength={10000}
                   className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition resize-none"
                 />
+                <p className="text-xs text-gray-400 mt-1">{localBody.length}/10000</p>
               </div>
             </div>
 
@@ -952,7 +1014,8 @@ const Support = () => {
               >
                 Cancel
               </button>
-              <button                onClick={handleCreateTicket}
+              <button
+                onClick={handleCreateTicket}
                 disabled={creatingTicket || !localSubject.trim() || !localBody.trim()}
                 className="flex-1 px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 transition flex items-center justify-center gap-2 font-medium shadow-lg shadow-blue-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -975,26 +1038,29 @@ const Support = () => {
     );
   };
 
-  // Ticket Detail Modal - Fixed with hooks at top level
+  // ============================================================================
+  // Ticket Detail Modal - Fixed reply textarea
+  // ============================================================================
   const TicketDetailModal = () => {
-    // Hooks must be called at the top level, not conditionally
     const replyTextareaRef = useRef(null);
 
-    // Check if ticket is open
     const isOpen = selectedTicket?.status === 'OPEN' || selectedTicket?.status === 'IN_PROGRESS' || selectedTicket?.status === 'PENDING';
 
-    // Focus the textarea when modal opens
+    // Auto-focus the textarea when modal opens - but without interfering with cursor
     useEffect(() => {
-      if (showDetailModal && isOpen) {
+      if (showDetailModal && isOpen && canReply) {
+        // Small delay to let the modal render
         setTimeout(() => {
           if (replyTextareaRef.current) {
             replyTextareaRef.current.focus();
+            // Set cursor at the end of the text
+            const length = replyTextareaRef.current.value.length;
+            replyTextareaRef.current.setSelectionRange(length, length);
           }
-        }, 300);
+        }, 200);
       }
-    }, [showDetailModal, isOpen]);
+    }, [showDetailModal, isOpen, canReply]);
 
-    // Now we can use conditional returns after hooks
     if (!selectedTicket) return null;
 
     const messages = selectedTicket.messages || [];
@@ -1020,12 +1086,26 @@ const Support = () => {
                 </p>
               </div>
             </div>
-            <button
-              onClick={closeDetailModal}
-              className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-xl transition"
-            >
-              <X size={20} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => {
+                  const ticketId = selectedTicket.id || selectedTicket.ticket_id;
+                  if (ticketId) {
+                    fetchTicketDetail(ticketId);
+                  }
+                }}
+                className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-xl transition"
+                title="Refresh"
+              >
+                <RefreshIcon size={18} className={loadingDetail ? 'animate-spin' : ''} />
+              </button>
+              <button
+                onClick={closeDetailModal}
+                className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-xl transition"
+              >
+                <X size={20} />
+              </button>
+            </div>
           </div>
 
           <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
@@ -1050,18 +1130,16 @@ const Support = () => {
                     </span>
                   </div>
                   <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-4 border border-purple-200">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider">Priority</p>
-                    <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium mt-1 ${getPriorityColor(selectedTicket.priority)}`}>
-                      {getPriorityDisplayName(selectedTicket.priority)}
-                    </span>
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Messages</p>
+                    <p className="text-lg font-bold text-purple-600 mt-1">{messages.length}</p>
                   </div>
                   <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-2xl p-4 border border-emerald-200">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider">Messages</p>
-                    <p className="text-lg font-bold text-emerald-600 mt-1">{messages.length}</p>
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Created</p>
+                    <p className="text-sm font-medium text-emerald-600 mt-1">{formatDate(selectedTicket.created_at)}</p>
                   </div>
                   <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl p-4 border border-amber-200">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider">Created</p>
-                    <p className="text-sm font-medium text-amber-600 mt-1">{formatDate(selectedTicket.created_at)}</p>
+                    <p className="text-xs text-gray-500 uppercase tracking-wider">Last Activity</p>
+                    <p className="text-sm font-medium text-amber-600 mt-1">{formatDate(selectedTicket.updated_at)}</p>
                   </div>
                 </div>
 
@@ -1069,25 +1147,28 @@ const Support = () => {
                 <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200 mb-6">
                   <h4 className="text-sm font-semibold text-gray-700 mb-3">{selectedTicket.subject}</h4>
                   
-                  {/* Display all messages */}
-                  {messages.map((message, index) => {
-                    const isCPO = message.author_scope === 'CPO';
-                    return (
-                      <div key={message.id || index} className={`mb-3 p-3 rounded-xl border ${isCPO ? 'bg-blue-50 border-blue-200 ml-4' : 'bg-gray-50 border-gray-200 mr-4'}`}>
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="text-xs font-medium text-gray-600">
-                            {isCPO ? 'You (CPO)' : 'Support Team'}
-                          </span>
-                          <span className="text-xs text-gray-400">{formatDate(message.created_at)}</span>
+                  {messages.length === 0 ? (
+                    <p className="text-sm text-gray-400 text-center py-4">No messages yet</p>
+                  ) : (
+                    messages.map((message, index) => {
+                      const isCPO = message.author_scope === 'CPO';
+                      return (
+                        <div key={message.id || index} className={`mb-3 p-3 rounded-xl border ${isCPO ? 'bg-blue-50 border-blue-200 ml-4' : 'bg-white border-gray-200 mr-4'}`}>
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-medium text-gray-600">
+                              {isCPO ? 'You (CPO)' : (message.author_scope || 'Support')}
+                            </span>
+                            <span className="text-xs text-gray-400">{formatDate(message.created_at)}</span>
+                          </div>
+                          <p className="text-sm text-gray-700 whitespace-pre-wrap">{message.body}</p>
                         </div>
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{message.body}</p>
-                      </div>
-                    );
-                  })}
+                      );
+                    })
+                  )}
                 </div>
 
-                {/* Reply Input - Fixed with proper focus handling */}
-                {isOpen && (
+                {/* Reply Input - Fixed textarea behavior */}
+                {isOpen && canReply ? (
                   <div className="border-t border-gray-200 pt-4">
                     <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                       <Send size={16} />
@@ -1106,12 +1187,8 @@ const Support = () => {
                         onChange={(e) => setReplyText(e.target.value)}
                         placeholder="Type your reply here..."
                         rows={3}
+                        maxLength={10000}
                         className="flex-1 px-4 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition resize-none"
-                        onFocus={(e) => {
-                          // Keep cursor at current position
-                          const length = e.target.value.length;
-                          e.target.setSelectionRange(length, length);
-                        }}
                       />
                     </div>
                     <div className="flex justify-end mt-3">
@@ -1134,9 +1211,11 @@ const Support = () => {
                       </button>
                     </div>
                   </div>
-                )}
-
-                {!isOpen && (
+                ) : isOpen && !canReply ? (
+                  <div className="border-t border-gray-200 pt-4 text-center">
+                    <p className="text-sm text-yellow-600">You don't have permission to reply to this ticket.</p>
+                  </div>
+                ) : (
                   <div className="border-t border-gray-200 pt-4 text-center">
                     <p className="text-sm text-gray-500">This ticket is closed. No further replies can be added.</p>
                   </div>
@@ -1149,16 +1228,9 @@ const Support = () => {
     );
   };
 
-  // Helper to truncate ID
-  const truncateId = (id) => {
-    if (!id) return 'N/A';
-    const strId = String(id);
-    if (strId.length > 12) {
-      return strId.substring(0, 12) + '...';
-    }
-    return strId;
-  };
-
+  // ============================================================================
+  // Loading State
+  // ============================================================================
   if (isRefreshing && loading && isInitialLoad) {
     return (
       <div className="min-h-screen bg-gray-50 flex">
@@ -1173,6 +1245,9 @@ const Support = () => {
     );
   }
 
+  // ============================================================================
+  // Main Render
+  // ============================================================================
   return (
     <div className="min-h-screen bg-gray-50 flex">
       <Sidebar 
@@ -1184,6 +1259,9 @@ const Support = () => {
       />
 
       <div className="flex-1 min-w-0">
+        <Toast />
+
+        {/* Header */}
         <header className="bg-white border-b-2 border-gray-200 px-6 py-5 sticky top-0 z-30 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1 text-sm text-gray-500">
@@ -1210,7 +1288,7 @@ const Support = () => {
                 className="p-2 hover:bg-gray-100 rounded-xl transition text-gray-500"
                 title="Refresh"
               >
-                <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
+                {/* <RefreshCw size={20} className={loading ? 'animate-spin' : ''} /> */}
               </button>
 
               <div className="relative">
@@ -1260,12 +1338,12 @@ const Support = () => {
           {/* Search and Filters */}
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
             <div className="flex items-center gap-2">
-              {(statusFilter !== 'All' || priorityFilter !== 'All') && (
+              {(statusFilter !== 'All') && (
                 <button
                   onClick={() => {
                     setStatusFilter('All');
-                    setPriorityFilter('All');
                     setSearchQuery('');
+                    setTickets([]);
                     fetchTickets();
                   }}
                   className="text-xs px-3 py-1.5 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 transition flex items-center gap-1"
@@ -1283,7 +1361,19 @@ const Support = () => {
                   type="text"
                   placeholder="Search tickets..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    if (e.target.value === '') {
+                      setTickets([]);
+                      fetchTickets();
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      setTickets([]);
+                      fetchTickets();
+                    }
+                  }}
                   className="pl-9 pr-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm w-56 bg-gray-50"
                 />
               </div>
@@ -1294,13 +1384,15 @@ const Support = () => {
                 <Filter size={16} className="text-gray-500" />
                 Filter
               </button>
-              <button
-                onClick={() => setShowCreateModal(true)}
-                className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition text-sm font-medium shadow-lg shadow-blue-500/25"
-              >
-                <Plus size={16} />
-                New Ticket
-              </button>
+              {canCreate && (
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition text-sm font-medium shadow-lg shadow-blue-500/25"
+                >
+                  <Plus size={16} />
+                  New Ticket
+                </button>
+              )}
               {showFilterPopup && <FilterPopup />}
             </div>
           </div>
@@ -1311,10 +1403,9 @@ const Support = () => {
               <table className="w-full">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">SI</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">#</th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Ticket ID</th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Subject</th>
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Priority</th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Messages</th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Created</th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
@@ -1324,18 +1415,18 @@ const Support = () => {
                 <tbody>
                   {loading && !hasLoaded && isInitialLoad ? (
                     <tr>
-                      <td colSpan="8" className="px-3 py-12 text-center">
+                      <td colSpan="7" className="px-3 py-12 text-center">
                         <Loader2 className="w-10 h-10 text-blue-600 animate-spin mx-auto mb-3" />
                         <p className="text-gray-600">Loading tickets...</p>
                       </td>
                     </tr>
                   ) : error ? (
                     <tr>
-                      <td colSpan="8" className="px-3 py-12 text-center">
+                      <td colSpan="7" className="px-3 py-12 text-center">
                         <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-3" />
                         <p className="text-gray-600">{error}</p>
                         <button
-                          onClick={() => { setError(''); fetchTickets(); }}
+                          onClick={() => { setError(''); setTickets([]); fetchTickets(); }}
                           className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition"
                         >
                           Retry
@@ -1344,23 +1435,25 @@ const Support = () => {
                     </tr>
                   ) : filteredTickets.length === 0 ? (
                     <tr>
-                      <td colSpan="8" className="px-3 py-12 text-center">
+                      <td colSpan="7" className="px-3 py-12 text-center">
                         <Ticket size={48} className="text-gray-300 mx-auto mb-3" />
                         <p className="text-gray-500 font-medium">No Tickets Found</p>
                         <p className="text-sm text-gray-400 mt-1">No support tickets available.</p>
-                        <button
-                          onClick={() => setShowCreateModal(true)}
-                          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-500/25 flex items-center gap-2 mx-auto text-sm"
-                        >
-                          <Plus size={16} />
-                          Create New Ticket
-                        </button>
+                        {canCreate && (
+                          <button
+                            onClick={() => setShowCreateModal(true)}
+                            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-500/25 flex items-center gap-2 mx-auto text-sm"
+                          >
+                            <Plus size={16} />
+                            Create New Ticket
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ) : (
                     filteredTickets.map((ticket, index) => {
                       const isOpen = ticket.status === 'OPEN' || ticket.status === 'IN_PROGRESS';
-                      const messageCount = ticket.messages?.length || 0;
+                      const messageCount = ticket.message_count || ticket.messages?.length || 0;
                       return (
                         <tr 
                           key={ticket.id || ticket.ticket_id || index} 
@@ -1373,11 +1466,6 @@ const Support = () => {
                           </td>
                           <td className="px-3 py-3 text-sm text-gray-700">
                             <div className="max-w-xs truncate">{ticket.subject}</div>
-                          </td>
-                          <td className="px-3 py-3 text-sm">
-                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(ticket.priority)}`}>
-                              {getPriorityDisplayName(ticket.priority)}
-                            </span>
                           </td>
                           <td className="px-3 py-3 text-sm text-gray-600 text-center">
                             {messageCount}
@@ -1417,11 +1505,11 @@ const Support = () => {
             </div>
 
             {/* Pagination - Load More */}
-            {pagination.has_more && filteredTickets.length > 0 && (
+            {pagination.has_more && filteredTickets.length > 0 && !loading && (
               <div className="px-4 py-4 border-t border-gray-200 flex items-center justify-center">
                 <button
                   onClick={loadMoreTickets}
-                  disabled={loadingMore || loading}
+                  disabled={loadingMore}
                   className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 transition shadow-lg shadow-blue-500/25 disabled:opacity-50"
                 >
                   {loadingMore ? (
@@ -1461,36 +1549,24 @@ const Support = () => {
         </div>
       </div>
 
-      {/* Create Ticket Modal */}
+      {/* Modals */}
       {showCreateModal && <CreateTicketModal />}
-
-      {/* Ticket Detail Modal */}
       {showDetailModal && <TicketDetailModal />}
 
       <style>{`
         @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        @keyframes slideUp {
-          from { opacity: 0; transform: translateY(20px) scale(0.98); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
         }
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.5; }
         }
         .animate-fadeIn {
-          animation: fadeIn 0.2s ease-out forwards;
-        }
-        .animate-slideUp {
-          animation: slideUp 0.3s ease-out forwards;
+          animation: fadeIn 0.3s ease-out forwards;
         }
         .animate-pulse {
           animation: pulse 1.5s ease-in-out infinite;
-        }
-        tr.animate-pulse-update {
-          transition: background-color 0.3s ease;
         }
       `}</style>
     </div>

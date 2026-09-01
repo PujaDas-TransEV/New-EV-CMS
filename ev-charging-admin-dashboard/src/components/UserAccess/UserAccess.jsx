@@ -130,7 +130,8 @@ import {
   ShieldCheck,
   HelpCircle,
   CalendarDays as CalendarDaysIcon,
-  RotateCcw
+  RotateCcw,
+  UserRound
 } from 'lucide-react';
 import Sidebar from '../Sidebar/Sidebar';
 
@@ -147,7 +148,13 @@ const API_CONFIG = {
   STAFF_ACTIVATE: (membershipId) => `${API_BASE_URL}/api/v1/cpo/staff/${membershipId}/activate`,
   STAFF_SUSPEND: (membershipId) => `${API_BASE_URL}/api/v1/cpo/staff/${membershipId}/suspend`,
   STAFF_REVOKE: (membershipId) => `${API_BASE_URL}/api/v1/cpo/staff/${membershipId}/revoke`,
-  USER_INFO_API: `${API_BASE_URL}/api/v1/auth/me`
+  USER_INFO_API: `${API_BASE_URL}/api/v1/auth/me`,
+  ACCESS_ME_API: `${API_BASE_URL}/api/v1/cpo/access/me`
+};
+
+// Permission check helper
+const can = (access, permission) => {
+  return access?.effective?.includes(permission) || false;
 };
 
 // Status color mapping
@@ -189,6 +196,17 @@ const getStatusDisplayName = (status) => {
   return statusMap[status] || status || 'Unknown';
 };
 
+// Role badge color
+const getRoleBadgeColor = (role) => {
+  const colors = {
+    'ADMIN': 'bg-purple-100 text-purple-700 border-purple-200',
+    'STAFF': 'bg-blue-100 text-blue-700 border-blue-200',
+    'VIEWER': 'bg-gray-100 text-gray-700 border-gray-200',
+    'OPERATOR': 'bg-green-100 text-green-700 border-green-200'
+  };
+  return colors[role] || 'bg-gray-100 text-gray-700 border-gray-200';
+};
+
 const UserAccess = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -203,12 +221,14 @@ const UserAccess = () => {
   
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [userData, setUserData] = useState(null);
+  const [accessData, setAccessData] = useState(null);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [showFilterPopup, setShowFilterPopup] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showToast, setShowToast] = useState({ visible: false, message: '', type: '' });
   
   // Staff state
   const [staffMembers, setStaffMembers] = useState([]);
@@ -240,11 +260,15 @@ const UserAccess = () => {
   const [showReasonModal, setShowReasonModal] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
 
+  // Permissions
+  const canReadStaff = can(accessData, 'staff.read');
+  const canManageStaff = can(accessData, 'staff.manage');
+  const canManagePermissions = can(accessData, 'staff.permissions.manage');
+
   // Check if returning from add-staff page
   useEffect(() => {
     if (location.state?.refresh) {
       fetchStaff();
-      // Clear the state to prevent refresh loop
       navigate(location.pathname, { replace: true, state: {} });
     }
   }, [location]);
@@ -264,6 +288,22 @@ const UserAccess = () => {
     }
   };
 
+  // Fetch access info
+  const fetchAccessInfo = async () => {
+    try {
+      const response = await authenticatedRequest(API_CONFIG.ACCESS_ME_API, {
+        method: 'GET'
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setAccessData(data);
+        console.log('✅ Access info loaded:', data);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching access info:', error);
+    }
+  };
+
   // Fetch permissions catalog
   const fetchPermissionsCatalog = async () => {
     try {
@@ -280,8 +320,6 @@ const UserAccess = () => {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('📥 Permissions catalog:', data);
-        
         let permissions = [];
         if (Array.isArray(data)) {
           permissions = data;
@@ -290,10 +328,7 @@ const UserAccess = () => {
         } else if (data.data) {
           permissions = data.data;
         }
-        
         setPermissionsCatalog(permissions);
-      } else {
-        console.error('Failed to fetch permissions catalog:', response.status);
       }
     } catch (error) {
       console.error('Error fetching permissions catalog:', error);
@@ -321,8 +356,6 @@ const UserAccess = () => {
       if (statusFilter !== 'All') url += `&status=${statusFilter}`;
       if (roleFilter !== 'All') url += `&role=${roleFilter}`;
 
-      console.log('📤 Fetching staff:', url);
-      
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -335,7 +368,6 @@ const UserAccess = () => {
 
       if (response.ok) {
         const data = await response.json();
-        console.log('📥 Staff response:', data);
         
         let staffArray = data;
         let hasMore = false;
@@ -379,8 +411,6 @@ const UserAccess = () => {
           };
         });
 
-        console.log('📊 Transformed staff:', transformedStaff.length);
-
         if (isLoadMore) {
           setStaffMembers(prev => [...prev, ...transformedStaff]);
         } else {
@@ -398,8 +428,6 @@ const UserAccess = () => {
         setHasLoaded(true);
         setIsInitialLoad(false);
       } else if (response.status === 401) {
-        console.error('❌ 401 Unauthorized - Token expired');
-        setError('Session expired. Please refresh.');
         const newToken = await refreshToken();
         if (newToken) {
           fetchStaff(before, beforeId, isLoadMore);
@@ -407,7 +435,6 @@ const UserAccess = () => {
         }
       } else {
         const errorData = await response.json().catch(() => ({}));
-        console.error('❌ Failed to fetch staff:', response.status, errorData);
         setError(errorData.message || 'Failed to fetch staff members');
       }
     } catch (error) {
@@ -446,7 +473,6 @@ const UserAccess = () => {
         setSelectedMember(member);
         setShowDetailModal(true);
       } else if (response.status === 401) {
-        setError('Session expired. Please refresh.');
         const newToken = await refreshToken();
         if (newToken) {
           const retryResponse = await fetch(url, {
@@ -477,7 +503,7 @@ const UserAccess = () => {
     }
   }, [refreshToken]);
 
-  // Activate staff member with reason
+  // Activate staff member
   const activateStaff = async (membershipId, reason = '') => {
     if (!membershipId) return;
     
@@ -501,8 +527,6 @@ const UserAccess = () => {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        console.log('✅ Staff activated:', data);
         await fetchStaff();
         if (showDetailModal) {
           await fetchStaffDetail(membershipId);
@@ -510,21 +534,7 @@ const UserAccess = () => {
         setShowReasonModal(false);
         setActionReason('');
         setPendingAction(null);
-        
-        const toast = document.createElement('div');
-        toast.className = 'fixed top-20 right-6 z-50 bg-green-500 text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-fadeIn';
-        toast.innerHTML = `
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-          </svg>
-          <span>Staff member activated successfully!</span>
-        `;
-        document.body.appendChild(toast);
-        setTimeout(() => {
-          toast.style.opacity = '0';
-          toast.style.transition = 'opacity 0.5s';
-          setTimeout(() => toast.remove(), 500);
-        }, 3000);
+        showToastMessage('Staff member activated successfully!', 'success');
       } else {
         const errorData = await response.json().catch(() => ({}));
         setError(errorData.message || 'Failed to activate staff member');
@@ -538,7 +548,7 @@ const UserAccess = () => {
     }
   };
 
-  // Suspend staff member with reason
+  // Suspend staff member
   const suspendStaff = async (membershipId, reason = '') => {
     if (!membershipId) return;
     
@@ -562,8 +572,6 @@ const UserAccess = () => {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        console.log('✅ Staff suspended:', data);
         await fetchStaff();
         if (showDetailModal) {
           await fetchStaffDetail(membershipId);
@@ -571,21 +579,7 @@ const UserAccess = () => {
         setShowReasonModal(false);
         setActionReason('');
         setPendingAction(null);
-        
-        const toast = document.createElement('div');
-        toast.className = 'fixed top-20 right-6 z-50 bg-yellow-500 text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-fadeIn';
-        toast.innerHTML = `
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-          </svg>
-          <span>Staff member suspended successfully!</span>
-        `;
-        document.body.appendChild(toast);
-        setTimeout(() => {
-          toast.style.opacity = '0';
-          toast.style.transition = 'opacity 0.5s';
-          setTimeout(() => toast.remove(), 500);
-        }, 3000);
+        showToastMessage('Staff member suspended successfully!', 'info');
       } else {
         const errorData = await response.json().catch(() => ({}));
         setError(errorData.message || 'Failed to suspend staff member');
@@ -599,7 +593,7 @@ const UserAccess = () => {
     }
   };
 
-  // Revoke staff member with reason
+  // Revoke staff member
   const revokeStaff = async (membershipId, reason = '') => {
     if (!membershipId) return;
     
@@ -627,8 +621,6 @@ const UserAccess = () => {
       });
 
       if (response.ok) {
-        const data = await response.json();
-        console.log('✅ Staff revoked:', data);
         await fetchStaff();
         if (showDetailModal) {
           setShowDetailModal(false);
@@ -637,21 +629,7 @@ const UserAccess = () => {
         setShowReasonModal(false);
         setActionReason('');
         setPendingAction(null);
-        
-        const toast = document.createElement('div');
-        toast.className = 'fixed top-20 right-6 z-50 bg-red-500 text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-fadeIn';
-        toast.innerHTML = `
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
-          </svg>
-          <span>Staff member revoked successfully!</span>
-        `;
-        document.body.appendChild(toast);
-        setTimeout(() => {
-          toast.style.opacity = '0';
-          toast.style.transition = 'opacity 0.5s';
-          setTimeout(() => toast.remove(), 500);
-        }, 3000);
+        showToastMessage('Staff member revoked successfully!', 'error');
       } else {
         const errorData = await response.json().catch(() => ({}));
         setError(errorData.message || 'Failed to revoke staff member');
@@ -663,6 +641,14 @@ const UserAccess = () => {
       setActionLoading(false);
       setSelectedActionId(null);
     }
+  };
+
+  // Toast message
+  const showToastMessage = (message, type = 'success') => {
+    setShowToast({ visible: true, message, type });
+    setTimeout(() => {
+      setShowToast({ visible: false, message: '', type: '' });
+    }, 4000);
   };
 
   // Handle action with reason modal
@@ -695,7 +681,7 @@ const UserAccess = () => {
   };
 
   const handleMemberClick = (membershipId) => {
-    if (membershipId) {
+    if (membershipId && canReadStaff) {
       fetchStaffDetail(membershipId);
     }
   };
@@ -707,7 +693,11 @@ const UserAccess = () => {
   };
 
   const handleEdit = (member) => {
-    navigate('/add-staff', { state: { editData: member, returnTo: '/user-access' } });
+    if (canManagePermissions) {
+      navigate('/add-staff', { state: { editData: member, returnTo: '/user-access' } });
+    } else {
+      showToastMessage('You don\'t have permission to edit staff', 'error');
+    }
   };
 
   const handleLogout = async () => {
@@ -745,17 +735,6 @@ const UserAccess = () => {
     });
   };
 
-  // Get role badge color
-  const getRoleBadgeColor = (role) => {
-    const colors = {
-      'ADMIN': 'bg-purple-100 text-purple-700 border-purple-200',
-      'STAFF': 'bg-blue-100 text-blue-700 border-blue-200',
-      'VIEWER': 'bg-gray-100 text-gray-700 border-gray-200',
-      'OPERATOR': 'bg-green-100 text-green-700 border-green-200'
-    };
-    return colors[role] || 'bg-gray-100 text-gray-700 border-gray-200';
-  };
-
   // Initial fetch
   useEffect(() => {
     if (!isAuthenticated) {
@@ -763,9 +742,13 @@ const UserAccess = () => {
       return;
     }
     
-    fetchUserInfo();
-    fetchPermissionsCatalog();
-    fetchStaff();
+    const bootstrap = async () => {
+      await fetchUserInfo();
+      await fetchAccessInfo();
+      await fetchPermissionsCatalog();
+      await fetchStaff();
+    };
+    bootstrap();
   }, [isAuthenticated]);
 
   // Filter staff based on search
@@ -787,24 +770,52 @@ const UserAccess = () => {
     });
   }, [staffMembers, searchQuery]);
 
+  // Helper to truncate ID
+  const truncateId = (id) => {
+    if (!id) return 'N/A';
+    const strId = String(id);
+    if (strId.length > 12) {
+      return strId.substring(0, 12) + '...';
+    }
+    return strId;
+  };
+
+  // Toast Component
+  const Toast = () => {
+    if (!showToast.visible) return null;
+    const colors = {
+      success: 'bg-green-500',
+      error: 'bg-red-500',
+      info: 'bg-yellow-500'
+    };
+    return (
+      <div className={`fixed top-20 right-6 z-50 ${colors[showToast.type] || 'bg-blue-500'} text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-fadeIn`}>
+        {showToast.type === 'success' && <CheckCircle className="w-5 h-5" />}
+        {showToast.type === 'error' && <AlertCircle className="w-5 h-5" />}
+        {showToast.type === 'info' && <Info className="w-5 h-5" />}
+        <span>{showToast.message}</span>
+      </div>
+    );
+  };
+
   // Settings Dropdown Menu
   const SettingsMenu = () => (
-    <div className="absolute top-full right-0 mt-2 bg-black rounded-2xl w-80 shadow-2xl border border-gray-800 z-50 overflow-hidden">
-      <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-5 py-4">
+    <div className="absolute top-full right-0 mt-2 bg-white rounded-2xl w-80 shadow-2xl border border-gray-100 z-50 overflow-hidden">
+      <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-4">
         <div className="flex items-center gap-3">
-          <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-2xl font-bold text-white border-2 border-white/30 flex-shrink-0">
+          <div className="w-14 h-14 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-2xl font-bold text-white border-2 border-white/30 flex-shrink-0">
             {userData?.user?.full_name?.charAt(0) || user?.name?.charAt(0) || 'U'}
           </div>
           <div className="flex-1 min-w-0">
             <h4 className="text-base font-semibold text-white truncate">
               {userData?.user?.full_name || user?.name || 'User'}
             </h4>
-            <p className="text-sm text-gray-400 truncate">
+            <p className="text-sm text-white/80 truncate">
               {userData?.user?.email || user?.email || 'user@transev.com'}
             </p>
-            {userData?.role && (
-              <span className="inline-block mt-1 px-2 py-0.5 bg-white/10 rounded-full text-xs text-gray-300 border border-gray-600">
-                {userData.role}
+            {accessData?.role && (
+              <span className="inline-block mt-1 px-2 py-0.5 bg-white/20 rounded-full text-xs text-white border border-white/30">
+                {accessData.role}
               </span>
             )}
           </div>
@@ -812,14 +823,14 @@ const UserAccess = () => {
       </div>
       
       <div className="p-2">
-        <button onClick={() => { setShowSettingsMenu(false); navigate('/profile'); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
-          <UserIcon size={16} className="text-gray-500" /> <span>Profile</span>
+        <button onClick={() => { setShowSettingsMenu(false); navigate('/profile'); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-50 text-sm font-medium text-gray-700 hover:text-gray-900 flex items-center gap-3 transition">
+          <User size={16} className="text-gray-400" /> <span>Profile</span>
         </button>
-        <button onClick={() => { setShowSettingsMenu(false); navigate('/organization'); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
-          <Building size={16} className="text-gray-500" /> <span>Organization</span>
+        <button onClick={() => { setShowSettingsMenu(false); navigate('/organization'); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-50 text-sm font-medium text-gray-700 hover:text-gray-900 flex items-center gap-3 transition">
+          <Building size={16} className="text-gray-400" /> <span>Organization</span>
         </button>
-        <div className="border-t border-gray-700 my-1"></div>
-        <button onClick={() => { setShowSettingsMenu(false); handleLogout(); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-red-900/30 text-sm font-medium text-red-400 hover:text-red-300 flex items-center gap-3 transition">
+        <div className="border-t border-gray-100 my-1"></div>
+        <button onClick={() => { setShowSettingsMenu(false); handleLogout(); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-red-50 text-sm font-medium text-red-600 hover:text-red-700 flex items-center gap-3 transition">
           <LogOut size={16} className="text-red-500" /> <span>Sign Out</span>
         </button>
       </div>
@@ -827,17 +838,19 @@ const UserAccess = () => {
   );
 
   const AddMenu = () => (
-    <div className="absolute top-full right-0 mt-2 bg-black rounded-2xl w-64 shadow-2xl border border-gray-800 z-50">
+    <div className="absolute top-full right-0 mt-2 bg-white rounded-2xl w-64 shadow-2xl border border-gray-100 z-50">
       <div className="p-3">
-        <button onClick={() => { setShowAddMenu(false); navigate("/add-hub"); }} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
-          <Plus size={18} className="text-gray-400" /> Add Hub
+        <button onClick={() => { setShowAddMenu(false); navigate("/add-hub"); }} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-50 text-sm font-medium text-gray-700 hover:text-gray-900 flex items-center gap-3 transition">
+          <Zap size={18} className="text-gray-400" /> Add Hub
         </button>
-        <button onClick={() => { setShowAddMenu(false); navigate("/add-charger"); }} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
+        <button onClick={() => { setShowAddMenu(false); navigate("/add-charger"); }} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-50 text-sm font-medium text-gray-700 hover:text-gray-900 flex items-center gap-3 transition">
           <Zap size={18} className="text-gray-400" /> Add Charger
         </button>
-        <button onClick={() => { setShowAddMenu(false); navigate("/add-staff"); }} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
-          <UserPlus size={18} className="text-gray-400" /> Add Staff Member
-        </button>
+        {canManageStaff && canManagePermissions && (
+          <button onClick={() => { setShowAddMenu(false); navigate("/add-staff"); }} className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-50 text-sm font-medium text-gray-700 hover:text-gray-900 flex items-center gap-3 transition">
+            <UserPlus size={18} className="text-gray-400" /> Add Staff Member
+          </button>
+        )}
       </div>
     </div>
   );
@@ -881,9 +894,8 @@ const UserAccess = () => {
             >
               <option value="All">All Roles</option>
               <option value="ADMIN">Admin</option>
-              <option value="STAFF">Staff</option>
-              <option value="VIEWER">Viewer</option>
               <option value="OPERATOR">Operator</option>
+              <option value="VIEWER">Viewer</option>
             </select>
           </div>
 
@@ -914,18 +926,15 @@ const UserAccess = () => {
     </div>
   );
 
-  // Reason Modal - Fixed with hooks at top level and input fix
+  // Reason Modal
   const ReasonModal = () => {
-    // Hooks must be called at the top level, not conditionally
     const textareaRef = useRef(null);
 
-    // Focus the textarea when modal opens
     useEffect(() => {
       if (showReasonModal) {
         setTimeout(() => {
           if (textareaRef.current) {
             textareaRef.current.focus();
-            // Set cursor at the end of the text
             const length = textareaRef.current.value.length;
             textareaRef.current.setSelectionRange(length, length);
           }
@@ -933,22 +942,13 @@ const UserAccess = () => {
       }
     }, [showReasonModal]);
 
-    // Now we can use conditional returns after hooks
     if (!showReasonModal || !pendingAction) return null;
 
     const actionName = pendingAction.action.charAt(0).toUpperCase() + pendingAction.action.slice(1);
-
-    const handleClose = () => {
-      setShowReasonModal(false);
-      setActionReason('');
-      setPendingAction(null);
-      setError('');
-    };
-
-    // Handle input change without cursor jumping
-    const handleReasonChange = (e) => {
-      const value = e.target.value;
-      setActionReason(value);
+    const actionColors = {
+      activate: 'from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 shadow-green-500/25',
+      suspend: 'from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 shadow-yellow-500/25',
+      revoke: 'from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600 shadow-red-500/25'
     };
 
     return (
@@ -965,7 +965,12 @@ const UserAccess = () => {
               </div>
             </div>
             <button
-              onClick={handleClose}
+              onClick={() => {
+                setShowReasonModal(false);
+                setActionReason('');
+                setPendingAction(null);
+                setError('');
+              }}
               className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-xl transition"
             >
               <X size={20} />
@@ -988,26 +993,25 @@ const UserAccess = () => {
                 <textarea
                   ref={textareaRef}
                   value={actionReason}
-                  onChange={handleReasonChange}
+                  onChange={(e) => setActionReason(e.target.value)}
                   placeholder={`Enter reason for ${pendingAction.action}...`}
                   rows={3}
                   className="w-full px-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition resize-none"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey && actionReason.trim()) {
-                      e.preventDefault();
-                      confirmActionWithReason();
-                    }
-                  }}
                 />
                 <p className="text-xs text-gray-400 mt-1">
-                  Press Enter to submit, Shift+Enter for new line
+                  {actionReason.length}/500 characters
                 </p>
               </div>
             </div>
 
             <div className="flex items-center gap-3 pt-6 border-t border-gray-200 mt-6">
               <button
-                onClick={handleClose}
+                onClick={() => {
+                  setShowReasonModal(false);
+                  setActionReason('');
+                  setPendingAction(null);
+                  setError('');
+                }}
                 className="px-6 py-2.5 rounded-xl bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 transition"
               >
                 Cancel
@@ -1015,13 +1019,7 @@ const UserAccess = () => {
               <button
                 onClick={confirmActionWithReason}
                 disabled={actionLoading || !actionReason.trim()}
-                className={`flex-1 px-6 py-2.5 rounded-xl text-white font-medium transition flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed ${
-                  pendingAction?.action === 'suspend' 
-                    ? 'bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 shadow-yellow-500/25'
-                    : pendingAction?.action === 'revoke'
-                    ? 'bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600 shadow-red-500/25'
-                    : 'bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 shadow-green-500/25'
-                }`}
+                className={`flex-1 px-6 py-2.5 rounded-xl text-white font-medium transition flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r ${actionColors[pendingAction.action] || 'from-blue-500 to-indigo-500'}`}
               >
                 {actionLoading ? (
                   <>
@@ -1134,15 +1132,15 @@ const UserAccess = () => {
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-500">Name</span>
-                        <span className="text-gray-900">{user.full_name || user.name || selectedMember.user_name || 'N/A'}</span>
+                        <span className="text-gray-900 font-medium">{user.full_name || user.name || selectedMember.user_name || 'N/A'}</span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-500">Email</span>
-                        <span className="text-gray-900">{user.email || selectedMember.user_email || 'N/A'}</span>
+                        <span className="text-gray-900 font-medium">{user.email || selectedMember.user_email || 'N/A'}</span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-500">User ID</span>
-                        <span className="font-mono text-gray-900">{user.id || selectedMember.user_id || 'N/A'}</span>
+                        <span className="font-mono text-gray-900 text-xs">{user.id || selectedMember.user_id || 'N/A'}</span>
                       </div>
                     </div>
                   </div>
@@ -1167,7 +1165,7 @@ const UserAccess = () => {
                   </div>
                 </div>
 
-                {!isPrimary && (
+                {!isPrimary && canManageStaff && (
                   <div className="border-t border-gray-200 pt-4">
                     <h4 className="text-sm font-semibold text-gray-700 mb-3">Actions</h4>
                     <div className="flex flex-wrap gap-3">
@@ -1178,10 +1176,10 @@ const UserAccess = () => {
                             handleActionWithReason('activate', selectedMember.id || selectedMember.membership_id);
                           }}
                           disabled={actionLoading}
-                          className="px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 transition flex items-center gap-2 text-sm"
+                          className="px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 transition flex items-center gap-2 text-sm shadow-md shadow-green-500/25"
                         >
                           <RotateCcw size={16} />
-                          Activate
+                          Activate Staff
                         </button>
                       )}
                       {isActive && (
@@ -1192,21 +1190,23 @@ const UserAccess = () => {
                               handleActionWithReason('suspend', selectedMember.id || selectedMember.membership_id);
                             }}
                             disabled={actionLoading}
-                            className="px-4 py-2 bg-yellow-600 text-white rounded-xl hover:bg-yellow-700 transition flex items-center gap-2 text-sm"
+                            className="px-4 py-2 bg-yellow-600 text-white rounded-xl hover:bg-yellow-700 transition flex items-center gap-2 text-sm shadow-md shadow-yellow-500/25"
                           >
                             <Lock size={16} />
-                            Suspend
+                            Suspend Staff
                           </button>
-                          <button
-                            onClick={() => {
-                              handleEdit(selectedMember);
-                              closeDetailModal();
-                            }}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition flex items-center gap-2 text-sm"
-                          >
-                            <Edit size={16} />
-                            Edit Role
-                          </button>
+                          {canManagePermissions && (
+                            <button
+                              onClick={() => {
+                                handleEdit(selectedMember);
+                                closeDetailModal();
+                              }}
+                              className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition flex items-center gap-2 text-sm shadow-md shadow-blue-500/25"
+                            >
+                              <Edit size={16} />
+                              Edit Role & Permissions
+                            </button>
+                          )}
                         </>
                       )}
                       <button
@@ -1215,10 +1215,10 @@ const UserAccess = () => {
                           handleActionWithReason('revoke', selectedMember.id || selectedMember.membership_id);
                         }}
                         disabled={actionLoading}
-                        className="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition flex items-center gap-2 text-sm"
+                        className="px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition flex items-center gap-2 text-sm shadow-md shadow-red-500/25"
                       >
                         <Trash2 size={16} />
-                        Revoke
+                        Revoke Access
                       </button>
                     </div>
                   </div>
@@ -1229,16 +1229,6 @@ const UserAccess = () => {
         </div>
       </div>
     );
-  };
-
-  // Helper to truncate ID
-  const truncateId = (id) => {
-    if (!id) return 'N/A';
-    const strId = String(id);
-    if (strId.length > 12) {
-      return strId.substring(0, 12) + '...';
-    }
-    return strId;
   };
 
   if (isRefreshing && loading && isInitialLoad) {
@@ -1266,6 +1256,8 @@ const UserAccess = () => {
       />
 
       <div className="flex-1 min-w-0">
+        <Toast />
+
         <header className="bg-white border-b-2 border-gray-200 px-6 py-5 sticky top-0 z-30 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1 text-sm text-gray-500">
@@ -1335,6 +1327,9 @@ const UserAccess = () => {
                 <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
                   {staffMembers.filter(m => m.status === 'SUSPENDED' || m.membership_status === 'SUSPENDED').length} Suspended
                 </span>
+                <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full">
+                  {staffMembers.filter(m => m.status === 'REVOKED' || m.membership_status === 'REVOKED').length} Revoked
+                </span>
               </div>
             </div>
           </div>
@@ -1376,13 +1371,15 @@ const UserAccess = () => {
                 <Filter size={16} className="text-gray-500" />
                 Filter
               </button>
-              <button
-                onClick={() => navigate('/add-staff')}
-                className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition text-sm font-medium shadow-lg shadow-blue-500/25"
-              >
-                <UserPlus size={16} />
-                Add Staff
-              </button>
+              {canManageStaff && canManagePermissions && (
+                <button
+                  onClick={() => navigate('/add-staff')}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition text-sm font-medium shadow-lg shadow-blue-500/25"
+                >
+                  <UserPlus size={16} />
+                  Add Staff
+                </button>
+              )}
               {showFilterPopup && <FilterPopup />}
             </div>
           </div>
@@ -1393,7 +1390,7 @@ const UserAccess = () => {
               <table className="w-full">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200">
-                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">SI</th>
+                    <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">#</th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">User</th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Role</th>
                     <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
@@ -1429,13 +1426,15 @@ const UserAccess = () => {
                         <Users size={48} className="text-gray-300 mx-auto mb-3" />
                         <p className="text-gray-500 font-medium">No Staff Members Found</p>
                         <p className="text-sm text-gray-400 mt-1">No staff members available.</p>
-                        <button
-                          onClick={() => navigate('/add-staff')}
-                          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-500/25 flex items-center gap-2 mx-auto text-sm"
-                        >
-                          <UserPlus size={16} />
-                          Add Staff Member
-                        </button>
+                        {canManageStaff && canManagePermissions && (
+                          <button
+                            onClick={() => navigate('/add-staff')}
+                            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-500/25 flex items-center gap-2 mx-auto text-sm"
+                          >
+                            <UserPlus size={16} />
+                            Add Staff Member
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ) : (
@@ -1488,7 +1487,7 @@ const UserAccess = () => {
                           </td>
                           <td className="px-3 py-3 text-sm">
                             <div className="flex items-center gap-1">
-                              {!isPrimary && (
+                              {!isPrimary && canManageStaff && (
                                 <>
                                   {isSuspended && (
                                     <button
@@ -1497,34 +1496,39 @@ const UserAccess = () => {
                                         handleActionWithReason('activate', member.id || member.membership_id);
                                       }}
                                       disabled={actionLoading && selectedActionId === (member.id || member.membership_id)}
-                                      className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition"
-                                      title="Activate"
+                                      className="p-1.5 text-green-600 hover:bg-green-50 rounded-lg transition flex items-center gap-1"
+                                      title="Activate Staff"
                                     >
                                       <RotateCcw size={16} />
+                                      <span className="text-xs hidden sm:inline">Activate</span>
                                     </button>
                                   )}
                                   {isActive && (
                                     <>
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleEdit(member);
-                                        }}
-                                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                                        title="Edit"
-                                      >
-                                        <Edit size={16} />
-                                      </button>
+                                      {canManagePermissions && (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleEdit(member);
+                                          }}
+                                          className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition flex items-center gap-1"
+                                          title="Edit Staff"
+                                        >
+                                          <Edit size={16} />
+                                          <span className="text-xs hidden sm:inline">Edit</span>
+                                        </button>
+                                      )}
                                       <button
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           handleActionWithReason('suspend', member.id || member.membership_id);
                                         }}
                                         disabled={actionLoading && selectedActionId === (member.id || member.membership_id)}
-                                        className="p-1.5 text-yellow-600 hover:bg-yellow-50 rounded-lg transition"
-                                        title="Suspend"
+                                        className="p-1.5 text-yellow-600 hover:bg-yellow-50 rounded-lg transition flex items-center gap-1"
+                                        title="Suspend Staff"
                                       >
                                         <Lock size={16} />
+                                        <span className="text-xs hidden sm:inline">Suspend</span>
                                       </button>
                                     </>
                                   )}
@@ -1534,10 +1538,11 @@ const UserAccess = () => {
                                       handleActionWithReason('revoke', member.id || member.membership_id);
                                     }}
                                     disabled={actionLoading && selectedActionId === (member.id || member.membership_id)}
-                                    className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition"
-                                    title="Revoke"
+                                    className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition flex items-center gap-1"
+                                    title="Revoke Access"
                                   >
                                     <Trash2 size={16} />
+                                    <span className="text-xs hidden sm:inline">Revoke</span>
                                   </button>
                                 </>
                               )}
@@ -1546,10 +1551,11 @@ const UserAccess = () => {
                                   e.stopPropagation();
                                   handleMemberClick(member.id || member.membership_id);
                                 }}
-                                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
+                                className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition flex items-center gap-1"
                                 title="View Details"
                               >
                                 <Eye size={16} />
+                                <span className="text-xs hidden sm:inline">View</span>
                               </button>
                             </div>
                           </td>
@@ -1606,30 +1612,21 @@ const UserAccess = () => {
         </div>
       </div>
 
-      {/* Reason Modal */}
+      {/* Modals */}
       <ReasonModal />
-
-      {/* Staff Detail Modal */}
       {showDetailModal && <StaffDetailModal />}
 
       <style>{`
         @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-        @keyframes slideUp {
-          from { opacity: 0; transform: translateY(20px) scale(0.98); }
-          to { opacity: 1; transform: translateY(0) scale(1); }
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
         }
         @keyframes pulse {
           0%, 100% { opacity: 1; }
           50% { opacity: 0.5; }
         }
         .animate-fadeIn {
-          animation: fadeIn 0.2s ease-out forwards;
-        }
-        .animate-slideUp {
-          animation: slideUp 0.3s ease-out forwards;
+          animation: fadeIn 0.3s ease-out forwards;
         }
         .animate-pulse {
           animation: pulse 1.5s ease-in-out infinite;

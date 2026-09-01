@@ -189,9 +189,9 @@ const getStatusDisplayName = (status) => {
 // Helper function to check if a session is ongoing
 const isOngoingStatus = (status) => {
   if (!status) return false;
-  
+
   const statusStr = String(status).toUpperCase().trim();
-  
+
   const ongoingStatuses = [
     'ACTIVE',
     'CHARGING',
@@ -208,18 +208,18 @@ const isOngoingStatus = (status) => {
     'STARTING',
     'INITIATED'
   ];
-  
+
   if (ongoingStatuses.includes(statusStr)) {
     return true;
   }
-  
+
   const keywords = ['START', 'CHARG', 'ACTIVE', 'ONGOING', 'PROGRESS', 'RUNNING'];
   for (const keyword of keywords) {
     if (statusStr.includes(keyword)) {
       return true;
     }
   }
-  
+
   return false;
 };
 
@@ -258,15 +258,41 @@ const getSocFreshness = (session) => {
   return session.soc_freshness || 'UNKNOWN';
 };
 
-// ==================== DURATION CALCULATION USING DURATION_SECONDS FROM SSE ====================
+// Helper to get projected amount
+const getProjectedAmount = (session) => {
+  if (session.projected_amount) {
+    return parseFloat(session.projected_amount) || 0;
+  }
+  if (session.total_amount) {
+    return parseFloat(session.total_amount) || 0;
+  }
+  return 0;
+};
+
+// Helper to get currency
+const getCurrency = (session) => {
+  return session.currency || 'INR';
+};
+
+// Helper to get the transaction id, preferring the live SSE field
+// (ocpp_transaction_id) over any stale/absent value from the REST API.
+const getTransactionId = (session) => {
+  return session.ocpp_transaction_id || session.transaction_id || 'N/A';
+};
+
+// ==================== DURATION FORMATTING (BACKEND-SOURCED ONLY) ====================
+// IMPORTANT: duration_seconds must always come from the backend (SSE live_sessions /
+// snapshot payload, or the session detail API response). We never compute duration
+// from the local machine's clock (no `new Date() - new Date(started_at)` math),
+// so the displayed duration always matches the backend/server timer exactly.
 const formatDuration = (durationSeconds) => {
   if (!durationSeconds || durationSeconds < 0) return 'N/A';
-  
+
   const totalSeconds = Math.floor(durationSeconds);
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
-  
+
   if (hours > 0) {
     return `${hours}h ${minutes}m ${seconds}s`;
   } else if (minutes > 0) {
@@ -276,7 +302,7 @@ const formatDuration = (durationSeconds) => {
   }
 };
 
-// Get duration in minutes for display
+// Get duration in minutes for display (derived purely from backend duration_seconds)
 const getDurationMinutes = (durationSeconds) => {
   if (!durationSeconds) return 0;
   return Math.floor(durationSeconds / 60);
@@ -285,11 +311,11 @@ const getDurationMinutes = (durationSeconds) => {
 // Format duration for display (short version)
 const formatDurationShort = (durationSeconds) => {
   if (!durationSeconds || durationSeconds < 0) return 'N/A';
-  
+
   const totalSeconds = Math.floor(durationSeconds);
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
-  
+
   if (hours > 0) {
     return `${hours}h ${minutes}m`;
   } else if (minutes > 0) {
@@ -299,26 +325,30 @@ const formatDurationShort = (durationSeconds) => {
   }
 };
 
-// Calculate live duration based on started_at and current time
-const calculateLiveDuration = (startedAt) => {
-  if (!startedAt) return 0;
-  const start = new Date(startedAt);
-  if (isNaN(start.getTime())) return 0;
-  const now = new Date();
-  return Math.floor((now - start) / 1000);
+// Duration for a COMPLETED session: computed from the two backend timestamps
+// (start_time and end_time) — both come from the server, so this is a fixed
+// calculation and never depends on the local machine's current time.
+// Only use this for non-ongoing sessions.
+const getCompletedDurationSeconds = (startTime, endTime) => {
+  if (!startTime || !endTime) return null;
+  const start = new Date(startTime);
+  const end = new Date(endTime);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) return null;
+  const diff = Math.floor((end - start) / 1000);
+  return diff >= 0 ? diff : null;
 };
 
 const Sessions = () => {
   const navigate = useNavigate();
-  const { 
-    authenticatedRequest, 
-    logout, 
+  const {
+    authenticatedRequest,
+    logout,
     isRefreshing,
     isAuthenticated,
     user,
     refreshToken
   } = useAuth();
-  
+
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [userData, setUserData] = useState(null);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
@@ -327,17 +357,17 @@ const Sessions = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  
+
   // Tab state
   const [activeMainTab, setActiveMainTab] = useState('sessions');
   const [activeTab, setActiveTab] = useState('all');
-  
+
   // Sessions state
   const [allSessions, setAllSessions] = useState([]);
   const [ongoingSessions, setOngoingSessions] = useState([]);
   const [liveSessionsData, setLiveSessionsData] = useState({ sessions: [], as_of: null });
   const [updatedSessionIds, setUpdatedSessionIds] = useState(new Set());
-  
+
   // Pagination state
   const [pagination, setPagination] = useState({
     limit: 20,
@@ -348,16 +378,25 @@ const Sessions = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  
+
   // Filter states
   const [statusFilter, setStatusFilter] = useState('All');
-  
-  // Modal state
-  const [showDetailModal, setShowDetailModal] = useState(false);
-  const [selectedSession, setSelectedSession] = useState(null);
+
+  // Modal state - persisted in sessionStorage
+  const [showDetailModal, setShowDetailModal] = useState(() => {
+    // Check if modal was open before refresh
+    return sessionStorage.getItem('sessionModalOpen') === 'true';
+  });
+  const [selectedSession, setSelectedSession] = useState(() => {
+    // Restore selected session from sessionStorage
+    const saved = sessionStorage.getItem('selectedSession');
+    return saved ? JSON.parse(saved) : null;
+  });
   const [loadingDetail, setLoadingDetail] = useState(false);
-  const [selectedSessionId, setSelectedSessionId] = useState(null);
-  
+  const [selectedSessionId, setSelectedSessionId] = useState(() => {
+    return sessionStorage.getItem('selectedSessionId') || null;
+  });
+
   // SSE Stream state
   const [isStreaming, setIsStreaming] = useState(false);
   const eventSourceRef = useRef(null);
@@ -374,15 +413,30 @@ const Sessions = () => {
   const modalLiveDataIntervalRef = useRef(null);
   const modalScrollPositionRef = useRef(0);
 
+  // Save modal state to sessionStorage when it changes
+  useEffect(() => {
+    if (showDetailModal) {
+      sessionStorage.setItem('sessionModalOpen', 'true');
+      sessionStorage.setItem('selectedSessionId', selectedSessionId || '');
+      if (selectedSession) {
+        sessionStorage.setItem('selectedSession', JSON.stringify(selectedSession));
+      }
+    } else {
+      sessionStorage.removeItem('sessionModalOpen');
+      sessionStorage.removeItem('selectedSessionId');
+      sessionStorage.removeItem('selectedSession');
+    }
+  }, [showDetailModal, selectedSessionId, selectedSession]);
+
   // Initial fetch - only once
   useEffect(() => {
     if (!isAuthenticated) {
       navigate('/signin');
       return;
     }
-    
+
     isMountedRef.current = true;
-    
+
     const init = async () => {
       await fetchUserInfo();
       await fetchSessions();
@@ -391,9 +445,9 @@ const Sessions = () => {
         streamInitializedRef.current = true;
       }
     };
-    
+
     init();
-    
+
     return () => {
       isMountedRef.current = false;
       stopLiveSessionsSSE();
@@ -412,29 +466,19 @@ const Sessions = () => {
     };
   }, [isAuthenticated, navigate]);
 
-  // Start live duration update interval - updates every second for live sessions
+  // Tick every second purely to re-render live rows/modal so the UI stays fresh.
+  // This interval NO LONGER recalculates duration_seconds from started_at / local
+  // clock. It just triggers a re-render; the actual duration value always comes
+  // from whatever the backend last sent via SSE (see processSSEEvent below).
   useEffect(() => {
     if (liveDurationIntervalRef.current) {
       clearInterval(liveDurationIntervalRef.current);
     }
-    
-    // Update live session durations every second
+
     liveDurationIntervalRef.current = setInterval(() => {
-      // Force re-render to update live session durations
-      setLiveSessionsData(prev => {
-        // Update duration for each live session based on started_at
-        const updatedSessions = prev.sessions.map(session => {
-          if (isOngoingStatus(session.status) || session.status === 'ACTIVE') {
-            // Calculate duration from started_at
-            const duration = calculateLiveDuration(session.started_at);
-            return { ...session, duration_seconds: duration };
-          }
-          return session;
-        });
-        return { ...prev, sessions: updatedSessions };
-      });
+      setLiveSessionsData(prev => ({ ...prev }));
     }, 1000);
-    
+
     return () => {
       if (liveDurationIntervalRef.current) {
         clearInterval(liveDurationIntervalRef.current);
@@ -448,7 +492,7 @@ const Sessions = () => {
     const newSessionIds = new Set();
     const currentIds = liveSessionsData.sessions.map(s => s.session_id || s.id);
     const prevIds = previousLiveSessionsRef.current.map(s => s.session_id || s.id);
-    
+
     // Check for new or updated sessions
     liveSessionsData.sessions.forEach(session => {
       const id = session.session_id || session.id;
@@ -467,7 +511,7 @@ const Sessions = () => {
         newSessionIds.add(id);
       }
     });
-    
+
     // Update animation state
     if (newSessionIds.size > 0) {
       setUpdatedSessionIds(newSessionIds);
@@ -476,10 +520,10 @@ const Sessions = () => {
         setUpdatedSessionIds(new Set());
       }, 2000);
     }
-    
+
     // Store current sessions for next comparison
     previousLiveSessionsRef.current = [...liveSessionsData.sessions];
-    
+
     const map = {};
     liveSessionsData.sessions.forEach(session => {
       const id = session.session_id || session.id;
@@ -488,7 +532,7 @@ const Sessions = () => {
       }
     });
     liveSessionsMapRef.current = map;
-    
+
     // If modal is open and selected session has live data, update it
     if (showDetailModal && selectedSessionId) {
       const liveData = map[selectedSessionId];
@@ -502,7 +546,9 @@ const Sessions = () => {
             consumed_wh: liveData.consumed_wh || prev.consumed_wh,
             total_kwh: liveData.consumed_wh ? parseFloat(liveData.consumed_wh) / 1000 : prev.total_kwh,
             soc_percent: liveData.soc_percent || prev.soc_percent,
-            duration_seconds: liveData.duration_seconds || prev.duration_seconds,
+            // Backend-sourced duration only. `?? ` keeps prev value if backend
+            // didn't send one this tick (0 is a valid value, so we use ??, not ||).
+            duration_seconds: liveData.duration_seconds ?? prev.duration_seconds,
             status: liveData.status || prev.status,
             charger_name: liveData.charger_name || prev.charger_name,
             charger_id: liveData.charger_id || prev.charger_id,
@@ -510,18 +556,24 @@ const Sessions = () => {
             connector_number: liveData.connector_number || prev.connector_number,
             customer_name: liveData.customer_name || prev.customer_name,
             started_at: liveData.started_at || prev.started_at,
-            transaction_id: liveData.transaction_id || prev.transaction_id
+            // Transaction id: the live stream sends this as ocpp_transaction_id,
+            // so prefer that field over any stale transaction_id.
+            ocpp_transaction_id: liveData.ocpp_transaction_id || prev.ocpp_transaction_id,
+            transaction_id: liveData.ocpp_transaction_id || liveData.transaction_id || prev.transaction_id,
+            // Add projected amount from live data
+            projected_amount: liveData.projected_amount || prev.projected_amount,
+            currency: liveData.currency || prev.currency
           };
         });
       }
     }
-    
+
     // Update ongoing sessions from live data
-    const ongoing = liveSessionsData.sessions.filter(s => 
+    const ongoing = liveSessionsData.sessions.filter(s =>
       isOngoingStatus(s.status) || s.status === 'ACTIVE' || s.status === 'STOP_PENDING'
     );
     setOngoingSessions(ongoing);
-    
+
     // Also update all sessions with live data
     setAllSessions(prev => {
       const updated = [...prev];
@@ -546,12 +598,12 @@ const Sessions = () => {
     if (modalLiveDataIntervalRef.current) {
       clearInterval(modalLiveDataIntervalRef.current);
     }
-    
+
     if (showDetailModal && selectedSessionId) {
       // Save current scroll position
       modalScrollPositionRef.current = window.scrollY;
-      
-      // Update modal live data every second
+
+      // Update modal live data every second — backend duration_seconds only.
       modalLiveDataIntervalRef.current = setInterval(() => {
         if (selectedSessionId && liveSessionsMapRef.current[selectedSessionId]) {
           const liveData = liveSessionsMapRef.current[selectedSessionId];
@@ -568,7 +620,8 @@ const Sessions = () => {
               consumed_wh: liveData.consumed_wh || prev.consumed_wh,
               total_kwh: liveData.consumed_wh ? parseFloat(liveData.consumed_wh) / 1000 : prev.total_kwh,
               soc_percent: liveData.soc_percent || prev.soc_percent,
-              duration_seconds: liveData.duration_seconds || calculateLiveDuration(prev.started_at),
+              // Backend-sourced duration only — no local clock fallback here.
+              duration_seconds: liveData.duration_seconds ?? prev.duration_seconds,
               status: liveData.status || prev.status,
               charger_name: liveData.charger_name || prev.charger_name,
               charger_id: liveData.charger_id || prev.charger_id,
@@ -576,25 +629,23 @@ const Sessions = () => {
               connector_number: liveData.connector_number || prev.connector_number,
               customer_name: liveData.customer_name || prev.customer_name,
               started_at: liveData.started_at || prev.started_at,
-              transaction_id: liveData.transaction_id || prev.transaction_id
+              // Transaction id: prefer live SSE's ocpp_transaction_id field.
+              ocpp_transaction_id: liveData.ocpp_transaction_id || prev.ocpp_transaction_id,
+              transaction_id: liveData.ocpp_transaction_id || liveData.transaction_id || prev.transaction_id,
+              // Add projected amount from live data
+              projected_amount: liveData.projected_amount || prev.projected_amount,
+              currency: liveData.currency || prev.currency
             };
           });
-        } else if (selectedSessionId && selectedSession) {
-          // If no live data but session is ongoing, update duration from started_at
-          if (isOngoingStatus(selectedSession.status) || selectedSession.status === 'ACTIVE') {
-            setSelectedSession(prev => {
-              if (!prev) return prev;
-              const duration = calculateLiveDuration(prev.started_at);
-              return {
-                ...prev,
-                duration_seconds: duration
-              };
-            });
-          }
         }
+        // NOTE: previously there was an "else if" branch here that recalculated
+        // duration from started_at using the local clock when no live SSE data
+        // was available for this session. That branch has been removed — if the
+        // backend hasn't sent a fresh duration_seconds, we simply keep showing
+        // the last value the backend gave us instead of estimating locally.
       }, 1000);
     }
-    
+
     return () => {
       if (modalLiveDataIntervalRef.current) {
         clearInterval(modalLiveDataIntervalRef.current);
@@ -684,7 +735,7 @@ const Sessions = () => {
 
         const readStream = () => {
           if (!isMountedRef.current) return;
-          
+
           reader.read().then(({ done, value }) => {
             if (done || !isMountedRef.current) {
               console.log('📡 SSE Stream ended');
@@ -705,7 +756,7 @@ const Sessions = () => {
 
             const chunk = decoder.decode(value, { stream: true });
             buffer += chunk;
-            
+
             const events = buffer.split('\n\n');
             buffer = events.pop() || '';
 
@@ -759,7 +810,7 @@ const Sessions = () => {
       const lines = eventText.split('\n');
       let eventType = '';
       let eventData = '';
-      
+
       for (const line of lines) {
         if (line.startsWith('event:')) {
           eventType = line.substring(6).trim();
@@ -773,20 +824,18 @@ const Sessions = () => {
         try {
           const data = JSON.parse(eventData);
           console.log(`📨 SSE Event: ${eventType}`, data);
-          
+
           if (eventType === 'snapshot' || eventType === 'live_sessions') {
             const sessions = data.sessions || [];
             const as_of = data.as_of || new Date().toISOString();
-            
+
             console.log(`🔄 Replacing live sessions with ${sessions.length} sessions from ${eventType}`);
-            
+
             const transformedSessions = sessions.map(session => {
-              // Calculate duration from started_at if not provided
-              let durationSeconds = session.duration_seconds || 0;
-              if (!durationSeconds && session.started_at) {
-                durationSeconds = calculateLiveDuration(session.started_at);
-              }
-              
+              // Duration comes strictly from the backend's duration_seconds field.
+              // No local-time fallback (no calculateLiveDuration / started_at math).
+              const durationSeconds = session.duration_seconds || 0;
+
               return {
                 id: session.session_id || session.id,
                 session_id: session.session_id || session.id,
@@ -807,11 +856,19 @@ const Sessions = () => {
                 is_live: true,
                 duration_seconds: durationSeconds,
                 customer_name: session.customer_name || 'N/A',
-                transaction_id: session.transaction_id || 'N/A',
-                ...session
+                transaction_id: session.ocpp_transaction_id || session.transaction_id || 'N/A',
+                // Add projected amount and currency
+                projected_amount: session.projected_amount || null,
+                currency: session.currency || 'INR',
+                ...session,
+                // Re-assert transaction_id AFTER the ...session spread above, so the
+                // raw session.transaction_id (which the live payload does NOT send)
+                // never overwrites the ocpp_transaction_id-derived value.
+                ocpp_transaction_id: session.ocpp_transaction_id || null,
+                transaction_id: session.ocpp_transaction_id || session.transaction_id || 'N/A'
               };
             });
-            
+
             setLiveSessionsData({
               sessions: transformedSessions,
               as_of: as_of
@@ -855,27 +912,27 @@ const Sessions = () => {
   const fetchSessions = useCallback(async (before = null, beforeId = null, isLoadMore = false) => {
     if (fetchInProgressRef.current) return;
     if (isLoadMore && loadingMore) return;
-    
+
     fetchInProgressRef.current = true;
-    
+
     if (!isLoadMore) {
       setLoading(true);
     } else {
       setLoadingMore(true);
     }
     setError('');
-    
+
     try {
       const token = localStorage.getItem('token');
       let url = `${API_CONFIG.SESSIONS_API}?limit=${pagination.limit}`;
-      
+
       if (before) url += `&next_before=${encodeURIComponent(before)}`;
       if (beforeId) url += `&next_before_id=${encodeURIComponent(beforeId)}`;
-      
+
       if (statusFilter !== 'All') url += `&status=${statusFilter}`;
 
       console.log('📤 Fetching CPO sessions:', url);
-      
+
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -894,18 +951,35 @@ const Sessions = () => {
       if (response.ok) {
         const data = await response.json();
         console.log('📥 CPO Sessions response:', data);
-        
+
         let sessionsArray = data.sessions || data.data || [];
         if (!Array.isArray(sessionsArray)) sessionsArray = [];
 
         const transformedSessions = sessionsArray.map((session) => {
           const sessionId = session.id || session.session_id;
           const liveData = liveSessionsMapRef.current[sessionId];
-          
+          const status = liveData?.status || session.status || 'UNKNOWN';
+          const isOngoing = isOngoingStatus(status) || status === 'ACTIVE' || status === 'STOP_PENDING';
+          const startTime = session.start_time || liveData?.started_at;
+          const endTime = session.end_time;
+
+          // COMPLETED: duration = end_time - start_time (both backend timestamps
+          // from the All Sessions API) — a fixed calculation, no local clock.
+          // ONGOING/ACTIVE: duration = ONLY the live duration_seconds from SSE.
+          const durationSeconds = isOngoing
+            ? (liveData?.duration_seconds ?? null)
+            : (getCompletedDurationSeconds(startTime, endTime) ?? session.duration_seconds ?? null);
+
           return {
+            ...session,
             id: session.id,
             session_id: session.session_id || session.id,
-            transaction_id: session.transaction_id || liveData?.transaction_id || 'N/A',
+            // Transaction id: while the session is live/ongoing, always prefer the
+            // live stream's ocpp_transaction_id over the REST API's transaction_id
+            // so it matches what the Ongoing tab shows. Falls back to the API value
+            // for completed sessions (which have no live data).
+            ocpp_transaction_id: liveData?.ocpp_transaction_id || session.ocpp_transaction_id || null,
+            transaction_id: liveData?.ocpp_transaction_id || liveData?.transaction_id || session.transaction_id || 'N/A',
             customer_name: session.customer?.name || 'N/A',
             customer_email: session.customer?.email || 'N/A',
             charger_name: session.charger?.name || liveData?.charger_name || 'N/A',
@@ -913,12 +987,12 @@ const Sessions = () => {
             hub_name: session.charger?.hub_name || liveData?.hub_name || 'N/A',
             connector_number: session.connector?.number || liveData?.connector_number || 'N/A',
             connector_id: session.connector?.id || 'N/A',
-            start_time: session.start_time || liveData?.started_at,
-            end_time: session.end_time,
+            start_time: startTime,
+            end_time: endTime,
             total_kwh: liveData?.consumed_wh ? parseFloat(liveData.consumed_wh) / 1000 : (session.total_kwh || '0'),
-            total_amount: session.total_amount || '0',
-            currency: session.currency || 'INR',
-            status: liveData?.status || session.status || 'UNKNOWN',
+            total_amount: liveData?.projected_amount || session.total_amount || '0',
+            currency: liveData?.currency || session.currency || 'INR',
+            status: status,
             stop_reason: session.stop_reason || 'N/A',
             created_at: session.created_at || session.start_time,
             is_live: !!liveData,
@@ -928,9 +1002,13 @@ const Sessions = () => {
             latest_meter_wh: liveData?.latest_meter_wh || null,
             meter_freshness: liveData?.meter_freshness || 'UNKNOWN',
             soc_freshness: liveData?.soc_freshness || 'UNKNOWN',
-            duration_seconds: liveData?.duration_seconds || null,
-            started_at: liveData?.started_at || session.start_time,
-            ...session
+            // Add projected amount
+            projected_amount: liveData?.projected_amount || session.projected_amount || null,
+            // duration_seconds must stay AFTER ...session so our computed value
+            // (start/end diff for completed, live SSE value for ongoing) wins
+            // over whatever raw duration_seconds the API response might contain.
+            duration_seconds: durationSeconds,
+            started_at: liveData?.started_at || session.start_time
           };
         });
 
@@ -945,10 +1023,10 @@ const Sessions = () => {
         } else {
           setAllSessions(transformedSessions);
         }
-        
+
         const ongoing = transformedSessions.filter(s => isOngoingStatus(s.status) || s.status === 'ACTIVE' || s.status === 'STOP_PENDING');
         console.log('🔄 Ongoing sessions from API:', ongoing.length);
-        
+
         const liveOngoing = liveSessionsData.sessions.filter(s => isOngoingStatus(s.status) || s.status === 'ACTIVE' || s.status === 'STOP_PENDING');
         const allOngoing = [...ongoing];
         liveOngoing.forEach(live => {
@@ -961,7 +1039,7 @@ const Sessions = () => {
             allOngoing.push(live);
           }
         });
-        
+
         setOngoingSessions(allOngoing);
 
         setPagination({
@@ -970,7 +1048,7 @@ const Sessions = () => {
           next_before: nextBefore,
           next_before_id: nextBeforeId
         });
-        
+
         setHasLoaded(true);
         setIsInitialLoad(false);
       } else if (response.status === 401) {
@@ -1014,14 +1092,14 @@ const Sessions = () => {
   // Fetch single session detail
   const fetchSessionDetail = useCallback(async (sessionId) => {
     if (!sessionId) return;
-    
+
     setLoadingDetail(true);
     setError('');
-    
+
     try {
       const token = localStorage.getItem('token');
       const url = API_CONFIG.SESSION_DETAIL_API(sessionId);
-      
+
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -1037,15 +1115,13 @@ const Sessions = () => {
       if (response.ok) {
         const data = await response.json();
         const session = data.session || data.data || data;
-        
+
         const sessionKey = session.id || session.session_id;
         const liveData = liveSessionsMapRef.current[sessionKey];
-        
-        let durationSeconds = session.duration_seconds || null;
-        if (!durationSeconds && session.started_at) {
-          durationSeconds = calculateLiveDuration(session.started_at);
-        }
-        
+        const sessionIsOngoing = isOngoingStatus(liveData?.status || session.status) ||
+          (liveData?.status || session.status) === 'ACTIVE' ||
+          (liveData?.status || session.status) === 'STOP_PENDING';
+
         if (liveData) {
           session.live_data = liveData;
           session.is_live = true;
@@ -1061,13 +1137,26 @@ const Sessions = () => {
           session.hub_name = liveData.hub_name || session.hub_name;
           session.connector_number = liveData.connector_number || session.connector_number;
           session.started_at = liveData.started_at || session.start_time;
-          session.duration_seconds = liveData.duration_seconds || durationSeconds;
           session.customer_name = liveData.customer_name || session.customer_name;
-          session.transaction_id = liveData.transaction_id || session.transaction_id || 'N/A';
-        } else {
-          session.duration_seconds = durationSeconds;
+          // Transaction id: prefer the live stream's ocpp_transaction_id.
+          session.ocpp_transaction_id = liveData.ocpp_transaction_id || session.ocpp_transaction_id || null;
+          session.transaction_id = liveData.ocpp_transaction_id || liveData.transaction_id || session.transaction_id || 'N/A';
+          // Add projected amount from live data
+          session.projected_amount = liveData.projected_amount || session.projected_amount || null;
+          session.currency = liveData.currency || session.currency || 'INR';
         }
-        
+
+        // COMPLETED: duration = end_time - start_time (backend timestamps).
+        // ONGOING/ACTIVE: duration = ONLY the live SSE duration_seconds.
+        if (sessionIsOngoing) {
+          session.duration_seconds = liveData?.duration_seconds ?? session.duration_seconds ?? null;
+        } else {
+          session.duration_seconds =
+            getCompletedDurationSeconds(session.start_time || session.started_at, session.end_time) ??
+            session.duration_seconds ??
+            null;
+        }
+
         setSelectedSessionId(sessionKey);
         setSelectedSession(session);
         setShowDetailModal(true);
@@ -1165,7 +1254,7 @@ const Sessions = () => {
   };
 
   const handleThemeToggle = () => setIsDarkMode(!isDarkMode);
-  
+
   const handleRefresh = () => {
     if (!fetchInProgressRef.current) {
       setAllSessions([]);
@@ -1196,7 +1285,7 @@ const Sessions = () => {
   const currentSessions = useMemo(() => {
     if (activeTab === 'all') {
       const merged = [...allSessions];
-      
+
       liveSessionsData.sessions.forEach(liveSession => {
         const sessionKey = liveSession.id || liveSession.session_id;
         const exists = merged.some(s => {
@@ -1215,7 +1304,7 @@ const Sessions = () => {
           }
         }
       });
-      
+
       return merged;
     } else {
       return ongoingSessions;
@@ -1233,7 +1322,7 @@ const Sessions = () => {
       const chargerIdStr = String(session.charger_id || '');
       const hubNameStr = String(session.hub_name || '');
       const customerNameStr = String(session.customer_name || '');
-      
+
       return (
         idStr.toLowerCase().includes(query) ||
         transactionIdStr.toLowerCase().includes(query) ||
@@ -1275,7 +1364,7 @@ const Sessions = () => {
           </div>
         </div>
       </div>
-      
+
       <div className="p-2">
         <button onClick={() => { setShowSettingsMenu(false); navigate('/profile'); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
           <User size={16} className="text-gray-500" /> <span>Profile</span>
@@ -1369,39 +1458,26 @@ const Sessions = () => {
     if (!selectedSession) return null;
 
     const isOngoing = isOngoingStatus(selectedSession.status) || selectedSession.status === 'ACTIVE' || selectedSession.status === 'STOP_PENDING';
-    
-    // Get duration from session data
-    let durationSeconds = selectedSession.duration_seconds || null;
-    
-    // If no duration_seconds but has started_at and is ongoing, calculate it
-    if (!durationSeconds && selectedSession.started_at && isOngoing) {
-      durationSeconds = calculateLiveDuration(selectedSession.started_at);
-    }
-    
-    // If still no duration, calculate from start/end time
-    if (!durationSeconds) {
-      const startTime = selectedSession.start_time || selectedSession.started_at;
-      const endTime = isOngoing ? null : selectedSession.end_time;
-      if (startTime) {
-        const start = new Date(startTime);
-        if (!isNaN(start.getTime())) {
-          const end = endTime ? new Date(endTime) : new Date();
-          if (!isNaN(end.getTime())) {
-            durationSeconds = Math.floor((end - start) / 1000);
-          }
-        }
-      }
-    }
-    
-    const durationFormatted = formatDuration(durationSeconds || 0);
-    const durationMinutes = getDurationMinutes(durationSeconds || 0);
-    const durationShort = formatDurationShort(durationSeconds || 0);
+
+    // COMPLETED sessions: duration = end_time - start_time (backend timestamps).
+    // ONGOING/ACTIVE sessions: duration = ONLY the live duration_seconds from the
+    // live-sessions SSE stream. No local-clock math either way.
+    const durationSeconds = isOngoing
+      ? (selectedSession.duration_seconds || 0)
+      : (getCompletedDurationSeconds(selectedSession.start_time || selectedSession.started_at, selectedSession.end_time) ?? (selectedSession.duration_seconds || 0));
+
+    const durationFormatted = formatDuration(durationSeconds);
+    const durationMinutes = getDurationMinutes(durationSeconds);
+    const durationShort = formatDurationShort(durationSeconds);
 
     const isLive = selectedSession.is_live || selectedSession.live_data || selectedSession.consumed_wh;
     const energy = getEnergyKwh(selectedSession);
     const soc = getSocPercent(selectedSession);
     const meterFreshness = getMeterFreshness(selectedSession);
     const socFreshness = getSocFreshness(selectedSession);
+    const projectedAmount = getProjectedAmount(selectedSession);
+    const currency = getCurrency(selectedSession);
+    const transactionId = getTransactionId(selectedSession);
 
     return (
       <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
@@ -1461,8 +1537,14 @@ const Sessions = () => {
                   <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-2xl p-4 border border-emerald-200">
                     <p className="text-xs text-gray-500 uppercase tracking-wider">Amount</p>
                     <p className="text-2xl font-bold text-emerald-600 mt-1">
-                      {formatCurrency(selectedSession.total_amount, selectedSession.currency)}
+                      {formatCurrency(projectedAmount || selectedSession.total_amount, currency)}
                     </p>
+                    {isLive && isOngoing && (
+                      <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+                        Live updating
+                      </p>
+                    )}
                   </div>
                   <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-4 border border-purple-200">
                     <p className="text-xs text-gray-500 uppercase tracking-wider">Energy</p>
@@ -1506,7 +1588,7 @@ const Sessions = () => {
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-500">Transaction ID</span>
-                        <span className="font-mono text-gray-900">{selectedSession.transaction_id || 'N/A'}</span>
+                        <span className="font-mono text-gray-900">{transactionId}</span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-500">Connector</span>
@@ -1597,6 +1679,10 @@ const Sessions = () => {
                         </div>
                       )}
                       <div>
+                        <span className="text-gray-500">Amount:</span>
+                        <span className="ml-2 font-medium text-emerald-700">{formatCurrency(projectedAmount || selectedSession.total_amount, currency)}</span>
+                      </div>
+                      <div>
                         <span className="text-gray-500">Duration:</span>
                         <span className="ml-2 font-medium text-amber-700">{durationFormatted}</span>
                         {durationMinutes > 0 && (
@@ -1674,8 +1760,8 @@ const Sessions = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      <Sidebar 
-        isDarkMode={isDarkMode} 
+      <Sidebar
+        isDarkMode={isDarkMode}
         onThemeToggle={handleThemeToggle}
         userName={userData?.user?.full_name || user?.name || 'User'}
         userEmail={userData?.user?.email || user?.email || ''}
@@ -1702,7 +1788,7 @@ const Sessions = () => {
                 Sessions
               </span>
             </div>
-            
+
             <div className="flex items-center gap-2 relative">
               <div className="relative">
                 <button onClick={() => setShowSettingsMenu(!showSettingsMenu)} className="p-2 hover:bg-gray-100 rounded-xl transition flex items-center gap-1.5">
@@ -1835,13 +1921,6 @@ const Sessions = () => {
                     className="pl-9 pr-3 py-2 rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm w-56 bg-gray-50"
                   />
                 </div>
-                {/* <button
-                  onClick={() => setShowFilterPopup(true)}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 rounded-xl hover:bg-gray-200 transition text-sm font-medium text-gray-700"
-                >
-                  <Filter size={16} className="text-gray-500" />
-                  Filter
-                </button> */}
                 {showFilterPopup && <FilterPopup />}
               </div>
             </div>
@@ -1863,9 +1942,8 @@ const Sessions = () => {
                       <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">End Time</th>
                       <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Duration</th>
                       <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Energy</th>
-                      {activeTab === 'all' && (
-                        <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount</th>
-                      )}
+                      {/* Always show Amount column for both tabs */}
+                      <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Amount</th>
                       <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
                       <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Action</th>
                     </tr>
@@ -1919,54 +1997,53 @@ const Sessions = () => {
                     ) : (
                       filteredSessions.map((session, index) => {
                         const isOngoing = isOngoingStatus(session.status) || session.status === 'ACTIVE' || session.status === 'STOP_PENDING';
-                        
-                        // Get duration from session data
-                        let durationSeconds = session.duration_seconds || null;
-                        
-                        // If no duration_seconds but has started_at and is ongoing, calculate it
-                        if (!durationSeconds && session.started_at && isOngoing) {
-                          durationSeconds = calculateLiveDuration(session.started_at);
-                        }
-                        
-                        // If still no duration, calculate from start/end time
-                        if (!durationSeconds) {
-                          const startTime = session.start_time || session.started_at;
-                          const endTime = isOngoing ? null : session.end_time;
-                          if (startTime) {
-                            const start = new Date(startTime);
-                            if (!isNaN(start.getTime())) {
-                              const end = endTime ? new Date(endTime) : new Date();
-                              if (!isNaN(end.getTime())) {
-                                durationSeconds = Math.floor((end - start) / 1000);
-                              }
-                            }
-                          }
-                        }
-                        
+
+                        // COMPLETED sessions: duration = end_time - start_time (both
+                        // backend timestamps from the All Sessions API).
+                        // ONGOING/ACTIVE sessions: duration = ONLY the live
+                        // duration_seconds coming from the live-sessions SSE stream.
+                        // No local-clock math in either case.
+                        const durationSeconds = isOngoing
+                          ? (session.duration_seconds || 0)
+                          : (getCompletedDurationSeconds(session.start_time || session.started_at, session.end_time) ?? (session.duration_seconds || 0));
                         const durationDisplay = durationSeconds ? formatDurationShort(durationSeconds) : 'N/A';
-                        
+
                         const isLive = session.is_live || liveSessionsMapRef.current[session.id || session.session_id];
                         const sessionId = session.id || session.session_id;
                         const isUpdated = updatedSessionIds.has(sessionId);
-                        
+
                         let displayEnergy = session.total_kwh || '0';
                         let displaySoc = session.soc_percent || null;
-                        
+                        let displayAmount = session.total_amount || '0';
+                        let displayCurrency = session.currency || 'INR';
+
                         if (isLive) {
                           const energy = getEnergyKwh(session);
                           displayEnergy = energy > 0 ? energy.toFixed(2) : (session.total_kwh || '0');
                           displaySoc = getSocPercent(session) || null;
+                          const projectedAmount = getProjectedAmount(session);
+                          if (projectedAmount > 0) {
+                            displayAmount = projectedAmount;
+                          }
+                          displayCurrency = getCurrency(session);
                         }
-                        
-                        // Get connector number, transaction ID, and charger ID
+
+                        // Get connector number, transaction ID, and charger ID.
+                        // Transaction id: prefer the live SSE ocpp_transaction_id
+                        // (via the shared liveSessionsMapRef) so ongoing rows always
+                        // show the same live transaction id as the Ongoing tab does.
                         const connectorNumber = session.connector?.number || session.connector_number || 'N/A';
-                        const transactionId = session.transaction_id || 'N/A';
+                        const liveMapEntry = liveSessionsMapRef.current[sessionId];
+                        const transactionId = liveMapEntry?.ocpp_transaction_id
+                          || session.ocpp_transaction_id
+                          || session.transaction_id
+                          || 'N/A';
                         const chargerId = session.charger?.charger_id || session.charger_id || session.charger?.id || 'N/A';
                         const chargerName = session.charger?.name || session.charger_name || 'N/A';
-                        
+
                         return (
-                          <tr 
-                            key={sessionId || session.transaction_id || index} 
+                          <tr
+                            key={sessionId || session.transaction_id || index}
                             className={`border-b border-gray-100 hover:bg-gray-50/50 transition cursor-pointer ${
                               isLive && isOngoing ? 'bg-green-50/30' : ''
                             } ${
@@ -2028,11 +2105,16 @@ const Sessions = () => {
                                 )}
                               </div>
                             </td>
-                            {activeTab === 'all' && (
-                              <td className="px-3 py-3 text-sm font-medium text-gray-700">
-                                {formatCurrency(session.total_amount, session.currency)}
-                              </td>
-                            )}
+                            {/* Amount column - always shown for both tabs */}
+                            <td className="px-3 py-3 text-sm font-medium text-gray-700">
+                              {formatCurrency(displayAmount, displayCurrency)}
+                              {isLive && isOngoing && (
+                                <span className="ml-1 text-xs text-green-600 flex items-center gap-0.5">
+                                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+                                  Live
+                                </span>
+                              )}
+                            </td>
                             <td className="px-3 py-3 text-sm">
                               <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(session.status)}`}>
                                 {getStatusIcon(session.status)}
@@ -2091,7 +2173,7 @@ const Sessions = () => {
               {/* Footer */}
               <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 text-xs text-gray-500 flex justify-between items-center">
                 <span>
-                  {filteredSessions.length === 0 
+                  {filteredSessions.length === 0
                     ? 'No sessions available'
                     : `Showing ${filteredSessions.length} of ${currentSessions.length} sessions`
                   }

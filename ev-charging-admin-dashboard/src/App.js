@@ -49,6 +49,7 @@ import AppWalletSettings from './components/AppManagement/Wallet';
 import SupportTicket from './components/Support/SupportTicket';
 import UserAccess from './components/UserAccess/UserAccess';
 import AddStaff from './components/UserAccess/AddStaffAccess';
+import ReportAnalytics from './components/ReportandAnalytics/Report';
 import './index.css';
 
 function App() {
@@ -111,8 +112,9 @@ function App() {
           <Route path="/revenue/add-charger-tariff" element={<ProtectedRoute><AddChargerTariff /></ProtectedRoute>} />
           <Route path="/app-management" element={<ProtectedRoute><AppWalletSettings/></ProtectedRoute>} />
           <Route path="/support-ticket" element={<ProtectedRoute><SupportTicket/></ProtectedRoute>} />
-           <Route path="/user-access" element={<ProtectedRoute><UserAccess/></ProtectedRoute>} />
-              <Route path="/add-staff" element={<ProtectedRoute><AddStaff/></ProtectedRoute>} />
+          <Route path="/user-access" element={<ProtectedRoute><UserAccess/></ProtectedRoute>} />
+          <Route path="/add-staff" element={<ProtectedRoute><AddStaff/></ProtectedRoute>} />
+          <Route path="/reports" element={<ProtectedRoute><ReportAnalytics/></ProtectedRoute>} />
         </Routes>
       </AuthProvider>
     </Router>
