@@ -112,7 +112,8 @@ import {
 import Sidebar from '../Sidebar/Sidebar';
 
 // API Configuration
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://dev-evcmsnew.transev.site';
+// const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://dev-evcmsnew.transev.site';
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://192.168.0.103:8146';
 const CPO_APP_ID = process.env.REACT_APP_CPO_APP_ID || 'cpo_dummy_5f75674f57829da5f3cae19ef4238d56';
 
 const API_CONFIG = {

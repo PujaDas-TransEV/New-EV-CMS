@@ -1171,6 +1171,7 @@ const CustomerTariff = () => {
 
   // ============================================================================
   // SECTION 20 - PATCH Semantics (Omitted vs Null)
+  // FIXED: For Sessions, set units to null to clear any existing value.
   // ============================================================================
   const buildUpdatePayload = () => {
     const pricePerUnit = parseFloat(editFormData.price_per_unit) || 0;
@@ -1185,8 +1186,11 @@ const CustomerTariff = () => {
       price_type: PRICE_TYPE_MAP[editFormData.price_type] || 'energy',
     };
 
-    // Units derived from price_type – never trust stale state
-    if (editFormData.price_type !== 'Sessions') {
+    // For Sessions, explicitly set units to null to remove any existing units.
+    // For Energy/Time, set units based on price_type.
+    if (editFormData.price_type === 'Sessions') {
+      payload.units = null;
+    } else {
       const unitLabel = DEFAULT_UNIT_FOR_PRICE_TYPE[editFormData.price_type];
       payload.units = UNITS_MAP[unitLabel] || 'kwh';
     }

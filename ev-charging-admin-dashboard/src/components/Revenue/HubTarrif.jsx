@@ -1,3 +1,4 @@
+// src/components/Revenue/HubTariff.jsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../Authentication/AuthContext';
@@ -128,7 +129,7 @@ const DEFAULT_UNIT_FOR_PRICE_TYPE = {
   'Sessions': ''
 };
 
-// ---------- Small presentational helpers (pure functions, safe as module-level) ----------
+// ---------- Small presentational helpers ----------
 const formatDate = (dateString) => {
   if (!dateString) return 'N/A';
   const date = new Date(dateString);
@@ -198,16 +199,7 @@ const getHubStatusColor = (isActive) => {
 };
 
 // ==========================================================================
-// TariffDetailModal — IMPORTANT: this is now declared OUTSIDE HubTariff.
-//
-// Previously it was declared *inside* the HubTariff component body, so on
-// every re-render (e.g. every keystroke in the edit form) a brand-new
-// function/component was created. React saw that as a totally different
-// component type and unmounted + remounted the whole modal — that's what
-// caused the blinking and the "input loses focus after deleting a
-// character" behavior. Declaring it at module scope means its identity is
-// stable across renders, so React just re-renders it in place (no
-// unmount/remount, no lost focus, no blink).
+// TariffDetailModal — declared OUTSIDE HubTariff (stable identity)
 // ==========================================================================
 const TariffDetailModal = ({
   tariff,
@@ -411,9 +403,7 @@ const TariffDetailModal = ({
                 </div>
               </div>
 
-              {/* Units - always kept in sync with price_type by onEditChange,
-                  shown here read-only (locked) so it can never drift out of
-                  sync with price_type again */}
+              {/* Units - read-only, auto-synced */}
               {editFormData.price_type !== 'Sessions' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -447,7 +437,7 @@ const TariffDetailModal = ({
                 </div>
               )}
 
-              {/* Schedule Type - Blue/Purple Theme */}
+              {/* Schedule Type */}
               <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
                 <p className="text-xs font-medium text-gray-700 mb-2 flex items-center gap-2">
                   <Calendar size={14} className="text-gray-500" />
@@ -540,7 +530,7 @@ const TariffDetailModal = ({
                 </div>
               </div>
 
-              {/* Status - Blue Theme */}
+              {/* Status */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   Status
@@ -603,7 +593,7 @@ const TariffDetailModal = ({
           ) : (
             // View Mode
             <div className="space-y-5">
-              {/* Status and Price - Updated Colors */}
+              {/* Status and Price */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-4 border border-green-200">
                   <p className="text-xs text-gray-500 uppercase tracking-wider">Status</p>
@@ -624,7 +614,7 @@ const TariffDetailModal = ({
                 </div>
               </div>
 
-              {/* Tariff Details - Updated Colors */}
+              {/* Tariff Details */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
                   <p className="text-xs text-gray-500 uppercase tracking-wider">Currency</p>
@@ -654,7 +644,7 @@ const TariffDetailModal = ({
                 </div>
               )}
 
-              {/* Schedule Type & Validity Period - Updated Colors */}
+              {/* Schedule Type & Validity Period */}
               <div className={`rounded-2xl p-4 border ${isRoot ? 'bg-purple-50 border-purple-200' : 'bg-gradient-to-r from-gray-50 to-gray-100 border-gray-200'}`}>
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs text-gray-500 uppercase tracking-wider">Schedule Type</p>
@@ -734,7 +724,7 @@ const TariffDetailModal = ({
                 </div>
               </div>
 
-              {/* Tariff Precedence Info - Updated Colors */}
+              {/* Tariff Precedence Info */}
               <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-4 border border-blue-200">
                 <p className="text-xs font-medium text-blue-800 flex items-center gap-2">
                   <Info size={14} className="text-blue-600" />
@@ -752,7 +742,7 @@ const TariffDetailModal = ({
                 </p>
               </div>
 
-              {/* Action Buttons - Updated Colors */}
+              {/* Action Buttons */}
               <div className="flex items-center gap-3 pt-2 border-t border-gray-200">
                 <button
                   onClick={onEditToggle}
@@ -799,6 +789,9 @@ const TariffDetailModal = ({
   );
 };
 
+// ============================================================================
+// MAIN HubTariff COMPONENT
+// ============================================================================
 const HubTariff = () => {
   const navigate = useNavigate();
   const { authenticatedRequest, logout, isRefreshing, isAuthenticated, user } = useAuth();
@@ -947,11 +940,9 @@ const HubTariff = () => {
         const tariffData = data.tariffs || data.data || data || [];
         setTariffs(tariffData);
 
-        // Check if there's an active tariff
         const hasActive = tariffData.some(t => t.is_active === true);
         setActiveTariffExists(hasActive);
 
-        // Check if there's a root tariff (no start_date and no end_date)
         const hasRoot = tariffData.some(t => !t.start_date && !t.end_date);
         setRootTariffExists(hasRoot);
       } else {
@@ -994,7 +985,6 @@ const HubTariff = () => {
     setSelectedTariffId(null);
   };
 
-  // Fixed: Prevent modal blinking
   const handleTariffClick = async (tariff) => {
     if (isModalOpeningRef.current) return;
     isModalOpeningRef.current = true;
@@ -1018,9 +1008,6 @@ const HubTariff = () => {
           is_active: fullTariff.is_active !== undefined ? fullTariff.is_active : true,
           tariff_type: displayTariffType,
           price_type: displayPriceType,
-          // Always derive units from price_type as the source of truth,
-          // rather than trusting whatever the backend returned for units
-          // (keeps the two fields from ever disagreeing in the form).
           units: DEFAULT_UNIT_FOR_PRICE_TYPE[displayPriceType] ?? displayUnits,
           start_date: fullTariff.start_date || '',
           end_date: fullTariff.end_date || ''
@@ -1064,11 +1051,7 @@ const HubTariff = () => {
     }
   };
 
-  // Handles every input/select/checkbox change in the edit form.
-  // KEY FIX: when "price_type" changes, "units" is force-synced to the
-  // only unit that price type supports, in the SAME state update — so the
-  // two fields can never disagree (which was the root cause of the
-  // "units: kwh" + "price_type: time" -> unsupported_tariff_pricing error).
+  // Handles edit changes and auto-syncs units
   const handleEditChange = (e) => {
     const { name, value, type, checked } = e.target;
     const nextValue = type === 'checkbox' ? checked : value;
@@ -1084,7 +1067,7 @@ const HubTariff = () => {
     });
   };
 
-  // Quick-select buttons for Root / Open-ended / Bounded schedule types.
+  // Quick-select for schedule types
   const handleScheduleTypeSelect = (kind) => {
     if (kind === 'root') {
       setEditFormData(prev => ({ ...prev, start_date: '', end_date: '' }));
@@ -1125,26 +1108,23 @@ const HubTariff = () => {
       price_type: PRICE_TYPE_MAP[editFormData.price_type] || 'energy',
     };
 
-    // For Sessions, omit units entirely. For Energy/Time, always derive the
-    // unit from price_type (not from whatever editFormData.units happens to
-    // hold) so a stale/mismatched value can never be sent to the backend.
-    if (editFormData.price_type !== 'Sessions') {
+    // FIX: For Sessions, explicitly set units to null to clear any existing value.
+    if (editFormData.price_type === 'Sessions') {
+      payload.units = null;
+    } else {
       const unitLabel = DEFAULT_UNIT_FOR_PRICE_TYPE[editFormData.price_type];
       payload.units = UNITS_MAP[unitLabel] || 'kwh';
     }
 
-    // Handle date fields - can be null for clearing
+    // Handle date fields
     if (editFormData.start_date !== undefined && editFormData.end_date !== undefined) {
       if (!editFormData.start_date && !editFormData.end_date) {
-        // Clear schedule (make it root)
         payload.start_date = null;
         payload.end_date = null;
       } else if (editFormData.start_date && !editFormData.end_date) {
-        // Open-ended (start only)
         payload.start_date = new Date(editFormData.start_date).toISOString();
         payload.end_date = null;
       } else if (editFormData.start_date && editFormData.end_date) {
-        // Bounded (start and end)
         payload.start_date = new Date(editFormData.start_date).toISOString();
         payload.end_date = new Date(editFormData.end_date).toISOString();
       }
@@ -1153,7 +1133,6 @@ const HubTariff = () => {
     return payload;
   };
 
-  // Handle update with proper API payload
   const handleUpdateTariff = async (e) => {
     e.preventDefault();
     setIsUpdating(true);
@@ -1192,11 +1171,8 @@ const HubTariff = () => {
 
       if (response.ok) {
         setUpdateSuccess('Tariff updated successfully!');
-
-        // Refresh tariff list
         await fetchTariffs(selectedHub.id);
 
-        // Update selected tariff with new data
         const updatedTariff = await fetchTariffDetail(selectedHub.id, selectedTariff.id);
         if (updatedTariff) {
           setSelectedTariff(updatedTariff);
@@ -1223,11 +1199,9 @@ const HubTariff = () => {
     }
   };
 
-  // Handle Delete Tariff
   const handleDeleteTariff = async () => {
     if (!selectedTariff) return;
 
-    // Check if it's a root tariff and hub is visible
     const isRoot = !selectedTariff.start_date && !selectedTariff.end_date;
     if (isRoot && selectedHub?.customer_visible) {
       setError('Cannot delete root tariff while hub is visible. Please hide the hub first.');
@@ -1424,7 +1398,7 @@ const HubTariff = () => {
           </div>
         </header>
 
-        {/* Tabs - Updated Active Tab Color */}
+        {/* Tabs */}
         <div className="border-b border-gray-200 bg-white px-6">
           <div className="flex flex-wrap items-center gap-1">
             {tabs.map((tab) => {
@@ -1542,7 +1516,7 @@ const HubTariff = () => {
             <div className="lg:col-span-2">
               {selectedHub ? (
                 <>
-                  {/* Hub Info Card - Updated Colors */}
+                  {/* Hub Info Card */}
                   <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 rounded-2xl p-5 mb-5 shadow-lg shadow-blue-500/25">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4">

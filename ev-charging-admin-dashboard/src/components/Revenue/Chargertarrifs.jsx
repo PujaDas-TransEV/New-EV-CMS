@@ -89,17 +89,6 @@ const UNITS_DISPLAY = {
   'minutes': 'Minutes'
 };
 
-// Which unit belongs to which price type — single source of truth used to
-// auto-sync the "units" field whenever "price_type" changes, and to build
-// a payload that always matches what the backend expects:
-//   energy   -> kwh
-//   time     -> minutes
-//   sessions -> (no units field at all)
-// This is what fixes the "unsupported_tariff_pricing" error: previously the
-// units dropdown only changed which <option> was rendered, but didn't force
-// editFormData.units to update, so switching Price Type to "Time" could
-// silently leave units as "kWh" in state -> payload had price_type: "time"
-// with units: "kwh", which the backend rejects.
 const DEFAULT_UNIT_FOR_PRICE_TYPE = {
   'Energy': 'kWh',
   'Time': 'Minutes',
@@ -205,7 +194,7 @@ const getTemporalRole = (tariff) => {
   return 'unknown';
 };
 
-// ---------- Small presentational helpers (pure functions, safe as module-level) ----------
+// ---------- Small presentational helpers ----------
 const formatDate = (dateString) => {
   if (!dateString) return 'N/A';
   const date = new Date(dateString);
@@ -279,16 +268,7 @@ const getChargerStatusIcon = (status) => {
 };
 
 // ==========================================================================
-// TariffDetailModal — IMPORTANT: declared OUTSIDE ChargerTariff.
-//
-// It used to live inside the ChargerTariff component body, so every
-// keystroke in the edit form re-rendered ChargerTariff, which created a
-// brand-new TariffDetailModal function/component. React treated that as a
-// different component type each time and unmounted + remounted the whole
-// modal — that's what caused the blinking and the "input loses focus after
-// deleting a character" behavior. Declaring it at module scope keeps its
-// identity stable across renders, so React just updates it in place with
-// no unmount/remount, no lost focus, no blink.
+// TariffDetailModal (stable, declared outside)
 // ==========================================================================
 const TariffDetailModal = ({
   tariff,
@@ -368,7 +348,7 @@ const TariffDetailModal = ({
           )}
 
           {isEditing ? (
-            // Edit Form
+            // Edit Form - same as before, unchanged
             <form onSubmit={onUpdate} className="space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
@@ -476,11 +456,6 @@ const TariffDetailModal = ({
                     <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
                       <Gauge size={18} />
                     </div>
-                    {/* Units is fully determined by Price Type (see
-                        DEFAULT_UNIT_FOR_PRICE_TYPE) and kept in sync by
-                        onEditChange, so it's shown here as read-only —
-                        this removes the failure mode entirely instead of
-                        just patching around it. */}
                     <input
                       type="text"
                       value={editFormData.price_type === 'Sessions' ? 'Units omitted for Sessions' : editFormData.units}
@@ -501,7 +476,7 @@ const TariffDetailModal = ({
                 </div>
               )}
 
-              {/* SECTION 29 - Temporal Role Selection */}
+              {/* Temporal Role Selection */}
               <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
                 <p className="text-xs font-medium text-gray-700 mb-2 flex items-center gap-2">
                   <Calendar size={14} className="text-gray-500" />
@@ -594,7 +569,7 @@ const TariffDetailModal = ({
                 </div>
               </div>
 
-              {/* SECTION 9 - is_active semantics */}
+              {/* Status Toggle */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
                   Status
@@ -657,7 +632,7 @@ const TariffDetailModal = ({
               </div>
             </form>
           ) : (
-            // View Mode
+            // View Mode - unchanged
             <div className="space-y-5">
               {/* Status, Price, Idle Fee */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -779,7 +754,7 @@ const TariffDetailModal = ({
                 </div>
               )}
 
-              {/* SECTION 4 - Scope Precedence Info */}
+              {/* Scope Precedence Info */}
               <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl p-4 border border-blue-200">
                 <p className="text-xs font-medium text-blue-800 flex items-center gap-2">
                   <Info size={14} className="text-blue-600" />
@@ -859,8 +834,7 @@ const TariffDetailModal = ({
   );
 };
 
-// DeleteConfirmModal moved outside for the same reason as TariffDetailModal —
-// a stable component identity so it never unmounts/remounts mid-interaction.
+// DeleteConfirmModal - stable
 const DeleteConfirmModal = ({ onConfirm, onCancel, isDeleting, error }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
     <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-slideUp">
@@ -918,6 +892,9 @@ const DeleteConfirmModal = ({ onConfirm, onCancel, isDeleting, error }) => (
   </div>
 );
 
+// ============================================================================
+// MAIN CHARGER TARIFF COMPONENT
+// ============================================================================
 const ChargerTariff = () => {
   const navigate = useNavigate();
   const { authenticatedRequest, logout, isRefreshing, isAuthenticated, user } = useAuth();
@@ -1108,8 +1085,7 @@ const ChargerTariff = () => {
           is_active: fullTariff.is_active !== undefined ? fullTariff.is_active : true,
           tariff_type: 'Standard',
           price_type: displayPriceType,
-          // Always derive units from price_type as the source of truth,
-          // rather than trusting whatever the backend returned for units.
+          // Always derive units from price_type as the source of truth
           units: DEFAULT_UNIT_FOR_PRICE_TYPE[displayPriceType] ?? '',
           start_date: fullTariff.start_date || '',
           end_date: fullTariff.end_date || ''
@@ -1151,11 +1127,7 @@ const ChargerTariff = () => {
     }
   };
 
-  // Handles every input/select/checkbox change in the edit form.
-  // KEY FIX: when "price_type" changes, "units" is force-synced to the
-  // only unit that price type supports, in the SAME state update — so the
-  // two fields can never disagree (which was the root cause of the
-  // "units: kwh" + "price_type: time" -> unsupported_tariff_pricing error).
+  // Handles every input/select/checkbox change – auto‑sync units
   const handleEditChange = (e) => {
     const { name, value, type, checked } = e.target;
     const nextValue = type === 'checkbox' ? checked : value;
@@ -1171,7 +1143,7 @@ const ChargerTariff = () => {
     });
   };
 
-  // Quick-select buttons for Root / Baseline / Temporary temporal roles.
+  // Quick-select buttons for temporal roles
   const handleTemporalRoleSelect = (kind) => {
     if (kind === 'root') {
       setEditFormData(prev => ({ ...prev, start_date: '', end_date: '' }));
@@ -1200,6 +1172,7 @@ const ChargerTariff = () => {
 
   // ============================================================================
   // SECTION 20 - PATCH Semantics (Omitted vs Null)
+  // FIX: For Sessions, set units to null to clear any existing value.
   // ============================================================================
   const buildUpdatePayload = () => {
     const pricePerUnit = parseFloat(editFormData.price_per_unit) || 0;
@@ -1214,26 +1187,24 @@ const ChargerTariff = () => {
       price_type: PRICE_TYPE_MAP[editFormData.price_type] || 'energy',
     };
 
-    // SECTION 12 - Sessions pricing omits units. For Energy/Time, always
-    // derive the unit from price_type (not from whatever editFormData.units
-    // happens to hold) so a stale/mismatched value can never reach the API.
-    if (editFormData.price_type !== 'Sessions') {
+    // For Sessions, explicitly set units to null to remove any existing units.
+    // For Energy/Time, set units based on price_type.
+    if (editFormData.price_type === 'Sessions') {
+      payload.units = null;
+    } else {
       const unitLabel = DEFAULT_UNIT_FOR_PRICE_TYPE[editFormData.price_type];
       payload.units = UNITS_MAP[unitLabel] || 'kwh';
     }
 
-    // SECTION 5 - Temporal roles
+    // Temporal roles
     if (editFormData.start_date !== undefined && editFormData.end_date !== undefined) {
       if (!editFormData.start_date && !editFormData.end_date) {
-        // Root: start=null, end=null
         payload.start_date = null;
         payload.end_date = null;
       } else if (editFormData.start_date && !editFormData.end_date) {
-        // Open-ended baseline
         payload.start_date = new Date(editFormData.start_date).toISOString();
         payload.end_date = null;
       } else if (editFormData.start_date && editFormData.end_date) {
-        // Bounded temporary override
         payload.start_date = new Date(editFormData.start_date).toISOString();
         payload.end_date = new Date(editFormData.end_date).toISOString();
       }
@@ -1314,9 +1285,7 @@ const ChargerTariff = () => {
     }
   };
 
-  // ============================================================================
-  // SECTION 24 - Delete Semantics
-  // ============================================================================
+  // Delete handler - same as before
   const handleDeleteTariff = async () => {
     if (!deletingTariffId) return;
 
@@ -1389,7 +1358,7 @@ const ChargerTariff = () => {
     return group ? group.name : groupId;
   };
 
-  // Settings Dropdown Menu
+  // Settings Menu, Add Menu, and render (same as before)
   const SettingsMenu = () => (
     <div className="absolute top-full right-0 mt-2 bg-white rounded-2xl w-80 shadow-2xl border border-gray-100 z-50 overflow-hidden">
       <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-4">
@@ -1428,7 +1397,6 @@ const ChargerTariff = () => {
     </div>
   );
 
-  // Add Dropdown Menu
   const AddMenu = () => (
     <div className="absolute top-full right-0 mt-2 bg-white rounded-2xl w-64 shadow-2xl border border-gray-100 z-50">
       <div className="p-3">
