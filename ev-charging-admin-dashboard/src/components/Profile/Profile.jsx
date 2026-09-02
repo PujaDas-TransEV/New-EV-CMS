@@ -796,7 +796,7 @@ const Profile = () => {
                     <Building size={16} className="text-gray-400" />
                     <span className="text-sm text-gray-600">CPO ID</span>
                   </div>
-                  <span className="text-sm font-medium text-gray-800 font-mono text-xs truncate max-w-[180px]">
+                  <span className="font-medium text-gray-800 font-mono text-xs truncate max-w-[180px]">
                     {userData?.cpo_id || 'N/A'}
                   </span>
                 </div>
