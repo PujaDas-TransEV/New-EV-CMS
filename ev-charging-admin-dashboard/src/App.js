@@ -37,9 +37,9 @@ import AddCustomerGroup from './components/CustomerandVehicles/AddCustomerGroup'
 // Revenue Pages
 import CustomerTariff from './components/Revenue/CustomerTarrifDetails';
 import AddCustomerTariff from './components/Revenue/AddCustomerTarriff';
-import Tax from './components/Revenue/Tax';
+import Tax from './components/Revenue/tax';
 import GSTProfile from './components/Revenue/GSTProfile';
-import Settings from './components/Revenue/Settings';
+import Settings from './components/Revenue/settings';
 import CreateInvoice from './components/Revenue/CreateInvoice';
 import HubTariff from './components/Revenue/HubTarrif';
 import AddHubTariff from './components/Revenue/AddHubTarriff';
