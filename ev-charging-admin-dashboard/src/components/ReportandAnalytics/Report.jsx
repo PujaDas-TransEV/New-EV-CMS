@@ -222,7 +222,10 @@ import {
   MapPin as MapPinIcon,
   Phone as PhoneIcon,
   Mail as MailIcon,
-  Calendar as CalendarIcon4
+  Calendar as CalendarIcon4,
+  Hash,
+  Link as LinkIcon2,
+  HardDrive as HardDriveIcon2
 } from 'lucide-react';
 import Sidebar from '../Sidebar/Sidebar';
 
@@ -404,11 +407,17 @@ const ReportsAnalytics = () => {
     switch(type) {
       case 'chargers':
         items = data.chargers || data.data || data || [];
+        // Extract hub_name from each item
+        items = items.map(item => ({
+          ...item,
+          hub_name: item.hub_name || item.hub?.name || 'N/A',
+          charger_name: item.charger_name || item.name || 'Unnamed'
+        }));
         stats = {
           total: items.length,
-          active: items.filter(c => c.status === 'active' || c.is_active).length,
-          inactive: items.filter(c => c.status !== 'active' && !c.is_active).length,
-          utilization: items.length > 0 ? Math.round((items.filter(c => c.status === 'active' || c.is_active).length / items.length) * 100) : 0,
+          active: items.filter(c => c.status === 'active' || c.is_active || c.status === 'ACTIVE').length,
+          inactive: items.filter(c => c.status !== 'active' && !c.is_active && c.status !== 'ACTIVE').length,
+          utilization: items.length > 0 ? Math.round((items.filter(c => c.status === 'active' || c.is_active || c.status === 'ACTIVE').length / items.length) * 100) : 0,
           growth: 12.5,
           change: 8.2,
           totalRevenue: 0,
@@ -455,7 +464,15 @@ const ReportsAnalytics = () => {
         break;
       case 'revenue':
         // Get transactions from response
-        const transactions = data.transactions || data.data || data || [];
+        let transactions = data.transactions || data.data || data || [];
+        // Enhance transactions with charger and hub info if available
+        transactions = transactions.map(tx => ({
+          ...tx,
+          charger_name: tx.charger_name || tx.charger?.name || 'N/A',
+          hub_name: tx.hub || tx.charger?.hub_name || 'N/A',  // <<-- Use 'hub' field directly
+          customer_name: tx.customer_details?.name || tx.customer_name || 'N/A',
+          charger_id: tx.charger_id || tx.charger?.charger_id || 'N/A'
+        }));
         items = transactions;
         
         // Calculate revenue from billed_amount
@@ -485,7 +502,7 @@ const ReportsAnalytics = () => {
           change: 14.2,
           totalRevenue: totalRevenue,
           chargingRevenue: completedRevenue,
-          subscriptionRevenue: 0, // No subscription data in transactions
+          subscriptionRevenue: 0,
           totalTransactions: transactions.length,
           completedTransactions: completedCount,
           failedTransactions: failedCount
@@ -602,7 +619,8 @@ const ReportsAnalytics = () => {
       const searchableFields = [
         'transaction_id', 'session_id', 'charger_name', 'charger_id', 
         'customer_details', 'hub', 'payment_status', 'session_status',
-        'billed_amount', 'transaction_id', 'ocpp_transaction_id'
+        'billed_amount', 'transaction_id', 'ocpp_transaction_id',
+        'hub_name', 'charger_name', 'name', 'email', 'phone'
       ];
       return searchableFields.some(field => {
         const value = typeof item[field] === 'object' ? JSON.stringify(item[field]) : item[field];
@@ -767,7 +785,9 @@ const ReportsAnalytics = () => {
       'maintenance': 'bg-red-100 text-red-700',
       'COMPLETED': 'bg-green-100 text-green-700',
       'SETTLED': 'bg-blue-100 text-blue-700',
-      'PENDING': 'bg-yellow-100 text-yellow-700'
+      'PENDING': 'bg-yellow-100 text-yellow-700',
+      'ACTIVE': 'bg-green-100 text-green-700',
+      'INACTIVE': 'bg-red-100 text-red-700'
     };
     return statusMap[status?.toUpperCase()] || statusMap[status?.toLowerCase()] || 'bg-gray-100 text-gray-700';
   };
@@ -872,7 +892,6 @@ const ReportsAnalytics = () => {
         <header className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-30 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              {/* <BarChartIcon size={24} className="text-blue-600" /> */}
               <h1 className="text-xl font-semibold text-gray-800">Reports & Analytics</h1>
               <span className="text-gray-300">/</span>
               <span className="text-sm text-blue-600 font-medium bg-blue-50 px-3 py-1 rounded-full">
@@ -1144,11 +1163,11 @@ const ReportsAnalytics = () => {
             })}
           </div>
 
-          {/* Data Table */}
+          {/* Data Table - Enhanced with Hub Name and larger, more beautiful design */}
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+            <div className="px-6 py-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-gray-200 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
-                <FileText size={16} className="text-gray-400" />
+                <FileText size={16} className="text-gray-500" />
                 {selectedReportType.charAt(0).toUpperCase() + selectedReportType.slice(1)} List
                 {selectedDateStr && (
                   <span className="text-xs text-gray-400 ml-2">
@@ -1164,9 +1183,9 @@ const ReportsAnalytics = () => {
                   <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
                 </div>
               ) : filteredData.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <AlertCircle size={32} className="mx-auto mb-2 text-gray-300" />
-                  <p>No data available</p>
+                <div className="text-center py-12 text-gray-500">
+                  <AlertCircle size={40} className="mx-auto mb-3 text-gray-300" />
+                  <p className="font-medium">No data available</p>
                   <p className="text-sm text-gray-400">
                     {selectedDateStr 
                       ? `No records found for ${new Date(selectedDateStr).toLocaleDateString()}`
@@ -1174,102 +1193,153 @@ const ReportsAnalytics = () => {
                   </p>
                 </div>
               ) : (
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-200">
-                      {selectedReportType === 'revenue' ? (
-                        // Show revenue specific columns
-                        ['Transaction ID', 'Charger', 'Customer', 'Amount', 'Payment Status', 'Session Status', 'Timestamp'].map(key => (
-                          <th key={key} className="text-left py-3 px-4 font-semibold text-gray-600">{key}</th>
-                        ))
-                      ) : (
-                        Object.keys(filteredData[0] || {}).slice(0, 8).map(key => (
-                          <th key={key} className="text-left py-3 px-4 font-semibold text-gray-600 capitalize">
-                            {key.replace(/_/g, ' ')}
-                          </th>
-                        ))
-                      )}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredData.map((item, index) => {
-                      if (selectedReportType === 'revenue') {
-                        return (
-                          <tr key={index} className="border-b border-gray-100 hover:bg-gray-50">
-                            <td className="py-3 px-4 text-gray-600 truncate max-w-xs">
-                              {item.transaction_id || '-'}
-                            </td>
-                            <td className="py-3 px-4 text-gray-600">
-                              {item.charger_name || item.charger_id || '-'}
-                            </td>
-                            <td className="py-3 px-4 text-gray-600">
-                              {item.customer_details?.name || '-'}
-                            </td>
-                            <td className="py-3 px-4 text-gray-600 font-medium">
-                              {formatNumber(parseFloat(item.billed_amount) || 0)}
-                            </td>
-                            <td className="py-3 px-4">
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadge(item.payment_status)}`}>
-                                {item.payment_status || 'N/A'}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4">
-                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadge(item.session_status)}`}>
-                                {item.session_status || 'N/A'}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 text-gray-600 text-xs">
-                              {formatDate(item.timestamp)}
-                            </td>
-                          </tr>
-                        );
-                      }
-                      
-                      return (
-                        <tr key={index} className="border-b border-gray-100 hover:bg-gray-50">
-                          {Object.keys(item).slice(0, 8).map(key => {
-                            const value = item[key];
-                            if (typeof value === 'object' && value !== null) {
-                              return (
-                                <td key={key} className="py-3 px-4 text-gray-600 truncate max-w-xs">
-                                  {JSON.stringify(value).substring(0, 30)}...
-                                </td>
-                              );
-                            }
-                            if (key === 'status' && typeof value === 'string') {
-                              return (
-                                <td key={key} className="py-3 px-4">
-                                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${getStatusBadge(value)}`}>
-                                    {value}
-                                  </span>
-                                </td>
-                              );
-                            }
-                            if (key === 'created_at' || key === 'date' || key === 'transaction_date' || key === 'timestamp') {
-                              return (
-                                <td key={key} className="py-3 px-4 text-gray-600 text-xs">
-                                  {formatDate(value)}
-                                </td>
-                              );
-                            }
-                            if (typeof value === 'number' && (key.includes('amount') || key === 'total' || key === 'price' || key === 'cost' || key === 'billed_amount')) {
-                              return (
-                                <td key={key} className="py-3 px-4 text-gray-600 font-medium">
-                                  {formatNumber(value)}
-                                </td>
-                              );
-                            }
-                            return (
-                              <td key={key} className="py-3 px-4 text-gray-600 truncate max-w-xs">
-                                {value || '-'}
-                              </td>
-                            );
-                          })}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      {selectedReportType === 'chargers' && (
+                        <tr className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b-2 border-gray-200">
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">SI</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Charger Name</th>
+                               <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Charger ID</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Hub Name</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Serial Number</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Status</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Max Power</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">OCPP Version</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Created At</th>
                         </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                      )}
+                      {selectedReportType === 'vehicles' && (
+                        <tr className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b-2 border-gray-200">
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">SI</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Vehicle Name</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Registration</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Type</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Status</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Owner</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Created At</th>
+                        </tr>
+                      )}
+                      {selectedReportType === 'drivers' && (
+                        <tr className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b-2 border-gray-200">
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">SI</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Name</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Email</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Phone</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Status</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Type</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Created At</th>
+                        </tr>
+                      )}
+                      {selectedReportType === 'revenue' && (
+                        <tr className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b-2 border-gray-200">
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">SI</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Transaction ID</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Charger ID</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Charger Name</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Hub Name</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Customer</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Amount</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Payment Status</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Session Status</th>
+                          <th className="text-left py-4 px-4 font-semibold text-gray-700 text-sm">Timestamp</th>
+                        </tr>
+                      )}
+                    </thead>
+                    <tbody>
+                      {filteredData.map((item, index) => {
+                        if (selectedReportType === 'chargers') {
+                          return (
+                            <tr key={index} className="border-b border-gray-100 hover:bg-blue-50/30 transition duration-150">
+                              <td className="py-3 px-4 text-gray-500 text-xs">{index + 1}</td>
+                              <td className="py-3 px-4 font-medium text-gray-800">{item.charger_name}</td>
+                                <td className="py-3 px-4 font-mono text-xs text-gray-500">{item.charger_id || '-'}</td>
+                              <td className="py-3 px-4 text-gray-600">
+                                <span className="inline-flex items-center gap-1.5 bg-gray-100 px-2.5 py-1 rounded-full text-xs">
+                                  <MapPinIcon size={12} className="text-blue-500" />
+                                  {item.hub_name}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-gray-600 font-mono text-xs">{item.serial_number || '-'}</td>
+                              <td className="py-3 px-4">
+                                <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getStatusBadge(item.status)}`}>
+                                  {item.status || 'N/A'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-gray-600">{item.max_power_kw || 0} kW</td>
+                              <td className="py-3 px-4 text-gray-600">{item.ocpp_version || '-'}</td>
+                              <td className="py-3 px-4 text-gray-500 text-xs">{formatDate(item.created_at)}</td>
+                            </tr>
+                          );
+                        }
+                        if (selectedReportType === 'vehicles') {
+                          return (
+                            <tr key={index} className="border-b border-gray-100 hover:bg-blue-50/30 transition duration-150">
+                              <td className="py-3 px-4 text-gray-500 text-xs">{index + 1}</td>
+                              <td className="py-3 px-4 font-medium text-gray-800">{item.vehicle_name || item.name || 'Unnamed'}</td>
+                              <td className="py-3 px-4 text-gray-600">{item.registration || item.registration_number || '-'}</td>
+                              <td className="py-3 px-4 text-gray-600">{item.type || item.vehicle_type || '-'}</td>
+                              <td className="py-3 px-4">
+                                <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getStatusBadge(item.status)}`}>
+                                  {item.status || 'N/A'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-gray-600">{item.owner_name || '-'}</td>
+                              <td className="py-3 px-4 text-gray-500 text-xs">{formatDate(item.created_at)}</td>
+                            </tr>
+                          );
+                        }
+                        if (selectedReportType === 'drivers') {
+                          return (
+                            <tr key={index} className="border-b border-gray-100 hover:bg-blue-50/30 transition duration-150">
+                              <td className="py-3 px-4 text-gray-500 text-xs">{index + 1}</td>
+                              <td className="py-3 px-4 font-medium text-gray-800">{item.name || item.full_name || 'Unnamed'}</td>
+                              <td className="py-3 px-4 text-gray-600">{item.email || '-'}</td>
+                              <td className="py-3 px-4 text-gray-600">{item.phone || '-'}</td>
+                              <td className="py-3 px-4">
+                                <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getStatusBadge(item.status)}`}>
+                                  {item.status || 'N/A'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-gray-600">{item.user_type || 'Customer'}</td>
+                              <td className="py-3 px-4 text-gray-500 text-xs">{formatDate(item.created_at)}</td>
+                            </tr>
+                          );
+                        }
+                        if (selectedReportType === 'revenue') {
+                          return (
+                            <tr key={index} className="border-b border-gray-100 hover:bg-blue-50/30 transition duration-150">
+                              <td className="py-3 px-4 text-gray-500 text-xs">{index + 1}</td>
+                              <td className="py-3 px-4 font-mono text-xs text-gray-600 truncate max-w-xs">{item.transaction_id || '-'}</td>
+                              <td className="py-3 px-4 font-mono text-xs text-gray-500">{item.charger_id || '-'}</td>
+                              <td className="py-3 px-4 font-medium text-gray-800">{item.charger_name}</td>
+                              <td className="py-3 px-4 text-gray-600">
+                                <span className="inline-flex items-center gap-1.5 bg-gray-100 px-2.5 py-1 rounded-full text-xs">
+                                  <MapPinIcon size={12} className="text-blue-500" />
+                                  {item.hub_name}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-gray-600">{item.customer_name}</td>
+                              <td className="py-3 px-4 font-semibold text-gray-800">{formatNumber(parseFloat(item.billed_amount) || 0)}</td>
+                              <td className="py-3 px-4">
+                                <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getStatusBadge(item.payment_status)}`}>
+                                  {item.payment_status || 'N/A'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4">
+                                <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${getStatusBadge(item.session_status)}`}>
+                                  {item.session_status || 'N/A'}
+                                </span>
+                              </td>
+                              <td className="py-3 px-4 text-gray-500 text-xs">{formatDate(item.timestamp)}</td>
+                            </tr>
+                          );
+                        }
+                        return null;
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           </div>

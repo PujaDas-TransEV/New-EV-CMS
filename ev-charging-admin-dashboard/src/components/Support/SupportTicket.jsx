@@ -210,6 +210,233 @@ const can = (access, permission) => {
 };
 
 // ============================================================================
+// Ticket Detail Modal - Separate Component with React.memo
+// ============================================================================
+const TicketDetailModal = React.memo(({ 
+  showDetailModal, 
+  selectedTicket, 
+  loadingDetail, 
+  error, 
+  replyText, 
+  setReplyText, 
+  submittingReply, 
+  replyToTicket, 
+  closeDetailModal, 
+  fetchTicketDetail, 
+  canReply, 
+  truncateId, 
+  formatDate, 
+  getTicketStatusColor, 
+  getTicketStatusIcon, 
+  getTicketStatusDisplayName 
+}) => {
+  const replyTextareaRef = useRef(null);
+  const [localError, setLocalError] = useState('');
+
+  const isOpen = selectedTicket?.status === 'OPEN' || selectedTicket?.status === 'IN_PROGRESS' || selectedTicket?.status === 'PENDING';
+
+  // Auto-focus only when modal first opens
+  useEffect(() => {
+    if (showDetailModal && isOpen && canReply && replyTextareaRef.current) {
+      const timer = setTimeout(() => {
+        if (replyTextareaRef.current) {
+          replyTextareaRef.current.focus();
+          const length = replyTextareaRef.current.value.length;
+          replyTextareaRef.current.setSelectionRange(length, length);
+        }
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showDetailModal]);
+
+  if (!selectedTicket) return null;
+
+  const messages = selectedTicket.messages || [];
+
+  // Handle reply with local error handling
+  const handleReply = async () => {
+    if (!replyText.trim()) {
+      setLocalError('Please enter a reply');
+      return;
+    }
+    setLocalError('');
+    await replyToTicket();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl">
+        <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-6 py-5 flex items-center justify-between sticky top-0 z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
+              <Ticket className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-white">Ticket Details</h3>
+              <p className="text-sm text-white/80">
+                ID: {truncateId(selectedTicket.id || selectedTicket.ticket_id)}
+                {isOpen && (
+                  <span className="ml-2 text-green-300 inline-flex items-center gap-1">
+                    <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                    Open
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                const ticketId = selectedTicket.id || selectedTicket.ticket_id;
+                if (ticketId) {
+                  fetchTicketDetail(ticketId);
+                }
+              }}
+              className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-xl transition"
+              title="Refresh"
+            >
+              <RefreshIcon size={18} className={loadingDetail ? 'animate-spin' : ''} />
+            </button>
+            <button
+              onClick={closeDetailModal}
+              className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-xl transition"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+          {loadingDetail ? (
+            <div className="flex items-center justify-center py-20">
+              <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+            </div>
+          ) : error ? (
+            <div className="text-center py-12">
+              <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-3" />
+              <p className="text-gray-600">{error}</p>
+            </div>
+          ) : (
+            <>
+              {/* Ticket Info */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-4 border border-blue-200">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider">Status</p>
+                  <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium mt-1 ${getTicketStatusColor(selectedTicket.status)}`}>
+                    {getTicketStatusIcon(selectedTicket.status)}
+                    {getTicketStatusDisplayName(selectedTicket.status)}
+                  </span>
+                </div>
+                <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-4 border border-purple-200">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider">Messages</p>
+                  <p className="text-lg font-bold text-purple-600 mt-1">{messages.length}</p>
+                </div>
+                <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-2xl p-4 border border-emerald-200">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider">Created</p>
+                  <p className="text-sm font-medium text-emerald-600 mt-1">{formatDate(selectedTicket.created_at)}</p>
+                </div>
+                <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl p-4 border border-amber-200">
+                  <p className="text-xs text-gray-500 uppercase tracking-wider">Last Activity</p>
+                  <p className="text-sm font-medium text-amber-600 mt-1">{formatDate(selectedTicket.updated_at)}</p>
+                </div>
+              </div>
+
+              {/* Subject & Messages */}
+              <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200 mb-6">
+                <h4 className="text-sm font-semibold text-gray-700 mb-3">{selectedTicket.subject}</h4>
+                
+                {messages.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-4">No messages yet</p>
+                ) : (
+                  messages.map((message, index) => {
+                    const isCPO = message.author_scope === 'CPO';
+                    return (
+                      <div key={message.id || index} className={`mb-3 p-3 rounded-xl border ${isCPO ? 'bg-blue-50 border-blue-200 ml-4' : 'bg-white border-gray-200 mr-4'}`}>
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-medium text-gray-600">
+                            {isCPO ? 'You (CPO)' : (message.author_scope || 'Support')}
+                          </span>
+                          <span className="text-xs text-gray-400">{formatDate(message.created_at)}</span>
+                        </div>
+                        <p className="text-sm text-gray-700 whitespace-pre-wrap">{message.body}</p>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Reply Input - FIXED: Completely stable textarea */}
+              {isOpen && canReply ? (
+                <div className="border-t border-gray-200 pt-4">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                    <Send size={16} />
+                    Add Reply
+                  </h4>
+                  {(error || localError) && (
+                    <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm flex items-center gap-2">
+                      <AlertCircle size={14} />
+                      {error || localError}
+                    </div>
+                  )}
+                  <div className="flex gap-3">
+                    <textarea
+                      ref={replyTextareaRef}
+                      value={replyText}
+                      onChange={(e) => {
+                        setReplyText(e.target.value);
+                        if (localError) setLocalError('');
+                      }}
+                      placeholder="Type your reply here..."
+                      rows={3}
+                      maxLength={10000}
+                      className="flex-1 px-4 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition resize-none"
+                      style={{ 
+                        willChange: 'transform, opacity',
+                        transform: 'translateZ(0)',
+                        backfaceVisibility: 'hidden',
+                        WebkitFontSmoothing: 'antialiased'
+                      }}
+                    />
+                  </div>
+                  <div className="flex justify-end mt-3">
+                    <button
+                      onClick={handleReply}
+                      disabled={submittingReply || !replyText.trim()}
+                      className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 transition flex items-center gap-2 font-medium shadow-lg shadow-blue-500/25 disabled:opacity-50"
+                    >
+                      {submittingReply ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          <Send size={16} />
+                          Send Reply
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ) : isOpen && !canReply ? (
+                <div className="border-t border-gray-200 pt-4 text-center">
+                  <p className="text-sm text-yellow-600">You don't have permission to reply to this ticket.</p>
+                </div>
+              ) : (
+                <div className="border-t border-gray-200 pt-4 text-center">
+                  <p className="text-sm text-gray-500">This ticket is closed. No further replies can be added.</p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+// ============================================================================
 // Main Component
 // ============================================================================
 const Support = () => {
@@ -1039,196 +1266,6 @@ const Support = () => {
   };
 
   // ============================================================================
-  // Ticket Detail Modal - Fixed reply textarea
-  // ============================================================================
-  const TicketDetailModal = () => {
-    const replyTextareaRef = useRef(null);
-
-    const isOpen = selectedTicket?.status === 'OPEN' || selectedTicket?.status === 'IN_PROGRESS' || selectedTicket?.status === 'PENDING';
-
-    // Auto-focus the textarea when modal opens - but without interfering with cursor
-    useEffect(() => {
-      if (showDetailModal && isOpen && canReply) {
-        // Small delay to let the modal render
-        setTimeout(() => {
-          if (replyTextareaRef.current) {
-            replyTextareaRef.current.focus();
-            // Set cursor at the end of the text
-            const length = replyTextareaRef.current.value.length;
-            replyTextareaRef.current.setSelectionRange(length, length);
-          }
-        }, 200);
-      }
-    }, [showDetailModal, isOpen, canReply]);
-
-    if (!selectedTicket) return null;
-
-    const messages = selectedTicket.messages || [];
-
-    return (
-      <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-        <div className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl">
-          <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 px-6 py-5 flex items-center justify-between sticky top-0 z-10">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-white/20 backdrop-blur rounded-xl flex items-center justify-center">
-                <Ticket className="w-5 h-5 text-white" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-white">Ticket Details</h3>
-                <p className="text-sm text-white/80">
-                  ID: {truncateId(selectedTicket.id || selectedTicket.ticket_id)}
-                  {isOpen && (
-                    <span className="ml-2 text-green-300 inline-flex items-center gap-1">
-                      <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
-                      Open
-                    </span>
-                  )}
-                </p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  const ticketId = selectedTicket.id || selectedTicket.ticket_id;
-                  if (ticketId) {
-                    fetchTicketDetail(ticketId);
-                  }
-                }}
-                className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-xl transition"
-                title="Refresh"
-              >
-                <RefreshIcon size={18} className={loadingDetail ? 'animate-spin' : ''} />
-              </button>
-              <button
-                onClick={closeDetailModal}
-                className="p-2 text-white/80 hover:text-white hover:bg-white/20 rounded-xl transition"
-              >
-                <X size={20} />
-              </button>
-            </div>
-          </div>
-
-          <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
-            {loadingDetail ? (
-              <div className="flex items-center justify-center py-20">
-                <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
-              </div>
-            ) : error ? (
-              <div className="text-center py-12">
-                <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-3" />
-                <p className="text-gray-600">{error}</p>
-              </div>
-            ) : (
-              <>
-                {/* Ticket Info */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-4 border border-blue-200">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider">Status</p>
-                    <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium mt-1 ${getTicketStatusColor(selectedTicket.status)}`}>
-                      {getTicketStatusIcon(selectedTicket.status)}
-                      {getTicketStatusDisplayName(selectedTicket.status)}
-                    </span>
-                  </div>
-                  <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-4 border border-purple-200">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider">Messages</p>
-                    <p className="text-lg font-bold text-purple-600 mt-1">{messages.length}</p>
-                  </div>
-                  <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-2xl p-4 border border-emerald-200">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider">Created</p>
-                    <p className="text-sm font-medium text-emerald-600 mt-1">{formatDate(selectedTicket.created_at)}</p>
-                  </div>
-                  <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl p-4 border border-amber-200">
-                    <p className="text-xs text-gray-500 uppercase tracking-wider">Last Activity</p>
-                    <p className="text-sm font-medium text-amber-600 mt-1">{formatDate(selectedTicket.updated_at)}</p>
-                  </div>
-                </div>
-
-                {/* Subject & Messages */}
-                <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200 mb-6">
-                  <h4 className="text-sm font-semibold text-gray-700 mb-3">{selectedTicket.subject}</h4>
-                  
-                  {messages.length === 0 ? (
-                    <p className="text-sm text-gray-400 text-center py-4">No messages yet</p>
-                  ) : (
-                    messages.map((message, index) => {
-                      const isCPO = message.author_scope === 'CPO';
-                      return (
-                        <div key={message.id || index} className={`mb-3 p-3 rounded-xl border ${isCPO ? 'bg-blue-50 border-blue-200 ml-4' : 'bg-white border-gray-200 mr-4'}`}>
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-xs font-medium text-gray-600">
-                              {isCPO ? 'You (CPO)' : (message.author_scope || 'Support')}
-                            </span>
-                            <span className="text-xs text-gray-400">{formatDate(message.created_at)}</span>
-                          </div>
-                          <p className="text-sm text-gray-700 whitespace-pre-wrap">{message.body}</p>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-
-                {/* Reply Input - Fixed textarea behavior */}
-                {isOpen && canReply ? (
-                  <div className="border-t border-gray-200 pt-4">
-                    <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                      <Send size={16} />
-                      Add Reply
-                    </h4>
-                    {error && (
-                      <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm flex items-center gap-2">
-                        <AlertCircle size={14} />
-                        {error}
-                      </div>
-                    )}
-                    <div className="flex gap-3">
-                      <textarea
-                        ref={replyTextareaRef}
-                        value={replyText}
-                        onChange={(e) => setReplyText(e.target.value)}
-                        placeholder="Type your reply here..."
-                        rows={3}
-                        maxLength={10000}
-                        className="flex-1 px-4 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition resize-none"
-                      />
-                    </div>
-                    <div className="flex justify-end mt-3">
-                      <button
-                        onClick={replyToTicket}
-                        disabled={submittingReply || !replyText.trim()}
-                        className="px-6 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 transition flex items-center gap-2 font-medium shadow-lg shadow-blue-500/25 disabled:opacity-50"
-                      >
-                        {submittingReply ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Sending...
-                          </>
-                        ) : (
-                          <>
-                            <Send size={16} />
-                            Send Reply
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                ) : isOpen && !canReply ? (
-                  <div className="border-t border-gray-200 pt-4 text-center">
-                    <p className="text-sm text-yellow-600">You don't have permission to reply to this ticket.</p>
-                  </div>
-                ) : (
-                  <div className="border-t border-gray-200 pt-4 text-center">
-                    <p className="text-sm text-gray-500">This ticket is closed. No further replies can be added.</p>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // ============================================================================
   // Loading State
   // ============================================================================
   if (isRefreshing && loading && isInitialLoad) {
@@ -1551,7 +1588,26 @@ const Support = () => {
 
       {/* Modals */}
       {showCreateModal && <CreateTicketModal />}
-      {showDetailModal && <TicketDetailModal />}
+      {showDetailModal && (
+        <TicketDetailModal 
+          showDetailModal={showDetailModal}
+          selectedTicket={selectedTicket}
+          loadingDetail={loadingDetail}
+          error={error}
+          replyText={replyText}
+          setReplyText={setReplyText}
+          submittingReply={submittingReply}
+          replyToTicket={replyToTicket}
+          closeDetailModal={closeDetailModal}
+          fetchTicketDetail={fetchTicketDetail}
+          canReply={canReply}
+          truncateId={truncateId}
+          formatDate={formatDate}
+          getTicketStatusColor={getTicketStatusColor}
+          getTicketStatusIcon={getTicketStatusIcon}
+          getTicketStatusDisplayName={getTicketStatusDisplayName}
+        />
+      )}
 
       <style>{`
         @keyframes fadeIn {

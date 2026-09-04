@@ -4615,7 +4615,7 @@ const Dashboard = () => {
                   Chargers ({filteredChargers.length})
                   {selectedHub !== "All Hubs" && <span className="text-xs text-gray-400 ml-1">in {selectedHub}</span>}
                 </span>
-                <span className="text-xs text-gray-400">Click to expand</span>
+                {/* <span className="text-xs text-gray-400">Click to expand</span> */}
               </div>
 
               <style>{`

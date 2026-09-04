@@ -50,6 +50,8 @@ import SupportTicket from './components/Support/SupportTicket';
 import UserAccess from './components/UserAccess/UserAccess';
 import AddStaff from './components/UserAccess/AddStaffAccess';
 import ReportAnalytics from './components/ReportandAnalytics/Report';
+import Vehicles from './components/CustomerandVehicles/Vehicles';
+import ChargerOperations from './components/ChargerSessions/ChargerOperation';
 import './index.css';
 
 function App() {
@@ -75,6 +77,7 @@ function App() {
           <Route path="/add-charger" element={<ProtectedRoute><AddChargerForm /></ProtectedRoute>} />
           <Route path="/charger-details/:chargerId" element={<ProtectedRoute><ChargerDetails /></ProtectedRoute>} />
           <Route path="/sessions" element={<ProtectedRoute><ChargerSession /></ProtectedRoute>} />
+          <Route path="/charger-operations/:chargerId" element={<ChargerOperations />} />
 
           {/* Hub Management */}
           <Route path="/manage-hubs" element={<ProtectedRoute><ManageHub /></ProtectedRoute>} />
@@ -115,6 +118,7 @@ function App() {
           <Route path="/user-access" element={<ProtectedRoute><UserAccess/></ProtectedRoute>} />
           <Route path="/add-staff" element={<ProtectedRoute><AddStaff/></ProtectedRoute>} />
           <Route path="/reports" element={<ProtectedRoute><ReportAnalytics/></ProtectedRoute>} />
+            <Route path="/vehicles" element={<ProtectedRoute><Vehicles/></ProtectedRoute>} />
         </Routes>
       </AuthProvider>
     </Router>
