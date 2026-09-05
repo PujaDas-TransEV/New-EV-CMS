@@ -4795,11 +4795,7 @@ const Dashboard = () => {
                   referrerPolicy="no-referrer-when-downgrade"
                 />
 
-                {/* Charger pin overlay — positioned via Web Mercator projection
-                    matching the embed's center/zoom. Panning/zooming the
-                    underlying iframe manually will drift the overlay until
-                    the map re-centers, which is an accepted trade-off of the
-                    free (no API key) embed approach. */}
+               
                 <div className="absolute inset-0 pointer-events-none">
                   {(mapChargerPins.pins || []).map(({ charger, coords, pixel }) => {
                     const chargerId = charger.id || charger.charger_id;
