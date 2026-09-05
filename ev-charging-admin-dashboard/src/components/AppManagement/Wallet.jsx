@@ -452,7 +452,7 @@ const WalletSettings = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
-                <AppWindow size={24} className="text-blue-600" />
+                {/* <AppWindow size={24} className="text-blue-600" /> */}
                 <h1 className="text-2xl font-bold text-gray-800">App Management</h1>
                 <span className="text-gray-300 text-xl">/</span>
                 <span className="text-sm text-blue-600 font-medium mt-1">Wallet Settings</span>

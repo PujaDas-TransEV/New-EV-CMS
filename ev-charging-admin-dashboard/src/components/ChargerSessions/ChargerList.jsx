@@ -2040,19 +2040,24 @@ const ChargersAndSessions = () => {
                                 </div>
                               </td>
 
-                              <td className="px-4 py-3 text-sm">
-                                <button
-                                  onClick={() =>
-                                    handleViewCharger(
-                                      chargerShortId
-                                    )
-                                  }
-                                  className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-xs flex items-center gap-1"
-                                >
-                                  <Eye size={14} />
-                                  View
-                                </button>
-                              </td>
+                            <td className="px-4 py-3 text-sm">
+  <div className="flex items-center gap-2">
+    <button
+      onClick={() => handleViewCharger(chargerShortId)}
+      className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-xs flex items-center gap-1"
+    >
+      <Eye size={14} />
+      View
+    </button>
+    <button
+      onClick={() => navigate(`/charger-operations/${chargerShortId}`)}
+      className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-xs flex items-center gap-1"
+    >
+      <Settings size={14} />
+      Manage
+    </button>
+  </div>
+</td>
                             </tr>
                           );
                         }
