@@ -5,6 +5,7 @@
 //   Settings,
 //   Plus,
 //   ChevronDown,
+//   ChevronUp,
 //   User,
 //   Building,
 //   LogOut,
@@ -15,7 +16,6 @@
 //   CheckCircle,
 //   AlertCircle,
 //   X,
-//   ArrowLeft,
 //   RefreshCw,
 //   Zap,
 //   Loader2,
@@ -31,7 +31,8 @@
 //   BatteryCharging,
 //   BatteryMedium,
 //   BatteryLow,
-//   BatteryFull
+//   BatteryFull,
+//   Calendar as CalendarIcon
 // } from 'lucide-react';
 // import Sidebar from '../Sidebar/Sidebar';
 
@@ -43,14 +44,12 @@
 //   SESSIONS_API: `${API_BASE_URL}/api/v1/cpo/charging-sessions`,
 //   SESSION_DETAIL_API: (sessionId) => `${API_BASE_URL}/api/v1/cpo/charging-sessions/${sessionId}`,
 //   LIVE_SESSIONS_SSE: `${API_BASE_URL}/api/v1/cpo/operations/live-sessions`,
-//   FLEET_API: `${API_BASE_URL}/api/v1/cpo/operations/fleet`,
 //   USER_INFO_API: `${API_BASE_URL}/api/v1/auth/me`,
 //   TRACE_API: (sessionId) => `${API_BASE_URL}/api/v1/cpo/charging-sessions/${sessionId}/trace`,
-//   TRACE_DETAIL_API: (traceId) => `${API_BASE_URL}/api/v1/cpo/charging-traces/${traceId}`,
 //   TRACE_STREAM_API: (traceId) => `${API_BASE_URL}/api/v1/cpo/charging-traces/${traceId}/stream`,
 // };
 
-// // Status color mapping
+// // Status helpers
 // const getStatusColor = (status) => {
 //   const colors = {
 //     'COMPLETED': 'bg-emerald-100 text-emerald-700 border-emerald-200',
@@ -76,20 +75,20 @@
 //   switch(statusUpper) {
 //     case 'COMPLETED':
 //     case 'FINISHED':
-//       return <CheckCircle className="w-3 h-3" />;
+//       return <CheckCircle className="w-3.5 h-3.5" />;
 //     case 'START_PENDING':
-//       return <Clock className="w-3 h-3" />;
+//       return <Clock className="w-3.5 h-3.5" />;
 //     case 'CHARGING':
 //     case 'ACTIVE':
-//       return <Activity className="w-3 h-3" />;
+//       return <Activity className="w-3.5 h-3.5" />;
 //     case 'STOP_PENDING':
-//       return <AlertCircle className="w-3 h-3" />;
+//       return <AlertCircle className="w-3.5 h-3.5" />;
 //     case 'STOPPED':
 //     case 'FAILED':
 //     case 'INACTIVE':
-//       return <CircleX className="w-3 h-3" />;
+//       return <CircleX className="w-3.5 h-3.5" />;
 //     default:
-//       return <Circle className="w-3 h-3" />;
+//       return <Circle className="w-3.5 h-3.5" />;
 //   }
 // };
 
@@ -227,12 +226,8 @@
 //   const date = new Date(dateString);
 //   if (isNaN(date.getTime())) return 'N/A';
 //   return date.toLocaleString('en-US', {
-//     day: '2-digit',
-//     month: 'short',
-//     year: 'numeric',
-//     hour: '2-digit',
-//     minute: '2-digit',
-//     second: '2-digit'
+//     day: '2-digit', month: 'short', year: 'numeric',
+//     hour: '2-digit', minute: '2-digit', second: '2-digit'
 //   });
 // };
 
@@ -276,18 +271,15 @@
 //   return str.length > 10 ? str.substring(0, 10) + '…' : str;
 // };
 
-// // Source colors for trace
+// // Trace helpers
 // const SOURCE_COLORS = {
 //   APP: { bg: 'bg-blue-500', text: 'text-blue-600', border: 'border-blue-300', light: 'bg-blue-50' },
 //   CMS: { bg: 'bg-purple-500', text: 'text-purple-600', border: 'border-purple-300', light: 'bg-purple-50' },
 //   HAL: { bg: 'bg-emerald-500', text: 'text-emerald-600', border: 'border-emerald-300', light: 'bg-emerald-50' },
 //   CHARGER: { bg: 'bg-amber-500', text: 'text-amber-600', border: 'border-amber-300', light: 'bg-amber-50' },
 // };
-
 // const SOURCE_ORDER = ['APP', 'CMS', 'HAL', 'CHARGER'];
-
 // const getSourceColor = (source) => SOURCE_COLORS[source] || { bg: 'bg-gray-400', text: 'text-gray-600', border: 'border-gray-300', light: 'bg-gray-50' };
-
 // const PHASE_COLORS = {
 //   PRE_START: { bg: 'bg-blue-50/70', text: 'text-blue-700', chip: 'bg-blue-100 text-blue-700' },
 //   STARTING: { bg: 'bg-indigo-50/70', text: 'text-indigo-700', chip: 'bg-indigo-100 text-indigo-700' },
@@ -302,11 +294,10 @@
 // // ==========================================================================
 // const SocBatteryDisplay = ({ initialSoc, finalSoc, isOngoing }) => {
 //   if (initialSoc === null && finalSoc === null) return null;
-
 //   const initial = Math.min(Math.max(initialSoc ?? 0, 0), 100);
 //   const final = Math.min(Math.max(finalSoc ?? 0, 0), 100);
 //   const charged = Math.max(final - initial, 0);
-//   const displaySoc = isOngoing ? final : final;
+//   const displaySoc = final;
 
 //   const getBatteryColor = (soc) => {
 //     if (soc >= 80) return 'from-green-400 to-emerald-500';
@@ -314,7 +305,6 @@
 //     if (soc >= 20) return 'from-yellow-400 to-orange-500';
 //     return 'from-red-400 to-rose-500';
 //   };
-
 //   const batteryColor = getBatteryColor(displaySoc);
 
 //   const getBatteryIcon = (soc) => {
@@ -341,14 +331,12 @@
 
 //       <div className="relative">
 //         <div className="w-full h-14 bg-gray-200 rounded-xl overflow-hidden border-2 border-gray-300 relative">
-//           <div 
+//           <div
 //             className={`h-full bg-gradient-to-r ${batteryColor} transition-all duration-700 ease-in-out rounded-lg flex items-center justify-end pr-3`}
 //             style={{ width: `${displaySoc}%` }}
 //           >
 //             {displaySoc >= 15 && (
-//               <span className="text-white text-sm font-bold drop-shadow-md">
-//                 {Math.round(displaySoc)}%
-//               </span>
+//               <span className="text-white text-sm font-bold drop-shadow-md">{Math.round(displaySoc)}%</span>
 //             )}
 //           </div>
 //           <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent pointer-events-none rounded-lg"></div>
@@ -464,24 +452,12 @@
 //                     {getStatusIcon(session.status)}
 //                     {getStatusDisplayName(session.status)}
 //                   </span>
-//                   {isLive && isOngoing && (
-//                     <span className="ml-2 text-xs text-green-600">
-//                       <span className="w-1.5 h-1.5 bg-green-500 rounded-full inline-block mr-1 animate-pulse"></span>
-//                       Live
-//                     </span>
-//                   )}
 //                 </div>
 //                 <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-2xl p-4 border border-emerald-200">
 //                   <p className="text-xs text-gray-500 uppercase tracking-wider">Amount</p>
 //                   <p className="text-2xl font-bold text-emerald-600 mt-1">
 //                     {formatCurrency(projectedAmount || session.total_amount)}
 //                   </p>
-//                   {isLive && isOngoing && (
-//                     <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-//                       <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-//                       Live updating
-//                     </p>
-//                   )}
 //                 </div>
 //                 <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-4 border border-purple-200">
 //                   <p className="text-xs text-gray-500 uppercase tracking-wider">Usage</p>
@@ -489,24 +465,10 @@
 //                     {energy > 0 ? energy.toFixed(2) : (session.total_kwh || 0)} kWh
 //                   </p>
 //                   {isLive && soc && <p className="text-xs text-gray-500 mt-1">SOC: {soc}%</p>}
-//                   {isLive && isOngoing && (
-//                     <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-//                       <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-//                       Live updating
-//                     </p>
-//                   )}
 //                 </div>
 //                 <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl p-4 border border-amber-200">
 //                   <p className="text-xs text-gray-500 uppercase tracking-wider">Duration</p>
-//                   <p className="text-2xl font-bold text-amber-600 mt-1">
-//                     {durationFormatted}
-//                   </p>
-//                   {isOngoing && (
-//                     <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
-//                       <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-//                       Live (updating)
-//                     </p>
-//                   )}
+//                   <p className="text-2xl font-bold text-amber-600 mt-1">{durationFormatted}</p>
 //                   {durationMinutes > 0 && !isOngoing && (
 //                     <p className="text-xs text-gray-400 mt-1">({durationMinutes} minutes)</p>
 //                   )}
@@ -522,9 +484,7 @@
 //                   {pricePerUnit !== null && pricePerUnit !== undefined && (
 //                     <div>
 //                       <span className="text-gray-500">Tariff</span>
-//                       <span className="ml-2 font-medium text-gray-800">
-//                         {formatPriceWithUnit(pricePerUnit, unit)}
-//                       </span>
+//                       <span className="ml-2 font-medium text-gray-800">{formatPriceWithUnit(pricePerUnit, unit)}</span>
 //                     </div>
 //                   )}
 //                   {startCriteria && (
@@ -536,28 +496,17 @@
 //                   {requestedLimit !== null && requestedLimit !== undefined && (
 //                     <div>
 //                       <span className="text-gray-500">Requested Limit</span>
-//                       <span className="ml-2 font-medium text-gray-800">
-//                         {formatRequestedLimit(requestedLimit, startCriteria)}
-//                       </span>
+//                       <span className="ml-2 font-medium text-gray-800">{formatRequestedLimit(requestedLimit, startCriteria)}</span>
 //                     </div>
 //                   )}
 //                   {sgst !== null && sgst !== undefined && (
-//                     <div>
-//                       <span className="text-gray-500">SGST</span>
-//                       <span className="ml-2 font-medium text-gray-800">{sgst}%</span>
-//                     </div>
+//                     <div><span className="text-gray-500">SGST</span><span className="ml-2 font-medium text-gray-800">{sgst}%</span></div>
 //                   )}
 //                   {cgst !== null && cgst !== undefined && (
-//                     <div>
-//                       <span className="text-gray-500">CGST</span>
-//                       <span className="ml-2 font-medium text-gray-800">{cgst}%</span>
-//                     </div>
+//                     <div><span className="text-gray-500">CGST</span><span className="ml-2 font-medium text-gray-800">{cgst}%</span></div>
 //                   )}
 //                   {igst !== null && igst !== undefined && (
-//                     <div>
-//                       <span className="text-gray-500">IGST</span>
-//                       <span className="ml-2 font-medium text-gray-800">{igst}%</span>
-//                     </div>
+//                     <div><span className="text-gray-500">IGST</span><span className="ml-2 font-medium text-gray-800">{igst}%</span></div>
 //                   )}
 //                 </div>
 //               </div>
@@ -577,10 +526,6 @@
 //                     <div className="flex justify-between text-sm">
 //                       <span className="text-gray-500">Connector</span>
 //                       <span className="text-gray-900">#{session.connector?.number || session.connector_number || 'N/A'}</span>
-//                     </div>
-//                     <div className="flex justify-between text-sm">
-//                       <span className="text-gray-500">Connector ID</span>
-//                       <span className="font-mono text-gray-900">{session.connector?.id || session.connector_id || 'N/A'}</span>
 //                     </div>
 //                   </div>
 //                 </div>
@@ -664,13 +609,7 @@
 //                         {meterFreshness}
 //                       </span>
 //                     </div>
-//                     {session.connector_number && (
-//                       <div><span className="text-gray-500">Connector:</span> <span className="ml-2 font-medium text-gray-700">#{session.connector_number}</span></div>
-//                     )}
 //                   </div>
-//                   {session.started_at && (
-//                     <p className="text-xs text-gray-400 mt-2">Started at: {formatDate(session.started_at)}</p>
-//                   )}
 //                 </div>
 //               )}
 
@@ -690,8 +629,7 @@
 //                   onClick={onClose}
 //                   className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 transition flex items-center justify-center gap-2 font-medium shadow-lg shadow-blue-500/25"
 //                 >
-//                   <X size={18} />
-//                   Close
+//                   <X size={18} /> Close
 //                 </button>
 //               </div>
 //             </>
@@ -703,7 +641,7 @@
 // };
 
 // // ==========================================================================
-// // TraceModal — CMS-canonical diagnostic waterfall
+// // TraceModal
 // // ==========================================================================
 // const compareTraceEventsChronological = (a, b) => {
 //   const at = new Date(a?.occurred_at || 0).getTime();
@@ -749,20 +687,15 @@
 //         next.target !== event.target ||
 //         next.phase !== event.phase ||
 //         next.protocol !== event.protocol
-//       ) {
-//         break;
-//       }
+//       ) break;
 //       group.push(next);
 //       j += 1;
 //     }
-//     if (group.length === 1) {
-//       rows.push({ kind: 'event', key: event.id, event });
-//     } else {
+//     if (group.length === 1) rows.push({ kind: 'event', key: event.id, event });
+//     else {
 //       const groupKey = `meter:${group[0].id}:${group[group.length - 1].id}`;
 //       if (expandedMeterGroups.has(groupKey)) {
-//         group.forEach((member) => {
-//           rows.push({ kind: 'event', key: member.id, event: member, meterGroupKey: groupKey });
-//         });
+//         group.forEach((member) => rows.push({ kind: 'event', key: member.id, event: member, meterGroupKey: groupKey }));
 //       } else {
 //         rows.push({ kind: 'meter-group', key: groupKey, event: group[0], events: group, groupKey });
 //       }
@@ -778,17 +711,11 @@
 
 //   const sortedEvents = useMemo(() => {
 //     const byId = new Map();
-//     events.forEach((event) => {
-//       if (!event?.id) return;
-//       byId.set(event.id, event);
-//     });
+//     events.forEach((event) => { if (event?.id) byId.set(event.id, event); });
 //     return [...byId.values()].sort(compareTraceEventsChronological);
 //   }, [events]);
 
-//   const displayRows = useMemo(
-//     () => buildTraceDisplayRows(sortedEvents, expandedMeterGroups),
-//     [sortedEvents, expandedMeterGroups]
-//   );
+//   const displayRows = useMemo(() => buildTraceDisplayRows(sortedEvents, expandedMeterGroups), [sortedEvents, expandedMeterGroups]);
 
 //   const sourcesPresent = useMemo(() => {
 //     const validSources = Array.isArray(traceData?.sources_present)
@@ -804,11 +731,8 @@
 //     displayRows.forEach((row) => {
 //       const phase = row.event?.phase || 'UNKNOWN';
 //       const last = segments[segments.length - 1];
-//       if (last && last.phase === phase) {
-//         last.rows.push(row);
-//       } else {
-//         segments.push({ phase, rows: [row] });
-//       }
+//       if (last && last.phase === phase) last.rows.push(row);
+//       else segments.push({ phase, rows: [row] });
 //     });
 //     return segments;
 //   }, [displayRows]);
@@ -834,7 +758,6 @@
 //         <div><span className="font-medium">Event ID:</span> <span className="font-mono break-all">{event?.id || 'N/A'}</span></div>
 //         <div><span className="font-medium">Trace ID:</span> <span className="font-mono break-all">{event?.trace_id || traceData?.trace_id || 'N/A'}</span></div>
 //         <div><span className="font-medium">Occurred:</span> <time dateTime={event?.occurred_at || undefined}>{formatTraceDate(event?.occurred_at)}</time></div>
-//         <div><span className="font-medium">Recorded:</span> <time dateTime={event?.recorded_at || undefined}>{formatTraceDate(event?.recorded_at)}</time></div>
 //         {event?.correlation_id && <div><span className="font-medium">Correlation:</span> <span className="font-mono break-all">{event.correlation_id}</span></div>}
 //         {(event?.state_before || event?.state_after) && (
 //           <div><span className="font-medium">State:</span> {event?.state_before || '—'} → {event?.state_after || '—'}</div>
@@ -864,9 +787,6 @@
 //     const summary = meterGroup ? `MeterValues × ${meterGroup.length}` : event.summary || 'Trace event';
 //     const occurredEnd = meterGroup ? meterGroup[meterGroup.length - 1]?.occurred_at : null;
 
-//     // The actor area is treated as 0..100%. Each event uses exactly the
-//     // backend-declared source -> target relation; no adjacency, correlation-id,
-//     // or timestamp inference is performed here.
 //     const sourceX = sourceKnown ? ((sourceIndex + 0.5) / SOURCE_ORDER.length) * 100 : 0;
 //     const targetX = targetKnown ? ((targetIndex + 0.5) / SOURCE_ORDER.length) * 100 : 0;
 //     const arrowLeft = Math.min(sourceX, targetX);
@@ -883,7 +803,6 @@
 //             <div className="mt-1">→ <time dateTime={occurredEnd}>{formatTraceDate(occurredEnd)}</time></div>
 //           )}
 //         </div>
-
 //         {SOURCE_ORDER.map((lane) => {
 //           const isSource = source === lane;
 //           return (
@@ -895,21 +814,10 @@
 //                   </div>
 //                   <div className="mt-1 text-sm font-semibold text-gray-800">{summary}</div>
 //                   <div className="mt-2 flex flex-wrap gap-1.5">
-//                     <span className="px-2 py-0.5 rounded-full bg-white border border-gray-200 text-[10px] text-gray-600">
-//                       {event.phase || 'UNKNOWN'}
-//                     </span>
-//                     <span className="px-2 py-0.5 rounded-full bg-white border border-gray-200 text-[10px] text-gray-600">
-//                       {event.protocol || 'UNKNOWN'}
-//                     </span>
-//                     <span className="px-2 py-0.5 rounded-full bg-white border border-gray-200 text-[10px] text-gray-600">
-//                       {event.category || 'UNKNOWN'}
-//                     </span>
+//                     <span className="px-2 py-0.5 rounded-full bg-white border border-gray-200 text-[10px] text-gray-600">{event.phase || 'UNKNOWN'}</span>
+//                     <span className="px-2 py-0.5 rounded-full bg-white border border-gray-200 text-[10px] text-gray-600">{event.protocol || 'UNKNOWN'}</span>
+//                     <span className="px-2 py-0.5 rounded-full bg-white border border-gray-200 text-[10px] text-gray-600">{event.category || 'UNKNOWN'}</span>
 //                   </div>
-//                   {(event.state_before || event.state_after) && (
-//                     <div className="mt-2 text-xs text-gray-600">
-//                       {event.state_before || '—'} → {event.state_after || '—'}
-//                     </div>
-//                   )}
 //                   {meterGroup && (
 //                     <div className="mt-2 text-xs text-gray-600">
 //                       {firstMeter !== null || lastMeter !== null ? (
@@ -932,57 +840,29 @@
 //             </div>
 //           );
 //         })}
-
 //         {sourceKnown && targetKnown && (
 //           <div className="absolute left-[150px] right-0 top-0 h-[64px] pointer-events-none z-10" aria-hidden="true">
 //             {source === target ? (
 //               <>
-//                 <div
-//                   className="absolute top-[8px] w-9 h-6 rounded-t-full border-2 border-b-0 border-indigo-400"
-//                   style={{ left: `calc(${sourceX}% - 18px)` }}
-//                 />
-//                 <span
-//                   className="absolute top-[22px] w-0 h-0 border-y-[5px] border-y-transparent border-l-[8px] border-l-indigo-500"
-//                   style={{ left: `calc(${sourceX}% + 10px)` }}
-//                 />
-//                 <span
-//                   className="absolute top-[25px] w-3 h-3 rounded-full bg-indigo-500 ring-4 ring-white -translate-x-1/2"
-//                   style={{ left: `${sourceX}%` }}
-//                 />
+//                 <div className="absolute top-[8px] w-9 h-6 rounded-t-full border-2 border-b-0 border-indigo-400" style={{ left: `calc(${sourceX}% - 18px)` }} />
+//                 <span className="absolute top-[22px] w-0 h-0 border-y-[5px] border-y-transparent border-l-[8px] border-l-indigo-500" style={{ left: `calc(${sourceX}% + 10px)` }} />
+//                 <span className="absolute top-[25px] w-3 h-3 rounded-full bg-indigo-500 ring-4 ring-white -translate-x-1/2" style={{ left: `${sourceX}%` }} />
 //               </>
 //             ) : (
 //               <>
-//                 <div
-//                   className="absolute top-[30px] h-[2px] bg-indigo-400"
-//                   style={{ left: `${arrowLeft}%`, width: `${arrowWidth}%` }}
-//                 />
-
-//                 <span
-//                   className="absolute top-[25px] w-3 h-3 rounded-full bg-indigo-500 ring-4 ring-white -translate-x-1/2"
-//                   style={{ left: `${sourceX}%` }}
-//                 />
-//                 <span
-//                   className="absolute top-[25px] w-3 h-3 rounded-full bg-white border-2 border-indigo-500 ring-4 ring-white -translate-x-1/2"
-//                   style={{ left: `${targetX}%` }}
-//                 />
-
+//                 <div className="absolute top-[30px] h-[2px] bg-indigo-400" style={{ left: `${arrowLeft}%`, width: `${arrowWidth}%` }} />
+//                 <span className="absolute top-[25px] w-3 h-3 rounded-full bg-indigo-500 ring-4 ring-white -translate-x-1/2" style={{ left: `${sourceX}%` }} />
+//                 <span className="absolute top-[25px] w-3 h-3 rounded-full bg-white border-2 border-indigo-500 ring-4 ring-white -translate-x-1/2" style={{ left: `${targetX}%` }} />
 //                 {movesRight ? (
-//                   <span
-//                     className="absolute top-[25px] w-0 h-0 border-y-[6px] border-y-transparent border-l-[10px] border-l-indigo-500"
-//                     style={{ left: `calc(${targetX}% - 15px)` }}
-//                   />
+//                   <span className="absolute top-[25px] w-0 h-0 border-y-[6px] border-y-transparent border-l-[10px] border-l-indigo-500" style={{ left: `calc(${targetX}% - 15px)` }} />
 //                 ) : (
-//                   <span
-//                     className="absolute top-[25px] w-0 h-0 border-y-[6px] border-y-transparent border-r-[10px] border-r-indigo-500"
-//                     style={{ left: `calc(${targetX}% + 5px)` }}
-//                   />
+//                   <span className="absolute top-[25px] w-0 h-0 border-y-[6px] border-transparent border-r-[10px] border-r-indigo-500" style={{ left: `calc(${targetX}% + 5px)` }} />
 //                 )}
 //               </>
 //             )}
 //             <span className="sr-only">{source} to {target}: {summary}</span>
 //           </div>
 //         )}
-
 //         {(!sourceKnown || !targetKnown) && (
 //           <div className="col-start-2 col-span-4 px-4 pb-4">
 //             <div className="rounded-xl border border-gray-300 bg-gray-50 p-3 text-sm text-gray-700">
@@ -1021,9 +901,7 @@
 //           <button type="button" onClick={() => toggleMeterGroup(row.groupKey)} className="mt-3 px-3 py-1.5 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-xs text-gray-700 font-medium">
 //             Expand {meterGroup.length} samples
 //           </button>
-//         ) : (
-//           renderEventDetails(event)
-//         )}
+//         ) : renderEventDetails(event)}
 //       </div>
 //     );
 //   };
@@ -1038,39 +916,11 @@
 //               <p className="text-sm text-gray-500 mt-1">
 //                 Session: <span className="font-mono">{truncateId(traceData?.session_id) || 'N/A'}</span> · Trace: <span className="font-mono">{truncateId(traceData?.trace_id) || 'N/A'}</span>
 //               </p>
-//               {traceData?.trace_id && (
-//                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-//                   <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${
-//                     streamStatus === 'connected'
-//                       ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-//                       : streamStatus === 'connecting' || streamStatus === 'retrying'
-//                         ? 'bg-amber-50 border-amber-200 text-amber-700'
-//                         : 'bg-gray-50 border-gray-200 text-gray-600'
-//                   }`}>
-//                     <span className={`w-1.5 h-1.5 rounded-full ${
-//                       streamStatus === 'connected'
-//                         ? 'bg-emerald-500 animate-pulse'
-//                         : streamStatus === 'connecting' || streamStatus === 'retrying'
-//                           ? 'bg-amber-500 animate-pulse'
-//                           : 'bg-gray-400'
-//                     }`} />
-//                     {streamStatus === 'connected'
-//                       ? 'Live trace updates'
-//                       : streamStatus === 'connecting'
-//                         ? 'Connecting live trace'
-//                         : streamStatus === 'retrying'
-//                           ? 'Reconnecting live trace'
-//                           : 'Static trace snapshot'}
-//                   </span>
-//                   {streamError && <span className="text-amber-700">{streamError}</span>}
-//                 </div>
-//               )}
 //             </div>
 //             <button type="button" onClick={onClose} className="p-2 text-gray-500 hover:text-gray-800 hover:bg-white rounded-xl transition" aria-label="Close charging trace">
 //               <X size={22} />
 //             </button>
 //           </div>
-
 //           <div className="p-6">
 //             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
 //               <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
@@ -1089,77 +939,26 @@
 //                 <p className="text-xs text-gray-500 uppercase tracking-wider">OCPP Transaction ID</p>
 //                 <p className="text-sm font-mono text-gray-800 truncate">{traceData?.ocpp_transaction_id ?? 'N/A'}</p>
 //               </div>
-//               <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-//                 <p className="text-xs text-gray-500 uppercase tracking-wider">CMS Start Intent ID</p>
-//                 <p className="text-sm font-mono text-gray-800 truncate">{traceData?.cms_start_intent_id || 'N/A'}</p>
-//               </div>
-//               <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-//                 <p className="text-xs text-gray-500 uppercase tracking-wider">CMS Command ID</p>
-//                 <p className="text-sm font-mono text-gray-800 truncate">{traceData?.cms_command_id || 'N/A'}</p>
-//               </div>
-//               <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-//                 <p className="text-xs text-gray-500 uppercase tracking-wider">Charger OCPP Identity</p>
-//                 <p className="text-sm font-mono text-gray-800 truncate">{traceData?.charger_ocpp_identity || 'N/A'}</p>
-//               </div>
-//               <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-//                 <p className="text-xs text-gray-500 uppercase tracking-wider">Connector</p>
-//                 <p className="text-sm font-mono text-gray-800 truncate">
-//                   {traceData?.ocpp_connector_number ? `#${traceData.ocpp_connector_number}` : 'N/A'}
-//                 </p>
-//               </div>
 //             </div>
-
-//             <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50 p-3">
-//               <div className="flex flex-wrap items-center gap-2">
-//                 <span className="text-xs font-semibold text-gray-600">Persisted evidence sources:</span>
-//                 {sourcesPresent.length > 0 ? (
-//                   sourcesPresent.map((source) => {
-//                     const color = getSourceColor(source);
-//                     return (
-//                       <span
-//                         key={`source-present-${source}`}
-//                         className={`px-2.5 py-1 rounded-full border ${color.border} ${color.light} ${color.text} text-xs font-semibold`}
-//                       >
-//                         {source}
-//                       </span>
-//                     );
-//                   })
-//                 ) : (
-//                   <span className="text-xs text-gray-500">None reported in this response.</span>
-//                 )}
-//               </div>
-//               <p className="mt-2 text-[11px] text-gray-500">
-//                 This is persisted diagnostic evidence in CMS, not a health or availability check for any actor.
-//               </p>
-//             </div>
-
 //             {loading && !traceData && (
 //               <div className="flex items-center justify-center py-20">
 //                 <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
 //                 <span className="ml-3 text-gray-500">Loading trace events...</span>
 //               </div>
 //             )}
-
 //             {error && (
-//               <div
-//                 className={`mb-6 rounded-xl p-4 flex items-center gap-2 border ${
-//                   traceUnavailable
-//                     ? 'bg-gray-50 border-gray-200 text-gray-600'
-//                     : 'bg-red-50 border-red-200 text-red-700'
-//                 }`}
-//               >
+//               <div className={`mb-6 rounded-xl p-4 flex items-center gap-2 border ${
+//                 traceUnavailable ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-red-50 border-red-200 text-red-700'
+//               }`}>
 //                 <AlertCircle size={20} />
 //                 {error}
 //               </div>
 //             )}
-
 //             {!loading && traceData && sortedEvents.length === 0 && (
 //               <div className="bg-gray-50 rounded-xl p-8 text-center border border-gray-200">
 //                 <p className="text-gray-600">No diagnostic events are available for this trace.</p>
-//                 <p className="text-xs text-gray-400 mt-1">An empty trace page is not a charging-session failure.</p>
 //               </div>
 //             )}
-
 //             {!loading && traceData && sortedEvents.length > 0 && (
 //               <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
 //                 <div className="hidden md:block max-h-[65vh] overflow-auto scrollbar-hide relative">
@@ -1178,7 +977,6 @@
 //                         );
 //                       })}
 //                     </div>
-
 //                     {phaseSegments.map((segment, segmentIndex) => {
 //                       const phaseColor = getPhaseColor(segment.phase);
 //                       return (
@@ -1194,7 +992,6 @@
 //                     })}
 //                   </div>
 //                 </div>
-
 //                 <div className="md:hidden p-3 space-y-4">
 //                   {phaseSegments.map((segment, segmentIndex) => {
 //                     const phaseColor = getPhaseColor(segment.phase);
@@ -1210,11 +1007,8 @@
 //                     );
 //                   })}
 //                 </div>
-
 //                 <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 flex flex-wrap items-center gap-3 text-xs text-gray-500">
 //                   <span>Each arrow is exactly one backend-declared source → target event.</span>
-//                   <span>•</span>
-//                   <span>Correlation IDs are details only, never frontend graph authority.</span>
 //                   {pagination?.has_more && (
 //                     <>
 //                       <span>•</span>
@@ -1257,21 +1051,26 @@
 //   const [liveSessionsData, setLiveSessionsData] = useState({ sessions: [], as_of: null });
 //   const [updatedSessionIds, setUpdatedSessionIds] = useState(new Set());
 
-//   // Pagination state using before and before_id
 //   const [pagination, setPagination] = useState({
 //     limit: 20,
 //     has_more: false,
-//     before: null,
-//     before_id: null,
+//     cursor_value: null,
+//     cursor_id: null,
 //   });
 //   const [loadingMore, setLoadingMore] = useState(false);
 //   const [hasLoaded, setHasLoaded] = useState(false);
 //   const [isInitialLoad, setIsInitialLoad] = useState(true);
-//   const [isLoadingMoreComplete, setIsLoadingMoreComplete] = useState(false);
 
 //   const [statusFilter, setStatusFilter] = useState('All');
 
-//   // Detail modal
+//   const [sortBy, setSortBy] = useState('created_at');
+//   const [sortOrder, setSortOrder] = useState('desc');
+
+//   const [dateFilter, setDateFilter] = useState('today');
+//   const [customDate, setCustomDate] = useState(null);
+//   const [showDateDropdown, setShowDateDropdown] = useState(false);
+//   const dateDropdownRef = useRef(null);
+
 //   const [showDetailModal, setShowDetailModal] = useState(() => sessionStorage.getItem('sessionModalOpen') === 'true');
 //   const [selectedSession, setSelectedSession] = useState(() => {
 //     const saved = sessionStorage.getItem('selectedSession');
@@ -1280,7 +1079,6 @@
 //   const [loadingDetail, setLoadingDetail] = useState(false);
 //   const [selectedSessionId, setSelectedSessionId] = useState(() => sessionStorage.getItem('selectedSessionId') || null);
 
-//   // Trace modal
 //   const [showTraceModal, setShowTraceModal] = useState(false);
 //   const [traceData, setTraceData] = useState(null);
 //   const [loadingTrace, setLoadingTrace] = useState(false);
@@ -1296,7 +1094,6 @@
 
 //   const [isCompact, setIsCompact] = useState(true);
 
-//   // SSE state
 //   const [isStreaming, setIsStreaming] = useState(false);
 //   const eventSourceRef = useRef(null);
 //   const [showLiveIndicator, setShowLiveIndicator] = useState(false);
@@ -1312,8 +1109,9 @@
 //   const modalLiveDataIntervalRef = useRef(null);
 //   const modalScrollPositionRef = useRef(0);
 
-//   // Trace SSE is separate from the operational live-session stream.
-//   // The static snapshot's replay_cursor is the race-free boundary.
+//   const previousLiveIdsRef = useRef(new Set());
+//   const completedSessionsFetchRef = useRef(new Set());
+
 //   const traceStreamRef = useRef(null);
 //   const traceStreamRetryTimeoutRef = useRef(null);
 //   const traceStreamEnabledRef = useRef(false);
@@ -1321,7 +1119,73 @@
 //   const traceStreamTraceIdRef = useRef(null);
 //   const traceReplayCursorRef = useRef(0);
 
-//   // Save modal state
+//   const initialFilterEffectDoneRef = useRef(false);
+
+//   const dateRange = useMemo(() => {
+//     const now = new Date();
+//     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+//     switch(dateFilter) {
+//       case 'today': {
+//         const to = new Date(today);
+//         to.setDate(to.getDate() + 1);
+//         return { from: today.toISOString(), to: to.toISOString() };
+//       }
+//       case 'yesterday': {
+//         const from = new Date(today);
+//         from.setDate(from.getDate() - 1);
+//         return { from: from.toISOString(), to: today.toISOString() };
+//       }
+//       case 'week': {
+//         const from = new Date(today);
+//         const day = from.getDay();
+//         const diff = day === 0 ? 6 : day - 1;
+//         from.setDate(from.getDate() - diff);
+//         const to = new Date(today);
+//         to.setDate(to.getDate() + 1);
+//         return { from: from.toISOString(), to: to.toISOString() };
+//       }
+//       case 'month': {
+//         const from = new Date(today.getFullYear(), today.getMonth(), 1);
+//         const to = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+//         return { from: from.toISOString(), to: to.toISOString() };
+//       }
+//       case 'year': {
+//         const from = new Date(today.getFullYear(), 0, 1);
+//         const to = new Date(today.getFullYear() + 1, 0, 1);
+//         return { from: from.toISOString(), to: to.toISOString() };
+//       }
+//       case 'custom': {
+//         if (!customDate) return null;
+//         const from = new Date(customDate);
+//         from.setHours(0, 0, 0, 0);
+//         const to = new Date(from);
+//         to.setDate(to.getDate() + 1);
+//         return { from: from.toISOString(), to: to.toISOString() };
+//       }
+//       default:
+//         return null;
+//     }
+//   }, [dateFilter, customDate]);
+
+//   const dateFilterLabel = useMemo(() => {
+//     switch (dateFilter) {
+//       case 'today': return 'Today';
+//       case 'yesterday': return 'Yesterday';
+//       case 'week': return 'This Week';
+//       case 'month': return 'This Month';
+//       case 'year': return 'This Year';
+//       case 'custom':
+//         if (customDate) {
+//           return new Date(customDate).toLocaleDateString('en-IN', {
+//             day: '2-digit', month: 'short', year: 'numeric'
+//           });
+//         }
+//         return 'Custom Date';
+//       default: return 'Select Date';
+//     }
+//   }, [dateFilter, customDate]);
+
 //   useEffect(() => {
 //     if (showDetailModal) {
 //       sessionStorage.setItem('sessionModalOpen', 'true');
@@ -1340,17 +1204,22 @@
 //     } else {
 //       document.body.style.overflow = '';
 //     }
-//     return () => {
-//       document.body.style.overflow = '';
-//     };
+//     return () => { document.body.style.overflow = ''; };
 //   }, [showDetailModal, showTraceModal]);
 
-//   // Initial fetch
 //   useEffect(() => {
-//     if (!isAuthenticated) {
-//       navigate('/signin');
-//       return;
-//     }
+//     if (!showDateDropdown) return;
+//     const handler = (e) => {
+//       if (dateDropdownRef.current && !dateDropdownRef.current.contains(e.target)) {
+//         setShowDateDropdown(false);
+//       }
+//     };
+//     document.addEventListener('mousedown', handler);
+//     return () => document.removeEventListener('mousedown', handler);
+//   }, [showDateDropdown]);
+
+//   useEffect(() => {
+//     if (!isAuthenticated) { navigate('/signin'); return; }
 //     isMountedRef.current = true;
 //     const init = async () => {
 //       await fetchUserInfo();
@@ -1379,9 +1248,22 @@
 //         traceStreamRetryTimeoutRef.current = null;
 //       }
 //     };
+//     // eslint-disable-next-line react-hooks/exhaustive-deps
 //   }, [isAuthenticated, navigate]);
 
-//   // Live data tick
+//   useEffect(() => {
+//     if (!isAuthenticated) return;
+//     if (!initialFilterEffectDoneRef.current) {
+//       initialFilterEffectDoneRef.current = true;
+//       return;
+//     }
+//     setLoading(true);
+//     setAllSessions([]);
+//     setPagination({ limit: 20, has_more: false, cursor_value: null, cursor_id: null });
+//     fetchSessions();
+//     // eslint-disable-next-line react-hooks/exhaustive-deps
+//   }, [statusFilter, sortBy, sortOrder, dateFilter, customDate]);
+
 //   useEffect(() => {
 //     if (liveDurationIntervalRef.current) clearInterval(liveDurationIntervalRef.current);
 //     liveDurationIntervalRef.current = setInterval(() => {
@@ -1390,8 +1272,91 @@
 //     return () => { if (liveDurationIntervalRef.current) clearInterval(liveDurationIntervalRef.current); };
 //   }, []);
 
-//   // Update live sessions map
+//   const refreshCompletedSession = useCallback(async (sessionId) => {
+//     if (!sessionId) return;
+//     if (completedSessionsFetchRef.current.has(String(sessionId))) return;
+//     completedSessionsFetchRef.current.add(String(sessionId));
+
+//     try {
+//       const token = localStorage.getItem('token');
+//       const response = await fetch(API_CONFIG.SESSION_DETAIL_API(sessionId), {
+//         method: 'GET',
+//         headers: {
+//           'Authorization': `Bearer ${token}`,
+//           'X-CPO-App-ID': CPO_APP_ID,
+//           'Content-Type': 'application/json',
+//           'Accept': 'application/json'
+//         }
+//       });
+//       if (!response.ok || !isMountedRef.current) return;
+
+//       const data = await response.json();
+//       const session = data.session || data.data || data;
+//       if (!session) return;
+
+//       setOngoingSessions(prev =>
+//         prev.filter(s => String(s.id || s.session_id) !== String(sessionId))
+//       );
+
+//       setAllSessions(prev => {
+//         const idx = prev.findIndex(s => String(s.id || s.session_id) === String(sessionId));
+//         const updatedEntry = {
+//           ...session,
+//           is_live: false,
+//           live_data: null,
+//           status: session.status || 'COMPLETED',
+//           consumed_wh: null,
+//           duration_seconds:
+//             getCompletedDurationSeconds(session.start_time || session.started_at, session.end_time)
+//             ?? session.duration_seconds ?? null
+//         };
+//         if (idx < 0) {
+//           return [updatedEntry, ...prev];
+//         }
+//         const updated = [...prev];
+//         updated[idx] = { ...updated[idx], ...updatedEntry };
+//         return updated;
+//       });
+
+//       setSelectedSession(prev => {
+//         if (!prev) return prev;
+//         const prevId = String(prev.id || prev.session_id);
+//         if (prevId !== String(sessionId)) return prev;
+//         return { ...prev, ...session, is_live: false, live_data: null };
+//       });
+
+//       delete liveSessionsMapRef.current[sessionId];
+//     } catch (err) {
+//       console.error('Failed to refresh completed session:', err);
+//     } finally {
+//       setTimeout(() => {
+//         completedSessionsFetchRef.current.delete(String(sessionId));
+//       }, 8000);
+//     }
+//   }, []);
+
 //   useEffect(() => {
+//     const currentLiveIds = new Set(
+//       liveSessionsData.sessions.map(s => String(s.session_id || s.id))
+//     );
+
+//     const justCompleted = new Set();
+//     previousLiveIdsRef.current.forEach(id => {
+//       if (!currentLiveIds.has(id)) justCompleted.add(id);
+//     });
+
+//     const TERMINAL = ['COMPLETED', 'STOPPED', 'FAILED', 'CANCELLED', 'FINISHED'];
+//     liveSessionsData.sessions.forEach(s => {
+//       const status = String(s.status || '').toUpperCase();
+//       if (TERMINAL.includes(status)) justCompleted.add(String(s.session_id || s.id));
+//     });
+
+//     previousLiveIdsRef.current = currentLiveIds;
+
+//     if (justCompleted.size > 0) {
+//       justCompleted.forEach(id => refreshCompletedSession(id));
+//     }
+
 //     const newSessionIds = new Set();
 //     liveSessionsData.sessions.forEach(session => {
 //       const id = session.session_id || session.id;
@@ -1409,6 +1374,7 @@
 //       setTimeout(() => setUpdatedSessionIds(new Set()), 2000);
 //     }
 //     previousLiveSessionsRef.current = [...liveSessionsData.sessions];
+
 //     const map = {};
 //     liveSessionsData.sessions.forEach(s => {
 //       const id = s.session_id || s.id;
@@ -1449,26 +1415,8 @@
 //       isOngoingStatus(s.status) || s.status === 'ACTIVE' || s.status === 'STOP_PENDING'
 //     );
 //     setOngoingSessions(ongoing);
-    
-//     setAllSessions(prev => {
-//       const updated = [...prev];
-//       liveSessionsData.sessions.forEach(liveSession => {
-//         const lId = liveSession.id || liveSession.session_id;
-//         const index = updated.findIndex(s => {
-//           const sId = s.id || s.session_id;
-//           return String(sId) === String(lId);
-//         });
-//         if (index >= 0) {
-//           updated[index] = { ...updated[index], ...liveSession, is_live: true };
-//         } else if (isOngoingStatus(liveSession.status) || liveSession.status === 'ACTIVE') {
-//           updated.push({ ...liveSession, is_live: true });
-//         }
-//       });
-//       return updated;
-//     });
-//   }, [liveSessionsData, showDetailModal, selectedSessionId]);
+//   }, [liveSessionsData, showDetailModal, selectedSessionId, refreshCompletedSession]);
 
-//   // Modal live data update
 //   useEffect(() => {
 //     if (modalLiveDataIntervalRef.current) clearInterval(modalLiveDataIntervalRef.current);
 //     if (showDetailModal && selectedSessionId) {
@@ -1478,26 +1426,7 @@
 //           const liveData = liveSessionsMapRef.current[selectedSessionId];
 //           setSelectedSession(prev => {
 //             if (!prev || (!isOngoingStatus(prev.status) && prev.status !== 'ACTIVE')) return prev;
-//             return {
-//               ...prev,
-//               ...liveData,
-//               is_live: true,
-//               consumed_wh: liveData.consumed_wh || prev.consumed_wh,
-//               total_kwh: liveData.consumed_wh ? parseFloat(liveData.consumed_wh) / 1000 : prev.total_kwh,
-//               soc_percent: liveData.soc_percent || prev.soc_percent,
-//               duration_seconds: liveData.duration_seconds ?? prev.duration_seconds,
-//               status: liveData.status || prev.status,
-//               charger_name: liveData.charger_name || prev.charger_name,
-//               charger_id: liveData.charger_id || prev.charger_id,
-//               hub_name: liveData.hub_name || prev.hub_name,
-//               connector_number: liveData.connector_number || prev.connector_number,
-//               customer_name: liveData.customer_name || prev.customer_name,
-//               started_at: liveData.started_at || prev.started_at,
-//               ocpp_transaction_id: liveData.ocpp_transaction_id || prev.ocpp_transaction_id,
-//               transaction_id: liveData.ocpp_transaction_id || liveData.transaction_id || prev.transaction_id,
-//               projected_amount: liveData.projected_amount || prev.projected_amount,
-//               currency: liveData.currency || prev.currency
-//             };
+//             return { ...prev, ...liveData, is_live: true };
 //           });
 //         }
 //       }, 1000);
@@ -1523,7 +1452,6 @@
 //     }
 //   };
 
-//   // ========== SSE ==========
 //   const startLiveSessionsSSE = () => {
 //     try {
 //       if (eventSourceRef.current) {
@@ -1531,10 +1459,7 @@
 //         eventSourceRef.current = null;
 //       }
 //       const token = localStorage.getItem('token');
-//       if (!token) {
-//         console.warn('No token found for SSE stream');
-//         return;
-//       }
+//       if (!token) { console.warn('No token found for SSE stream'); return; }
 //       const url = `${API_CONFIG.LIVE_SESSIONS_SSE}?cpo_app_id=${CPO_APP_ID}`;
 //       const controller = new AbortController();
 //       eventSourceRef.current = controller;
@@ -1551,9 +1476,7 @@
 //       .then(response => {
 //         if (!response.ok) {
 //           if (response.status === 401) {
-//             console.error('❌ SSE Stream 401 Unauthorized');
-//             setIsStreaming(false);
-//             setShowLiveIndicator(false);
+//             setIsStreaming(false); setShowLiveIndicator(false);
 //             refreshToken().then(newToken => {
 //               if (newToken && isMountedRef.current) setTimeout(startLiveSessionsSSE, 10000);
 //             });
@@ -1561,11 +1484,7 @@
 //           }
 //           throw new Error(`HTTP error! status: ${response.status}`);
 //         }
-//         console.log('📡 SSE Live Sessions Stream connected');
-//         if (isMountedRef.current) {
-//           setIsStreaming(true);
-//           setShowLiveIndicator(true);
-//         }
+//         if (isMountedRef.current) { setIsStreaming(true); setShowLiveIndicator(true); }
 //         const reader = response.body.getReader();
 //         const decoder = new TextDecoder();
 //         let buffer = '';
@@ -1573,11 +1492,7 @@
 //           if (!isMountedRef.current) return;
 //           reader.read().then(({ done, value }) => {
 //             if (done || !isMountedRef.current) {
-//               console.log('📡 SSE Stream ended');
-//               if (isMountedRef.current) {
-//                 setIsStreaming(false);
-//                 setShowLiveIndicator(false);
-//               }
+//               if (isMountedRef.current) { setIsStreaming(false); setShowLiveIndicator(false); }
 //               if (!streamRetryTimeoutRef.current && isMountedRef.current) {
 //                 streamRetryTimeoutRef.current = setTimeout(() => {
 //                   streamRetryTimeoutRef.current = null;
@@ -1597,13 +1512,9 @@
 //             }
 //             if (isMountedRef.current) readStream();
 //           }).catch(error => {
-//             if (error.name === 'AbortError') console.log('📡 SSE Stream aborted');
-//             else {
+//             if (error.name !== 'AbortError') {
 //               console.error('📡 SSE Stream error:', error);
-//               if (isMountedRef.current) {
-//                 setIsStreaming(false);
-//                 setShowLiveIndicator(false);
-//               }
+//               if (isMountedRef.current) { setIsStreaming(false); setShowLiveIndicator(false); }
 //             }
 //           });
 //         };
@@ -1612,18 +1523,12 @@
 //       .catch(error => {
 //         if (error.name !== 'AbortError') {
 //           console.error('📡 SSE Stream fetch error:', error);
-//           if (isMountedRef.current) {
-//             setIsStreaming(false);
-//             setShowLiveIndicator(false);
-//           }
+//           if (isMountedRef.current) { setIsStreaming(false); setShowLiveIndicator(false); }
 //         }
 //       });
 //     } catch (error) {
 //       console.error('Error starting SSE stream:', error);
-//       if (isMountedRef.current) {
-//         setIsStreaming(false);
-//         setShowLiveIndicator(false);
-//       }
+//       if (isMountedRef.current) { setIsStreaming(false); setShowLiveIndicator(false); }
 //     }
 //   };
 
@@ -1694,10 +1599,6 @@
 //     setShowLiveIndicator(false);
 //   };
 
-//   // ========== Trace SSE ==========
-//   // Native EventSource cannot attach the required Authorization and
-//   // X-CPO-App-ID headers, so use the same authenticated fetch-stream pattern
-//   // as the live-session SSE above.
 //   const stopTraceSSE = useCallback((resetStatus = true) => {
 //     traceStreamEnabledRef.current = false;
 //     traceStreamTraceIdRef.current = null;
@@ -1717,7 +1618,6 @@
 
 //   const startTraceSSE = useCallback((traceId, initialCursor = 0) => {
 //     if (!traceId || !traceModalActiveRef.current) return;
-
 //     if (traceStreamRef.current) {
 //       traceStreamRef.current.abort?.();
 //       traceStreamRef.current = null;
@@ -1726,7 +1626,6 @@
 //       clearTimeout(traceStreamRetryTimeoutRef.current);
 //       traceStreamRetryTimeoutRef.current = null;
 //     }
-
 //     traceStreamEnabledRef.current = true;
 //     traceStreamTraceIdRef.current = traceId;
 //     traceReplayCursorRef.current = Math.max(0, Number(initialCursor) || 0);
@@ -1750,26 +1649,17 @@
 
 //     const mergeTraceEvent = (event, replayCursor) => {
 //       if (!event?.id || !stillCurrent()) return;
-
 //       if (Number.isFinite(replayCursor) && replayCursor >= 0) {
 //         traceReplayCursorRef.current = Math.max(traceReplayCursorRef.current, replayCursor);
 //       }
-
 //       setTraceData((previous) => {
 //         if (!previous || previous.trace_id !== traceId) return previous;
-
 //         const existingEvents = Array.isArray(previous.events) ? previous.events : [];
 //         const alreadyPresent = existingEvents.some((candidate) => candidate?.id === event.id);
-//         const source = typeof event.source === 'string' && event.source.trim()
-//           ? event.source
-//           : null;
-
+//         const source = typeof event.source === 'string' && event.source.trim() ? event.source : null;
 //         return {
 //           ...previous,
-//           replay_cursor: Math.max(
-//             Number(previous.replay_cursor) || 0,
-//             Number.isFinite(replayCursor) ? replayCursor : 0
-//           ),
+//           replay_cursor: Math.max(Number(previous.replay_cursor) || 0, Number.isFinite(replayCursor) ? replayCursor : 0),
 //           sources_present: source
 //             ? Array.from(new Set([...(previous.sources_present || []), source]))
 //             : (previous.sources_present || []),
@@ -1780,19 +1670,12 @@
 
 //     async function connect() {
 //       if (!stillCurrent()) return;
-
 //       const token = localStorage.getItem('token');
-//       if (!token) {
-//         setTraceStreamError('Authentication is required for live trace updates.');
-//         scheduleReconnect(3000);
-//         return;
-//       }
-
+//       if (!token) { setTraceStreamError('Authentication is required for live trace updates.'); scheduleReconnect(3000); return; }
 //       const controller = new AbortController();
 //       traceStreamRef.current = controller;
 //       const after = traceReplayCursorRef.current;
 //       const url = `${API_CONFIG.TRACE_STREAM_API(traceId)}?after=${encodeURIComponent(after)}`;
-
 //       setTraceStreamStatus('connecting');
 
 //       try {
@@ -1808,17 +1691,12 @@
 //         });
 
 //         if (!stillCurrent()) return;
-
 //         if (response.status === 401) {
 //           setTraceStreamError('Refreshing session for live trace updates…');
 //           const newToken = await refreshToken();
-//           if (newToken && stillCurrent()) {
-//             setTraceStreamError('');
-//             scheduleReconnect(0);
-//           }
+//           if (newToken && stillCurrent()) { setTraceStreamError(''); scheduleReconnect(0); }
 //           return;
 //         }
-
 //         if (response.status === 403) {
 //           traceStreamEnabledRef.current = false;
 //           setTraceStreamStatus('idle');
@@ -1828,17 +1706,13 @@
 //           setTraceError('Trace access is no longer authorized.');
 //           return;
 //         }
-
 //         if (response.status === 404) {
 //           traceStreamEnabledRef.current = false;
 //           setTraceStreamStatus('idle');
 //           setTraceStreamError('Live diagnostic trace is no longer available.');
 //           return;
 //         }
-
-//         if (!response.ok || !response.body) {
-//           throw new Error(`Trace SSE HTTP ${response.status}`);
-//         }
+//         if (!response.ok || !response.body) throw new Error(`Trace SSE HTTP ${response.status}`);
 
 //         setTraceStreamStatus('connected');
 //         setTraceStreamError('');
@@ -1850,32 +1724,25 @@
 //         while (stillCurrent()) {
 //           const { done, value } = await reader.read();
 //           if (done) break;
-
 //           buffer += decoder.decode(value, { stream: true });
 //           const frames = buffer.split(/\r?\n\r?\n/);
 //           buffer = frames.pop() || '';
-
 //           for (const frame of frames) {
 //             if (!frame.trim()) continue;
-
 //             let eventType = 'message';
 //             let eventId = '';
 //             const dataLines = [];
-
 //             for (const rawLine of frame.split(/\r?\n/)) {
 //               if (!rawLine || rawLine.startsWith(':')) continue;
 //               const colon = rawLine.indexOf(':');
 //               const field = colon === -1 ? rawLine : rawLine.slice(0, colon);
 //               let valueText = colon === -1 ? '' : rawLine.slice(colon + 1);
 //               if (valueText.startsWith(' ')) valueText = valueText.slice(1);
-
 //               if (field === 'event') eventType = valueText;
 //               else if (field === 'id') eventId = valueText;
 //               else if (field === 'data') dataLines.push(valueText);
 //             }
-
 //             if (eventType !== 'trace_event' || dataLines.length === 0) continue;
-
 //             try {
 //               const event = JSON.parse(dataLines.join('\n'));
 //               const cursor = Number(eventId);
@@ -1885,51 +1752,42 @@
 //             }
 //           }
 //         }
-
 //         if (stillCurrent()) scheduleReconnect();
 //       } catch (streamError) {
 //         if (streamError?.name === 'AbortError') return;
 //         console.error('Trace SSE stream error:', streamError);
-//         if (stillCurrent()) {
-//           setTraceStreamError('Live trace stream interrupted; retrying.');
-//           scheduleReconnect();
-//         }
+//         if (stillCurrent()) { setTraceStreamError('Live trace stream interrupted; retrying.'); scheduleReconnect(); }
 //       } finally {
-//         if (traceStreamRef.current === controller) {
-//           traceStreamRef.current = null;
-//         }
+//         if (traceStreamRef.current === controller) traceStreamRef.current = null;
 //       }
 //     }
-
 //     connect();
 //   }, [refreshToken]);
 
-//   // ========== Fetch Sessions with before/before_id pagination ==========
-//   const fetchSessions = useCallback(async (before = null, beforeId = null, isLoadMore = false) => {
+//   const fetchSessions = useCallback(async (cursorValue = null, cursorId = null, isLoadMore = false) => {
 //     if (fetchInProgressRef.current) return;
 //     if (isLoadMore && loadingMore) return;
-    
+
 //     fetchInProgressRef.current = true;
 //     if (!isLoadMore) setLoading(true);
 //     else setLoadingMore(true);
 //     setError('');
-    
+
 //     try {
 //       const token = localStorage.getItem('token');
 //       let url = `${API_CONFIG.SESSIONS_API}?limit=${pagination.limit}`;
-      
-//       // Use before and before_id for pagination
-//       if (before) {
-//         url += `&before=${encodeURIComponent(before)}`;
+//       url += `&sort_by=${encodeURIComponent(sortBy)}&sort_order=${encodeURIComponent(sortOrder)}`;
+
+//       if (cursorValue) url += `&cursor_value=${encodeURIComponent(cursorValue)}`;
+//       if (cursorId) url += `&cursor_id=${encodeURIComponent(cursorId)}`;
+
+//       if (dateRange) {
+//         url += `&start_time_from=${encodeURIComponent(dateRange.from)}`;
+//         url += `&start_time_to=${encodeURIComponent(dateRange.to)}`;
 //       }
-//       if (beforeId) {
-//         url += `&before_id=${encodeURIComponent(beforeId)}`;
-//       }
-//       if (statusFilter !== 'All') {
-//         url += `&status=${statusFilter}`;
-//       }
-      
-//       console.log('📤 Fetching CPO sessions:', url);
+
+//       if (statusFilter !== 'All') url += `&status=${statusFilter}`;
+
 //       const response = await fetch(url, {
 //         method: 'GET',
 //         headers: {
@@ -1939,20 +1797,24 @@
 //           'Accept': 'application/json'
 //         }
 //       });
-      
+
 //       if (!isMountedRef.current) { fetchInProgressRef.current = false; return; }
-      
+
 //       if (response.ok) {
 //         const data = await response.json();
 //         let sessionsArray = data.sessions || data.data || [];
 //         if (!Array.isArray(sessionsArray)) sessionsArray = [];
-        
+
 //         const hasMore = data.has_more || false;
-//         const nextBefore = data.next_before || null;
-//         const nextBeforeId = data.next_before_id || null;
-        
-//         console.log('📊 API Response - HasMore:', hasMore, 'NextBefore:', nextBefore);
-        
+//         const nextCursorValue =
+//           data.next_cursor_value !== undefined && data.next_cursor_value !== null
+//             ? data.next_cursor_value
+//             : data.next_before || null;
+//         const nextCursorId =
+//           data.next_cursor_id !== undefined && data.next_cursor_id !== null
+//             ? data.next_cursor_id
+//             : data.next_before_id || null;
+
 //         const transformed = sessionsArray.map((session) => {
 //           const sessionId = session.id || session.session_id;
 //           const liveData = liveSessionsMapRef.current[sessionId];
@@ -1963,7 +1825,7 @@
 //           const durationSeconds = isOngoing
 //             ? (liveData?.duration_seconds ?? null)
 //             : (getCompletedDurationSeconds(startTime, endTime) ?? session.duration_seconds ?? null);
-          
+
 //           return {
 //             ...session,
 //             id: session.id,
@@ -2004,89 +1866,62 @@
 //             igst_percent: session.igst_percent || null,
 //           };
 //         });
-        
-//         console.log('📊 Transformed sessions:', transformed.length);
-        
-//         // Update sessions list
+
 //         if (isLoadMore) {
 //           setAllSessions(prev => {
-//             // Avoid duplicates
-//             const existingIds = new Set(prev.map(s => s.id || s.session_id));
-//             const newSessions = transformed.filter(s => {
-//               const id = s.id || s.session_id;
-//               return !existingIds.has(id);
-//             });
-//             console.log('Adding new sessions:', newSessions.length);
+//             const existingIds = new Set(prev.map(s => String(s.id || s.session_id)));
+//             const newSessions = transformed.filter(s => !existingIds.has(String(s.id || s.session_id)));
 //             return [...prev, ...newSessions];
 //           });
 //         } else {
 //           setAllSessions(transformed);
 //         }
-        
-//         // Update pagination
+
 //         setPagination({
 //           limit: pagination.limit,
 //           has_more: hasMore,
-//           before: nextBefore,
-//           before_id: nextBeforeId,
+//           cursor_value: nextCursorValue,
+//           cursor_id: nextCursorId,
 //         });
-        
+
 //         setHasLoaded(true);
 //         setIsInitialLoad(false);
 //       } else if (response.status === 401) {
-//         console.error('❌ 401 Unauthorized - Token expired');
 //         setError('Session expired. Please refresh.');
 //         const newToken = await refreshToken();
 //         if (newToken && isMountedRef.current) {
-//           fetchSessions(before, beforeId, isLoadMore);
+//           fetchSessions(cursorValue, cursorId, isLoadMore);
 //           return;
 //         }
-//         if (!isLoadMore && isMountedRef.current) { 
-//           setAllSessions([]); 
+//         if (!isLoadMore && isMountedRef.current) {
+//           setAllSessions([]);
 //           setOngoingSessions([]);
 //         }
-//         setPagination({ 
-//           limit: 20, 
-//           has_more: false, 
-//           before: null, 
-//           before_id: null,
-//         });
+//         setPagination({ limit: 20, has_more: false, cursor_value: null, cursor_id: null });
 //       } else {
-//         const errorData = await response.json().catch(() => ({}));
-//         console.error('❌ Failed to fetch sessions:', response.status, errorData);
-//         if (!isLoadMore && isMountedRef.current) { 
-//           setAllSessions([]); 
+//         if (!isLoadMore && isMountedRef.current) {
+//           setAllSessions([]);
 //           setOngoingSessions([]);
 //         }
-//         setPagination({ 
-//           limit: 20, 
-//           has_more: false, 
-//           before: null, 
-//           before_id: null,
-//         });
+//         setPagination({ limit: 20, has_more: false, cursor_value: null, cursor_id: null });
 //       }
 //     } catch (error) {
 //       console.error('❌ Error fetching sessions:', error);
-//       if (!isLoadMore && isMountedRef.current) { 
-//         setAllSessions([]); 
+//       if (!isLoadMore && isMountedRef.current) {
+//         setAllSessions([]);
 //         setOngoingSessions([]);
 //       }
-//       setPagination({ 
-//         limit: 20, 
-//         has_more: false, 
-//         before: null, 
-//         before_id: null,
-//       });
+//       setPagination({ limit: 20, has_more: false, cursor_value: null, cursor_id: null });
 //     } finally {
 //       fetchInProgressRef.current = false;
-//       if (isMountedRef.current) { 
-//         setLoading(false); 
-//         setLoadingMore(false); 
+//       if (isMountedRef.current) {
+//         setLoading(false);
+//         setLoadingMore(false);
 //       }
 //     }
-//   }, [pagination.limit, refreshToken, statusFilter]);
+//     // eslint-disable-next-line react-hooks/exhaustive-deps
+//   }, [pagination.limit, refreshToken, statusFilter, sortBy, sortOrder, dateRange]);
 
-//   // ========== Fetch Detail ==========
 //   const fetchSessionDetail = useCallback(async (sessionId) => {
 //     if (!sessionId) return;
 //     setLoadingDetail(true);
@@ -2185,19 +2020,12 @@
 //     }
 //   }, [refreshToken]);
 
-//   // ========== Fetch Trace (CMS canonical store only) ==========
 //   const fetchTrace = useCallback(async (sessionId, beforeOccurredAt = null, beforeEventId = null, isLoadMore = false) => {
 //     if (!sessionId) return;
 //     if (isLoadMore && loadingMoreTrace) return;
 //     if (!isLoadMore) {
-//       if (traceStreamRef.current) {
-//         traceStreamRef.current.abort?.();
-//         traceStreamRef.current = null;
-//       }
-//       if (traceStreamRetryTimeoutRef.current) {
-//         clearTimeout(traceStreamRetryTimeoutRef.current);
-//         traceStreamRetryTimeoutRef.current = null;
-//       }
+//       if (traceStreamRef.current) { traceStreamRef.current.abort?.(); traceStreamRef.current = null; }
+//       if (traceStreamRetryTimeoutRef.current) { clearTimeout(traceStreamRetryTimeoutRef.current); traceStreamRetryTimeoutRef.current = null; }
 //       traceStreamEnabledRef.current = false;
 //       setTraceStreamStatus('idle');
 //       setTraceStreamError('');
@@ -2226,15 +2054,9 @@
 //         const data = await response.json();
 //         if (isLoadMore) {
 //           setTraceData(prev => ({
-//             ...prev,
-//             ...data,
-//             // Keep the first snapshot replay cursor as the race-free live boundary.
+//             ...prev, ...data,
 //             replay_cursor: prev?.replay_cursor ?? data.replay_cursor,
-//             // Preserve every evidence source observed across loaded pages.
-//             sources_present: Array.from(new Set([
-//               ...(prev?.sources_present || []),
-//               ...(data.sources_present || [])
-//             ])),
+//             sources_present: Array.from(new Set([...(prev?.sources_present || []), ...(data.sources_present || [])])),
 //             events: [...(prev?.events || []), ...(data.events || [])]
 //           }));
 //         } else {
@@ -2252,10 +2074,7 @@
 //       } else if (response.status === 401) {
 //         setTraceError('Session expired. Please refresh.');
 //         const newToken = await refreshToken();
-//         if (newToken && isMountedRef.current) {
-//           fetchTrace(sessionId, beforeOccurredAt, beforeEventId, isLoadMore);
-//           return;
-//         }
+//         if (newToken && isMountedRef.current) { fetchTrace(sessionId, beforeOccurredAt, beforeEventId, isLoadMore); return; }
 //       } else if (response.status === 403) {
 //         setTraceData(null);
 //         setTracePagination({ has_more: false, next_occurred_at: null, next_event_id: null });
@@ -2270,10 +2089,7 @@
 //       console.error('❌ Error fetching trace:', error);
 //       setTraceError('An error occurred while fetching diagnostic trace');
 //     } finally {
-//       if (isMountedRef.current) {
-//         setLoadingTrace(false);
-//         setLoadingMoreTrace(false);
-//       }
+//       if (isMountedRef.current) { setLoadingTrace(false); setLoadingMoreTrace(false); }
 //     }
 //   }, [refreshToken, startTraceSSE, loadingMoreTrace]);
 
@@ -2301,12 +2117,13 @@
 //   };
 
 //   const loadMoreSessions = () => {
-//     // Only load more if there are more sessions and not already loading
-//     if (pagination.has_more && pagination.before && pagination.before_id && !loadingMore && !loading && !fetchInProgressRef.current) {
-//       console.log('Loading more sessions with before:', pagination.before, 'before_id:', pagination.before_id);
-//       fetchSessions(pagination.before, pagination.before_id, true);
-//     } else {
-//       console.log('Cannot load more - has_more:', pagination.has_more, 'before:', pagination.before, 'loadingMore:', loadingMore);
+//     if (
+//       pagination.has_more &&
+//       pagination.cursor_value &&
+//       pagination.cursor_id &&
+//       !loadingMore && !loading && !fetchInProgressRef.current
+//     ) {
+//       fetchSessions(pagination.cursor_value, pagination.cursor_id, true);
 //     }
 //   };
 
@@ -2335,19 +2152,9 @@
 //     if (tab === 'chargers') navigate('/charger-session');
 //   };
 
-//   const handleBack = () => {
-//     if (window.history.length > 1) {
-//       navigate(-1);
-//     } else {
-//       navigate('/charger-session');
-//     }
-//   };
-
 //   const handleLogout = async () => {
-//     try {
-//       stopLiveSessionsSSE();
-//       await logout();
-//     } catch (error) {
+//     try { stopLiveSessionsSSE(); await logout(); }
+//     catch (error) {
 //       console.error('Logout error:', error);
 //       localStorage.removeItem('token');
 //       localStorage.removeItem('refresh_token');
@@ -2358,77 +2165,81 @@
 //   };
 
 //   const handleThemeToggle = () => setIsDarkMode(!isDarkMode);
+
 //   const handleRefresh = () => {
 //     if (!fetchInProgressRef.current) {
+//       setLoading(true);
 //       setAllSessions([]);
 //       setOngoingSessions([]);
-//       setPagination({
-//         limit: 20,
-//         has_more: false,
-//         before: null,
-//         before_id: null,
-//       });
+//       setPagination({ limit: 20, has_more: false, cursor_value: null, cursor_id: null });
 //       fetchSessions();
 //     }
 //   };
 
-//   // Get current sessions
-//   const currentSessions = useMemo(() => {
-//     if (activeTab === 'all') {
-//       const merged = [...allSessions];
-//       liveSessionsData.sessions.forEach(liveSession => {
-//         const sessionKey = liveSession.id || liveSession.session_id;
-//         const exists = merged.some(s => {
-//           const sKey = s.id || s.session_id;
-//           return String(sKey) === String(sessionKey);
-//         });
-//         if (!exists) merged.push({ ...liveSession, is_live: true });
-//         else {
-//           const index = merged.findIndex(s => {
-//             const sKey = s.id || s.session_id;
-//             return String(sKey) === String(sessionKey);
-//           });
-//           if (index !== -1) merged[index] = { ...merged[index], ...liveSession, is_live: true };
-//         }
-//       });
-//       return merged;
-//     } else {
-//       return ongoingSessions;
-//     }
-//   }, [activeTab, allSessions, ongoingSessions, liveSessionsData.sessions]);
-
 //   const filteredSessions = useMemo(() => {
-//     if (!searchQuery) return currentSessions;
-//     const query = searchQuery.toLowerCase();
-//     return currentSessions.filter(session => {
+//     const liveOnes = ongoingSessions.map(s => ({
+//       ...s,
+//       is_live: true,
+//       id: s.id || s.session_id,
+//       session_id: s.session_id || s.id,
+//       start_time: s.start_time || s.started_at,
+//       started_at: s.started_at || s.start_time,
+//       duration_seconds: s.duration_seconds ?? 0,
+//       total_kwh: s.consumed_wh ? parseFloat(s.consumed_wh) / 1000 : (s.total_kwh || 0),
+//       total_amount: s.projected_amount || s.total_amount || '0'
+//     }));
+
+//     liveOnes.sort((a, b) => {
+//       const at = new Date(a.started_at || a.start_time || 0).getTime();
+//       const bt = new Date(b.started_at || b.start_time || 0).getTime();
+//       return bt - at;
+//     });
+
+//     const liveIds = new Set(liveOnes.map(s => String(s.id || s.session_id)));
+//     const nonLive = allSessions.filter(s => !liveIds.has(String(s.id || s.session_id)));
+
+//     let base;
+//     if (activeTab === 'ongoing') {
+//       base = liveOnes;
+//     } else {
+//       base = [...liveOnes, ...nonLive];
+//     }
+
+//     if (!searchQuery) return base;
+//     const q = searchQuery.toLowerCase();
+//     return base.filter(session => {
 //       const idStr = String(session.id || session.session_id || '');
-//       const transactionIdStr = String(session.transaction_id || '');
-//       const chargerNameStr = String(session.charger_name || '');
-//       const chargerIdStr = String(session.charger_id || '');
-//       const hubNameStr = String(session.hub_name || '');
-//       const customerNameStr = String(session.customer_name || '');
+//       const transactionIdStr = String(session.transaction_id || session.ocpp_transaction_id || '');
+//       const chargerNameStr = String(session.charger_name || session.charger?.name || '');
+//       const chargerIdStr = String(session.charger_id || session.charger?.charger_id || '');
+//       const hubNameStr = String(session.hub_name || session.charger?.hub_name || '');
+//       const customerNameStr = String(session.customer_name || session.customer?.name || '');
 //       return (
-//         idStr.toLowerCase().includes(query) ||
-//         transactionIdStr.toLowerCase().includes(query) ||
-//         chargerNameStr.toLowerCase().includes(query) ||
-//         chargerIdStr.toLowerCase().includes(query) ||
-//         hubNameStr.toLowerCase().includes(query) ||
-//         customerNameStr.toLowerCase().includes(query)
+//         idStr.toLowerCase().includes(q) ||
+//         transactionIdStr.toLowerCase().includes(q) ||
+//         chargerNameStr.toLowerCase().includes(q) ||
+//         chargerIdStr.toLowerCase().includes(q) ||
+//         hubNameStr.toLowerCase().includes(q) ||
+//         customerNameStr.toLowerCase().includes(q)
 //       );
 //     });
-//   }, [currentSessions, searchQuery]);
+//   }, [activeTab, allSessions, ongoingSessions, searchQuery]);
 
 //   const ongoingCount = useMemo(() => {
-//     return currentSessions.filter(s => isOngoingStatus(s.status) || s.status === 'ACTIVE' || s.status === 'STOP_PENDING').length;
-//   }, [currentSessions]);
+//     return ongoingSessions.filter(s => isOngoingStatus(s.status) || s.status === 'ACTIVE' || s.status === 'STOP_PENDING').length;
+//   }, [ongoingSessions]);
 
-//   // Show Load More button only when:
-//   // 1. has_more is true from API
-//   // 2. before and before_id are available for next page
-//   // 3. not already loading more
-//   const showLoadMore = pagination.has_more && pagination.before && pagination.before_id && !loadingMore;
+//   const showLoadMore = pagination.has_more && pagination.cursor_value && pagination.cursor_id && !loadingMore;
 
-//   // ========== Settings Menu ==========
+//   // Order: Today → Yesterday → This Week → This Year → This Month → Custom
+//   const DATE_OPTIONS = [
+//     { id: 'today',     label: 'Today' },
+//     { id: 'yesterday', label: 'Yesterday' },
+//     { id: 'week',      label: 'This Week' },
+//     { id: 'year',      label: 'This Year' },
+//     { id: 'month',     label: 'This Month' },
+//   ];
+
 //   const SettingsMenu = () => (
 //     <div className="absolute top-full right-0 mt-2 bg-black rounded-2xl w-80 shadow-2xl border border-gray-800 z-50 overflow-hidden">
 //       <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-5 py-4">
@@ -2443,11 +2254,6 @@
 //             <p className="text-sm text-gray-400 truncate">
 //               {userData?.user?.email || user?.email || 'user@transev.com'}
 //             </p>
-//             {userData?.role && (
-//               <span className="inline-block mt-1 px-2 py-0.5 bg-white/10 rounded-full text-xs text-gray-300 border border-gray-600">
-//                 {userData.role}
-//               </span>
-//             )}
 //           </div>
 //         </div>
 //       </div>
@@ -2484,8 +2290,7 @@
 //       <div className="bg-white rounded-2xl w-[500px] max-w-[90vw] shadow-2xl p-6 max-h-[80vh] overflow-y-auto animate-fadeIn">
 //         <div className="flex items-center justify-between mb-4">
 //           <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-//             <Filter size={18} className="text-blue-600" />
-//             Filters
+//             <Filter size={18} className="text-blue-600" /> Filters
 //           </h3>
 //           <button onClick={() => setShowFilterPopup(false)} className="p-1 hover:bg-gray-100 rounded-lg transition">
 //             <X size={18} />
@@ -2501,24 +2306,22 @@
 //             >
 //               <option value="All">All Status</option>
 //               <option value="COMPLETED">Completed</option>
-//               <option value="CHARGING">Charging</option>
 //               <option value="START_PENDING">Start Pending</option>
-//               <option value="STOP_PENDING">Stop Pending</option>
-//               <option value="STOPPED">Stopped</option>
-//               <option value="FAILED">Failed</option>
-//               <option value="CANCELLED">Cancelled</option>
 //               <option value="ACTIVE">Active</option>
+//               <option value="STOP_PENDING">Stop Pending</option>
+//               <option value="RECONCILIATION_REQUIRED">Reconciliation Required</option>
+//               <option value="FAILED">Failed</option>
 //             </select>
 //           </div>
 //           <div className="flex gap-3 pt-2">
 //             <button
-//               onClick={() => { setShowFilterPopup(false); fetchSessions(); }}
+//               onClick={() => { setShowFilterPopup(false); }}
 //               className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 transition shadow-lg shadow-blue-500/25"
 //             >
 //               Apply Filters
 //             </button>
 //             <button
-//               onClick={() => { setStatusFilter('All'); setSearchQuery(''); fetchSessions(); }}
+//               onClick={() => { setStatusFilter('All'); setSearchQuery(''); }}
 //               className="px-6 py-2.5 rounded-xl bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 transition"
 //             >
 //               Clear All
@@ -2543,6 +2346,8 @@
 //     );
 //   }
 
+//   const tableMaxHeight = 'calc(100vh - 380px)';
+
 //   return (
 //     <div className="min-h-screen bg-gray-50 flex">
 //       <Sidebar
@@ -2557,7 +2362,6 @@
 //         <header className="bg-white border-b-2 border-gray-200 px-6 py-5 sticky top-0 z-30 shadow-sm">
 //           <div className="flex items-center justify-between">
 //             <div className="flex items-center gap-3">
-            
 //               <div className="flex items-center gap-1 text-sm text-gray-500">
 //                 <h1 className="text-2xl font-bold text-gray-800">Chargers & Sessions</h1>
 //                 <button onClick={() => navigate('/dashboard')} className="text-blue-600 hover:text-blue-800 font-medium">/ Dashboard</button>
@@ -2583,7 +2387,6 @@
 //           </div>
 //         </header>
 
-//         {/* Main Tabs */}
 //         <div className="flex items-center gap-1 mt-4 border-b border-gray-200 px-6">
 //           <button
 //             onClick={() => handleMainTabChange('chargers')}
@@ -2600,30 +2403,98 @@
 //             }`}
 //           >
 //             <History size={16} /> Sessions
-//             <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full ml-1">{allSessions.length}</span>
+//             <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full ml-1">{allSessions.length + ongoingSessions.length}</span>
 //           </button>
 //         </div>
 
-//         {/* Sessions Content */}
 //         {activeMainTab === 'sessions' && (
 //           <div className="p-6">
-//             {/* Stats */}
-//             <div className="mb-6">
+
+//             {/* =====================================================
+//                 ROW: Loaded Sessions card (left)  |  Date filter (right)
+//                 ===================================================== */}
+//             <div className="mb-6 flex items-center justify-between gap-4 flex-wrap">
 //               <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm hover:shadow-md transition group inline-flex items-center gap-4">
 //                 <div className="w-12 h-12 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition">
 //                   <Database className="w-6 h-6 text-blue-600" />
 //                 </div>
 //                 <div>
 //                   <p className="text-sm text-gray-500">Loaded Sessions</p>
-//                   <p className="text-2xl font-bold text-gray-900">{allSessions.length}</p>
+//                   <p className="text-2xl font-bold text-gray-900">{allSessions.length + ongoingSessions.length}</p>
 //                   {pagination.has_more && (
 //                     <p className="text-xs text-blue-500">More sessions available — load more below</p>
 //                   )}
 //                 </div>
 //               </div>
+
+//               {/* ==== Date Filter Dropdown — moved to the RIGHT ==== */}
+//               <div className="relative" ref={dateDropdownRef}>
+//                 <button
+//                   onClick={() => setShowDateDropdown(v => !v)}
+//                   className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 hover:border-blue-300 shadow-sm transition text-sm font-medium text-gray-700 min-w-[190px] justify-between"
+//                 >
+//                   <span className="flex items-center gap-2">
+//                     <CalendarIcon size={16} className="text-blue-600" />
+//                     <span>{dateFilterLabel}</span>
+//                   </span>
+//                   <ChevronDown size={14} className={`text-gray-400 transition-transform ${showDateDropdown ? 'rotate-180' : ''}`} />
+//                 </button>
+
+//                 {showDateDropdown && (
+//                   <div className="absolute top-full right-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-200 z-50 w-64 overflow-hidden">
+//                     <div className="p-1.5">
+//                       {DATE_OPTIONS.map(opt => {
+//                         const active = dateFilter === opt.id;
+//                         return (
+//                           <button
+//                             key={opt.id}
+//                             onClick={() => {
+//                               setDateFilter(opt.id);
+//                               setCustomDate(null);
+//                               setShowDateDropdown(false);
+//                             }}
+//                             className={`w-full flex items-center justify-between text-left px-3 py-2 rounded-lg text-sm font-medium transition ${
+//                               active
+//                                 ? 'bg-blue-50 text-blue-700'
+//                                 : 'text-gray-700 hover:bg-gray-50'
+//                             }`}
+//                           >
+//                             <span>{opt.label}</span>
+//                             {active && <CheckCircle size={14} className="text-blue-600" />}
+//                           </button>
+//                         );
+//                       })}
+//                     </div>
+//                     <div className="border-t border-gray-100 p-2">
+//                       <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-2 mb-1">Custom Date</div>
+//                       <input
+//                         type="date"
+//                         value={customDate || ''}
+//                         onChange={(e) => {
+//                           const v = e.target.value;
+//                           if (v) {
+//                             setCustomDate(v);
+//                             setDateFilter('custom');
+//                             setShowDateDropdown(false);
+//                           } else {
+//                             setCustomDate(null);
+//                             setDateFilter('today');
+//                           }
+//                         }}
+//                         className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+//                       />
+//                       <div className="mt-2 text-xs text-gray-400 px-1">
+//                         {dateFilter === 'custom' && customDate
+//                           ? `Showing ${new Date(customDate).toLocaleDateString()}`
+//                           : 'Pick a date to filter'}
+//                       </div>
+//                     </div>
+//                   </div>
+//                 )}
+//               </div>
 //             </div>
 
-//             {/* Sub Tabs */}
+//             {/* Sub tabs */}
 //             <div className="flex items-center gap-1 mb-4 bg-gray-100 rounded-xl p-1 w-fit">
 //               <button
 //                 onClick={() => handleTabChange('all')}
@@ -2631,7 +2502,7 @@
 //               >
 //                 <div className="flex items-center gap-2">
 //                   <Grid size={16} /> All Sessions
-//                   <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{allSessions.length}</span>
+//                   <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{allSessions.length + ongoingSessions.length}</span>
 //                 </div>
 //               </button>
 //               <button
@@ -2646,18 +2517,43 @@
 //               </button>
 //             </div>
 
-//             {/* Search & Filters */}
-//             <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-//               <div className="flex items-center gap-2">
+//             {/* ================= Sort + Search + toggles ================= */}
+//             <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
+//               <div className="flex items-center gap-2 flex-wrap">
+
+//                 {/* Sort group */}
+//                 <div className="flex items-center gap-1.5 bg-white rounded-xl px-2 py-1 border border-gray-200 shadow-sm">
+//                   <label className="text-xs text-gray-500 font-medium whitespace-nowrap">Sort by</label>
+//                   <select
+//                     value={sortBy}
+//                     onChange={(e) => setSortBy(e.target.value)}
+//                     className="px-1.5 py-1 rounded-lg bg-transparent text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 border-0 cursor-pointer"
+//                   >
+//                     <option value="created_at">Created At</option>
+//                     <option value="start_time">Start Time</option>
+//                     <option value="end_time">End Time</option>
+//                     <option value="duration">Duration</option>
+//                     <option value="usage">Usage</option>
+//                   </select>
+//                   <button
+//                     onClick={() => setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'))}
+//                     className="p-1 rounded-lg hover:bg-gray-100 text-gray-600 transition"
+//                     title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+//                   >
+//                     {sortOrder === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+//                   </button>
+//                 </div>
+
 //                 {statusFilter !== 'All' && (
 //                   <button
-//                     onClick={() => { setStatusFilter('All'); setSearchQuery(''); fetchSessions(); }}
-//                     className="text-xs px-3 py-1.5 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 transition flex items-center gap-1"
+//                     onClick={() => setStatusFilter('All')}
+//                     className="text-xs px-3 py-1.5 rounded-full bg-red-50 text-red-600 hover:bg-red-100 transition flex items-center gap-1 border border-red-200"
 //                   >
-//                     <X size={12} /> Clear Filters
+//                     <X size={12} /> {getStatusDisplayName(statusFilter)}
 //                   </button>
 //                 )}
 //               </div>
+
 //               <div className="flex items-center gap-2">
 //                 <div className="relative">
 //                   <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -2671,7 +2567,7 @@
 //                 </div>
 //                 <button
 //                   onClick={() => setIsCompact(!isCompact)}
-//                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-blue-600 transition text-sm font-medium"
+//                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-blue-600 transition text-sm font-medium whitespace-nowrap"
 //                   title={isCompact ? "Switch to Expanded view" : "Switch to Compact view"}
 //                 >
 //                   <Sliders size={14} />
@@ -2680,7 +2576,7 @@
 //                 <button
 //                   onClick={handleRefresh}
 //                   disabled={fetchInProgressRef.current}
-//                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-blue-600 transition text-sm font-medium disabled:opacity-50"
+//                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-blue-600 transition text-sm font-medium disabled:opacity-50 whitespace-nowrap"
 //                 >
 //                   <RefreshCw size={14} className={fetchInProgressRef.current ? 'animate-spin' : ''} />
 //                   Refresh
@@ -2689,52 +2585,68 @@
 //               </div>
 //             </div>
 
-//             {/* Table */}
+//             {/* ================= Table ================= */}
 //             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden relative">
-//               {!isCompact && (
-//                 <>
-//                   <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-gray-50/80 to-transparent pointer-events-none z-10" />
-//                   <div className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 text-xs bg-white px-2 py-1 rounded shadow border border-gray-200 pointer-events-none opacity-80 z-10">
-//                     → Scroll
-//                   </div>
-//                 </>
-//               )}
-
-//               <div className={`overflow-x-auto ${isCompact ? '' : 'custom-scrollbar'} scrollbar-hide`}>
-//                 <table className={`w-full ${isCompact ? 'table-auto text-xs' : 'text-sm'}`} style={isCompact ? {} : { minWidth: '1800px' }}>
-//                   <thead className="sticky top-0 z-10">
+//               <div
+//                 className="custom-scrollbar"
+//                 style={{
+//                   maxHeight: tableMaxHeight,
+//                   overflow: 'auto',
+//                   WebkitOverflowScrolling: 'touch',
+//                 }}
+//               >
+//                 <table
+//                   className="w-full"
+//                   style={isCompact ? { minWidth: '1080px' } : { minWidth: '1900px' }}
+//                 >
+//                   <thead className="sticky top-0 z-20">
 //                     <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
-//                       <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-8 whitespace-nowrap`}>SI</th>
-//                       <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-24 whitespace-nowrap`}>Session ID</th>
-//                       <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-20 whitespace-nowrap`}>Transaction ID</th>
-//                       <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-24 whitespace-nowrap`}>Customer</th>
-//                       <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-28 whitespace-nowrap`}>Charger</th>
-//                       <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-20 whitespace-nowrap`}>Hub</th>
-//                       <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-10 whitespace-nowrap`}>Connector</th>
-//                       <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-28 whitespace-nowrap`}>Start Time</th>
-//                       <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-28 whitespace-nowrap`}>End Time</th>
-//                       <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-14 whitespace-nowrap`}>Duration</th>
-//                       <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-24 whitespace-nowrap`}>Usage</th>
-//                       <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-20 whitespace-nowrap`}>Start Criteria</th>
-//                       <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-14 whitespace-nowrap`}>Req. Limit</th>
-//                       <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-20 whitespace-nowrap`}>Amount</th>
-//                       <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-20 whitespace-nowrap`}>Status</th>
-//                       <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-28 sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.08)] z-20 whitespace-nowrap`}>Action</th>
+//                       <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>SI</th>
+//                       <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Session ID</th>
+//                       <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Transaction ID</th>
+//                       <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Customer</th>
+//                       <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Charger</th>
+//                       <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Hub</th>
+//                       <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Connector</th>
+//                       <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Start Time</th>
+//                       <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>End Time</th>
+//                       <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Duration</th>
+//                       <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Usage</th>
+//                       <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Start Criteria</th>
+//                       <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Req. Limit</th>
+//                       <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Amount</th>
+//                       <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Status</th>
+//                       <th
+//                         className={`${isCompact ? 'px-3 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.08)] z-30 whitespace-nowrap`}
+//                         style={{ minWidth: '170px' }}
+//                       >
+//                         Action
+//                       </th>
 //                     </tr>
 //                   </thead>
 //                   <tbody>
 //                     {loading && !hasLoaded && isInitialLoad ? (
 //                       <tr>
-//                         <td colSpan="16" className={`${isCompact ? 'px-2 py-6' : 'px-4 py-12'} text-center`}>
+//                         <td colSpan="16" className={`${isCompact ? 'px-3 py-6' : 'px-4 py-12'} text-center`}>
 //                           <Loader2 className="w-6 h-6 text-blue-600 animate-spin mx-auto mb-1" />
-//                           <p className="text-gray-500 text-xs">Loading sessions...</p>
+//                           <p className="text-gray-500 text-sm">Loading sessions...</p>
+//                         </td>
+//                       </tr>
+//                     ) : loading ? (
+//                       <tr>
+//                         <td colSpan="16" className={`${isCompact ? 'px-3 py-12' : 'px-4 py-20'} text-center`}>
+//                           <div className="flex flex-col items-center justify-center gap-2">
+//                             <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+//                             <p className="text-gray-500 text-sm font-medium">Loading sessions…</p>
+//                             <p className="text-xs text-gray-400">Fetching {dateFilterLabel} data</p>
+//                           </div>
 //                         </td>
 //                       </tr>
 //                     ) : error ? (
 //                       <tr>
-//                         <td colSpan="16" className={`${isCompact ? 'px-2 py-6' : 'px-4 py-12'} text-center`}>
+//                         <td colSpan="16" className={`${isCompact ? 'px-3 py-6' : 'px-4 py-12'} text-center`}>
 //                           <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-1" />
-//                           <p className="text-gray-600 text-xs">{error}</p>
+//                           <p className="text-gray-600 text-sm">{error}</p>
 //                           <button
 //                             onClick={() => { setError(''); fetchSessions(); }}
 //                             className="mt-2 px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition"
@@ -2745,11 +2657,11 @@
 //                       </tr>
 //                     ) : filteredSessions.length === 0 ? (
 //                       <tr>
-//                         <td colSpan="16" className={`${isCompact ? 'px-2 py-6' : 'px-4 py-12'} text-center`}>
-//                           <Database size={isCompact ? 28 : 40} className="text-gray-300 mx-auto mb-1" />
-//                           <p className="text-gray-500 font-medium text-xs">No Sessions Found</p>
+//                         <td colSpan="16" className={`${isCompact ? 'px-3 py-6' : 'px-4 py-12'} text-center`}>
+//                           <Database size={isCompact ? 32 : 40} className="text-gray-300 mx-auto mb-1" />
+//                           <p className="text-gray-500 font-medium text-sm">No Sessions Found</p>
 //                           <p className="text-xs text-gray-400 mt-0.5">
-//                             {activeTab === 'all' ? 'No charging sessions available.' : 'No ongoing sessions found.'}
+//                             {activeTab === 'all' ? `No charging sessions for ${dateFilterLabel}.` : 'No ongoing sessions found.'}
 //                           </p>
 //                           {showLiveIndicator && activeTab === 'ongoing' && (
 //                             <p className="text-xs text-green-600 mt-1">
@@ -2757,12 +2669,6 @@
 //                               Waiting for live sessions...
 //                             </p>
 //                           )}
-//                           <button
-//                             onClick={handleRefresh}
-//                             className="mt-2 px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition shadow flex items-center gap-1 mx-auto"
-//                           >
-//                             <RefreshCw size={12} /> Refresh
-//                           </button>
 //                         </td>
 //                       </tr>
 //                     ) : (
@@ -2780,7 +2686,6 @@
 //                         let displayEnergy = session.total_kwh || '0';
 //                         let displaySoc = session.soc_percent || null;
 //                         let displayAmount = session.total_amount || '0';
-//                         let displayCurrency = session.currency || 'INR';
 
 //                         if (isLive) {
 //                           const energy = getEnergyKwh(session);
@@ -2788,7 +2693,6 @@
 //                           displaySoc = getSocPercent(session) || null;
 //                           const projectedAmount = getProjectedAmount(session);
 //                           if (projectedAmount > 0) displayAmount = projectedAmount;
-//                           displayCurrency = getCurrency(session);
 //                         }
 
 //                         const connectorNumber = session.connector?.number || session.connector_number || 'N/A';
@@ -2801,7 +2705,11 @@
 //                         const requestedLimit = session.requested_limit_value;
 //                         const limitDisplay = formatRequestedLimit(requestedLimit, startCriteria);
 
-//                         const rowBg = isLive && isOngoing ? 'bg-green-50/30' : 'bg-white';
+//                         const rowBg = isLive && isOngoing ? 'bg-green-50/40' : 'bg-white';
+//                         const stickyBg = isLive && isOngoing ? 'bg-green-50' : 'bg-white';
+
+//                         const cellPad = isCompact ? 'px-2.5 py-2' : 'px-4 py-3.5';
+//                         const cellText = isCompact ? 'text-sm' : 'text-[15px]';
 
 //                         return (
 //                           <tr
@@ -2811,86 +2719,76 @@
 //                             }`}
 //                             onClick={() => handleSessionClick(sessionId)}
 //                           >
-//                             <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} text-gray-500 text-center text-xs`}>{index + 1}</td>
-//                             <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} font-mono text-gray-600 text-xs truncate max-w-24`} title={sessionId}>{truncateId(sessionId)}</td>
-//                             <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} font-mono text-gray-600 text-xs truncate max-w-20`} title={transactionId}>{truncateId(transactionId)}</td>
-//                             <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} text-gray-700 text-xs truncate max-w-24`} title={session.customer?.name || session.customer_name}>
+//                             <td className={`${cellPad} text-gray-500 text-center text-xs`}>
+//                               {isLive && isOngoing ? (
+//                                 <span className="inline-flex items-center justify-center">
+//                                   <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+//                                 </span>
+//                               ) : (index + 1)}
+//                             </td>
+//                             <td className={`${cellPad} font-mono text-gray-700 ${cellText} truncate max-w-[120px]`} title={sessionId}>{truncateId(sessionId)}</td>
+//                             <td className={`${cellPad} font-mono text-gray-700 ${cellText} truncate max-w-[110px]`} title={transactionId}>{truncateId(transactionId)}</td>
+//                             <td className={`${cellPad} text-gray-700 ${cellText} truncate max-w-[130px]`} title={session.customer?.name || session.customer_name}>
 //                               {session.customer?.name || session.customer_name || 'N/A'}
 //                             </td>
-//                             <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} text-gray-700 text-xs`}>
+//                             <td className={`${cellPad} text-gray-700 ${cellText}`}>
 //                               <div className="flex flex-col">
-//                                 <span className="font-medium text-gray-800 truncate max-w-24" title={chargerName}>{chargerName}</span>
-//                                 <span className="text-[10px] text-gray-400 truncate max-w-24" title={chargerId}>ID: {truncateId(chargerId)}</span>
+//                                 <span className="font-medium text-gray-800 truncate max-w-[140px]" title={chargerName}>{chargerName}</span>
+//                                 <span className="text-[11px] text-gray-400 truncate max-w-[140px]" title={chargerId}>ID: {truncateId(chargerId)}</span>
 //                               </div>
 //                             </td>
-//                             <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} text-gray-600 text-xs truncate max-w-20`} title={session.charger?.hub_name || session.hub_name}>
+//                             <td className={`${cellPad} text-gray-600 ${cellText} truncate max-w-[110px]`} title={session.charger?.hub_name || session.hub_name}>
 //                               {session.charger?.hub_name || session.hub_name || 'N/A'}
 //                             </td>
-//                             <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} font-mono text-gray-500 text-center text-xs`}>#{connectorNumber}</td>
-//                             <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} text-gray-600 text-xs whitespace-nowrap`}>{formatDate(session.start_time || session.started_at)}</td>
-//                             <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} text-gray-600 text-xs whitespace-nowrap`}>
-//                               {isOngoing ? 'Ongoing' : (session.end_time ? formatDate(session.end_time) : 'N/A')}
+//                             <td className={`${cellPad} font-mono text-gray-500 text-center ${cellText}`}>#{connectorNumber}</td>
+//                             <td className={`${cellPad} text-gray-600 ${cellText} whitespace-nowrap`}>{formatDate(session.start_time || session.started_at)}</td>
+//                             <td className={`${cellPad} ${cellText} whitespace-nowrap`}>
+//                               {isOngoing ? (
+//                                 <span className="text-green-600 font-medium">Ongoing</span>
+//                               ) : (session.end_time ? <span className="text-gray-600">{formatDate(session.end_time)}</span> : 'N/A')}
 //                             </td>
-//                             <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} text-xs`}>
-//                               <div className="flex items-center gap-0.5">
-//                                 <span className="font-medium text-gray-700">{durationDisplay}</span>
-//                                 {isLive && isOngoing && (
-//                                   <span className="text-[10px] text-green-600 flex items-center gap-0.5">
-//                                     <span className="w-1 h-1 bg-green-500 rounded-full animate-pulse"></span>
-//                                   </span>
-//                                 )}
-//                               </div>
+//                             <td className={`${cellPad} ${cellText}`}>
+//                               <span className="font-medium text-gray-700">{durationDisplay}</span>
 //                             </td>
-//                             <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} text-xs whitespace-nowrap`}>
-//                               <div className="flex items-center gap-0.5">
+//                             <td className={`${cellPad} ${cellText} whitespace-nowrap`}>
+//                               <div className="flex items-center gap-1">
 //                                 <span className="font-medium text-gray-700">{displayEnergy} kWh</span>
 //                                 {isLive && displaySoc && (
-//                                   <span className="ml-0.5 text-[10px] text-purple-600">· SOC: {displaySoc}%</span>
-//                                 )}
-//                                 {isLive && isOngoing && (
-//                                   <span className="ml-0.5 text-[10px] text-green-600 flex items-center gap-0.5">
-//                                     <span className="w-1 h-1 bg-green-500 rounded-full animate-pulse"></span>Live
-//                                   </span>
+//                                   <span className="text-xs text-purple-600">· SOC: {displaySoc}%</span>
 //                                 )}
 //                               </div>
 //                             </td>
-//                             <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} text-gray-700 text-xs whitespace-nowrap`}>{startCriteria || '—'}</td>
-//                             <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} text-gray-700 text-xs`}>{limitDisplay}</td>
-//                             <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} font-medium text-gray-700 text-xs whitespace-nowrap`}>
+//                             <td className={`${cellPad} text-gray-700 ${cellText} whitespace-nowrap`}>{startCriteria || '—'}</td>
+//                             <td className={`${cellPad} text-gray-700 ${cellText}`}>{limitDisplay}</td>
+//                             <td className={`${cellPad} font-semibold text-gray-700 ${cellText} whitespace-nowrap`}>
 //                               {formatCurrency(displayAmount)}
-//                               {isLive && isOngoing && (
-//                                 <span className="ml-0.5 text-[10px] text-green-600 flex items-center gap-0.5">
-//                                   <span className="w-1 h-1 bg-green-500 rounded-full animate-pulse"></span>Live
-//                                 </span>
-//                               )}
 //                             </td>
-//                             <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} text-xs`}>
-//                               <span className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded-full text-[10px] font-medium ${getStatusColor(session.status)}`}>
+//                             <td className={`${cellPad} ${cellText}`}>
+//                               <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(session.status)}`}>
 //                                 {getStatusIcon(session.status)}
 //                                 {getStatusDisplayName(session.status)}
 //                               </span>
-//                               {isLive && isOngoing && (
-//                                 <span className="ml-0.5 text-[10px] text-green-600">
-//                                   <span className="w-1 h-1 bg-green-500 rounded-full inline-block mr-0.5 animate-pulse"></span>
-//                                 </span>
-//                               )}
 //                             </td>
-//                             <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} sticky right-0 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)] ${rowBg}`}>
-//                               <div className="flex items-center gap-0.5">
+//                             <td
+//                               className={`${isCompact ? 'px-3 py-2' : 'px-4 py-3.5'} sticky right-0 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)] ${stickyBg}`}
+//                               style={{ minWidth: '170px' }}
+//                             >
+//                               <div className="flex items-center gap-1.5 flex-nowrap whitespace-nowrap">
 //                                 <button
-//                                   className={`${isCompact ? 'p-0.5' : 'p-1.5'} text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition flex items-center gap-0.5 text-[10px] font-medium`}
+//                                   className="px-2.5 py-1 text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition flex items-center gap-1 text-[11px] font-semibold flex-shrink-0 shadow-sm"
 //                                   onClick={(e) => { e.stopPropagation(); handleSessionClick(sessionId); }}
+//                                   title="View Session"
 //                                 >
-//                                   <Eye size={isCompact ? 12 : 14} />
-//                                   <span className={isCompact ? 'hidden sm:inline' : ''}>View</span>
+//                                   <Eye size={12} />
+//                                   View
 //                                 </button>
 //                                 <button
-//                                   className={`${isCompact ? 'p-0.5' : 'p-1.5'} text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded transition flex items-center gap-0.5 text-[10px] font-medium`}
+//                                   className="px-2.5 py-1 text-white bg-indigo-600 hover:bg-indigo-700 rounded-md transition flex items-center gap-1 text-[11px] font-semibold flex-shrink-0 shadow-sm"
 //                                   onClick={(e) => { e.stopPropagation(); openTraceModal(sessionId); }}
 //                                   title="Diagnostic Trace"
 //                                 >
-//                                   <GitBranch size={isCompact ? 12 : 14} />
-//                                   <span className={isCompact ? 'hidden sm:inline' : ''}>Trace</span>
+//                                   <GitBranch size={12} />
+//                                   Trace
 //                                 </button>
 //                               </div>
 //                             </td>
@@ -2903,7 +2801,6 @@
 //               </div>
 //             </div>
 
-//             {/* Load More - Only show when there are more sessions to load */}
 //             {showLoadMore && activeTab === 'all' && (
 //               <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-center">
 //                 <button
@@ -2920,11 +2817,10 @@
 //               </div>
 //             )}
 
-//             {/* Footer */}
-//             <div className="px-4 py-2 border-t border-gray-200 bg-gray-50 text-[10px] text-gray-500 flex justify-between items-center">
+//             <div className="px-4 py-2 border-t border-gray-200 bg-gray-50 text-[11px] text-gray-500 flex justify-between items-center flex-wrap gap-2">
 //               <span>
-//                 {filteredSessions.length === 0 ? 'No sessions available' : 
-//                   `Showing ${filteredSessions.length} of ${allSessions.length} loaded sessions`}
+//                 {filteredSessions.length === 0 ? 'No sessions available' :
+//                   `Showing ${filteredSessions.length} (${ongoingCount} live) of ${allSessions.length + ongoingSessions.length} loaded sessions`}
 //               </span>
 //               {showLoadMore && activeTab === 'all' && (
 //                 <span className="text-blue-600">Load more sessions</span>
@@ -2941,7 +2837,6 @@
 //           </div>
 //         )}
 
-//         {/* Chargers Tab */}
 //         {activeMainTab === 'chargers' && (
 //           <div className="p-6">
 //             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-12 text-center">
@@ -2956,7 +2851,6 @@
 //         )}
 //       </div>
 
-//       {/* Modals */}
 //       {showDetailModal && (
 //         <SessionDetailModal
 //           session={selectedSession}
@@ -2995,34 +2889,33 @@
 //         .animate-pulse-update { animation: pulseUpdate 1.2s ease-in-out forwards; }
 //         tr.animate-pulse-update { transition: background-color 0.3s ease; }
 
-//         .scrollbar-hide::-webkit-scrollbar {
-//           display: none;
-//         }
-//         .scrollbar-hide {
-//           -ms-overflow-style: none;
-//           scrollbar-width: none;
-//         }
-
 //         .custom-scrollbar {
-//           overflow-x: auto;
-//           overflow-y: visible;
 //           scrollbar-width: thin;
-//           scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+//           scrollbar-color: #ffffff transparent;
 //         }
 //         .custom-scrollbar::-webkit-scrollbar {
-//           height: 6px;
+//           width: 4px;
+//           height: 4px;
 //           background: transparent;
 //         }
 //         .custom-scrollbar::-webkit-scrollbar-track {
 //           background: transparent;
+//           border-radius: 999px;
+//           margin: 0 8px;
 //         }
 //         .custom-scrollbar::-webkit-scrollbar-thumb {
-//           background: rgba(156, 163, 175, 0.5);
-//           border-radius: 10px;
+//           background: rgba(255, 255, 255, 0.85);
+//           border-radius: 999px;
+//           border: 1px solid rgba(0, 0, 0, 0.06);
+//           background-clip: padding-box;
 //         }
 //         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-//           background: rgba(107, 114, 128, 0.8);
+//           background: #ffffff;
 //         }
+//         .custom-scrollbar::-webkit-scrollbar-corner { background: transparent; }
+
+//         .scrollbar-hide::-webkit-scrollbar { display: none; }
+//         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
 //       `}</style>
 //     </div>
 //   );
@@ -3063,22 +2956,21 @@ import {
   BatteryCharging,
   BatteryMedium,
   BatteryLow,
-  BatteryFull
+  BatteryFull,
+  Calendar as CalendarIcon
 } from 'lucide-react';
 import Sidebar from '../Sidebar/Sidebar';
 
 // API Configuration
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://dev-evcmsnew.transev.site';
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://192.168.0.103:8146';
 const CPO_APP_ID = process.env.REACT_APP_CPO_APP_ID || 'cpo_dummy_5f75674f57829da5f3cae19ef4238d56';
 
 const API_CONFIG = {
   SESSIONS_API: `${API_BASE_URL}/api/v1/cpo/charging-sessions`,
   SESSION_DETAIL_API: (sessionId) => `${API_BASE_URL}/api/v1/cpo/charging-sessions/${sessionId}`,
   LIVE_SESSIONS_SSE: `${API_BASE_URL}/api/v1/cpo/operations/live-sessions`,
-  FLEET_API: `${API_BASE_URL}/api/v1/cpo/operations/fleet`,
   USER_INFO_API: `${API_BASE_URL}/api/v1/auth/me`,
   TRACE_API: (sessionId) => `${API_BASE_URL}/api/v1/cpo/charging-sessions/${sessionId}/trace`,
-  TRACE_DETAIL_API: (traceId) => `${API_BASE_URL}/api/v1/cpo/charging-traces/${traceId}`,
   TRACE_STREAM_API: (traceId) => `${API_BASE_URL}/api/v1/cpo/charging-traces/${traceId}/stream`,
 };
 
@@ -3108,20 +3000,20 @@ const getStatusIcon = (status) => {
   switch(statusUpper) {
     case 'COMPLETED':
     case 'FINISHED':
-      return <CheckCircle className="w-3 h-3" />;
+      return <CheckCircle className="w-3.5 h-3.5" />;
     case 'START_PENDING':
-      return <Clock className="w-3 h-3" />;
+      return <Clock className="w-3.5 h-3.5" />;
     case 'CHARGING':
     case 'ACTIVE':
-      return <Activity className="w-3 h-3" />;
+      return <Activity className="w-3.5 h-3.5" />;
     case 'STOP_PENDING':
-      return <AlertCircle className="w-3 h-3" />;
+      return <AlertCircle className="w-3.5 h-3.5" />;
     case 'STOPPED':
     case 'FAILED':
     case 'INACTIVE':
-      return <CircleX className="w-3 h-3" />;
+      return <CircleX className="w-3.5 h-3.5" />;
     default:
-      return <Circle className="w-3 h-3" />;
+      return <Circle className="w-3.5 h-3.5" />;
   }
 };
 
@@ -3259,12 +3151,8 @@ const formatTraceDate = (dateString) => {
   const date = new Date(dateString);
   if (isNaN(date.getTime())) return 'N/A';
   return date.toLocaleString('en-US', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
+    day: '2-digit', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit'
   });
 };
 
@@ -3308,7 +3196,7 @@ const truncateId = (id) => {
   return str.length > 10 ? str.substring(0, 10) + '…' : str;
 };
 
-// Trace helpers (unchanged)
+// Trace helpers
 const SOURCE_COLORS = {
   APP: { bg: 'bg-blue-500', text: 'text-blue-600', border: 'border-blue-300', light: 'bg-blue-50' },
   CMS: { bg: 'bg-purple-500', text: 'text-purple-600', border: 'border-purple-300', light: 'bg-purple-50' },
@@ -3331,7 +3219,6 @@ const getPhaseColor = (phase) => PHASE_COLORS[phase] || { bg: 'bg-gray-50/70', t
 // ==========================================================================
 const SocBatteryDisplay = ({ initialSoc, finalSoc, isOngoing }) => {
   if (initialSoc === null && finalSoc === null) return null;
-
   const initial = Math.min(Math.max(initialSoc ?? 0, 0), 100);
   const final = Math.min(Math.max(finalSoc ?? 0, 0), 100);
   const charged = Math.max(final - initial, 0);
@@ -3374,9 +3261,7 @@ const SocBatteryDisplay = ({ initialSoc, finalSoc, isOngoing }) => {
             style={{ width: `${displaySoc}%` }}
           >
             {displaySoc >= 15 && (
-              <span className="text-white text-sm font-bold drop-shadow-md">
-                {Math.round(displaySoc)}%
-              </span>
+              <span className="text-white text-sm font-bold drop-shadow-md">{Math.round(displaySoc)}%</span>
             )}
           </div>
           <div className="absolute inset-0 bg-gradient-to-b from-white/20 to-transparent pointer-events-none rounded-lg"></div>
@@ -3416,7 +3301,7 @@ const SocBatteryDisplay = ({ initialSoc, finalSoc, isOngoing }) => {
 };
 
 // ==========================================================================
-// SessionDetailModal (unchanged)
+// SessionDetailModal
 // ==========================================================================
 const SessionDetailModal = ({ session, loading, error, onClose }) => {
   if (!session) return null;
@@ -3446,6 +3331,20 @@ const SessionDetailModal = ({ session, loading, error, onClose }) => {
   const sgst = session.sgst_percent;
   const cgst = session.cgst_percent;
   const igst = session.igst_percent;
+
+  // ==== Stop reason fields ====
+  const stopObject = session.stop || {};
+  const stopReason = session.stop_reason;
+  const stopRequestedInitiator = stopObject.requested_initiator;
+  const stopRequestedReason = stopObject.requested_reason;
+  const stopOcppReason = stopObject.ocpp_reason;
+
+  const hasAnyStopInfo = Boolean(
+    (stopReason && stopReason !== 'N/A') ||
+    stopRequestedInitiator ||
+    stopRequestedReason ||
+    stopOcppReason
+  );
 
   return (
     <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
@@ -3508,9 +3407,7 @@ const SessionDetailModal = ({ session, loading, error, onClose }) => {
                 </div>
                 <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl p-4 border border-amber-200">
                   <p className="text-xs text-gray-500 uppercase tracking-wider">Duration</p>
-                  <p className="text-2xl font-bold text-amber-600 mt-1">
-                    {durationFormatted}
-                  </p>
+                  <p className="text-2xl font-bold text-amber-600 mt-1">{durationFormatted}</p>
                   {durationMinutes > 0 && !isOngoing && (
                     <p className="text-xs text-gray-400 mt-1">({durationMinutes} minutes)</p>
                   )}
@@ -3526,9 +3423,7 @@ const SessionDetailModal = ({ session, loading, error, onClose }) => {
                   {pricePerUnit !== null && pricePerUnit !== undefined && (
                     <div>
                       <span className="text-gray-500">Tariff</span>
-                      <span className="ml-2 font-medium text-gray-800">
-                        {formatPriceWithUnit(pricePerUnit, unit)}
-                      </span>
+                      <span className="ml-2 font-medium text-gray-800">{formatPriceWithUnit(pricePerUnit, unit)}</span>
                     </div>
                   )}
                   {startCriteria && (
@@ -3540,28 +3435,17 @@ const SessionDetailModal = ({ session, loading, error, onClose }) => {
                   {requestedLimit !== null && requestedLimit !== undefined && (
                     <div>
                       <span className="text-gray-500">Requested Limit</span>
-                      <span className="ml-2 font-medium text-gray-800">
-                        {formatRequestedLimit(requestedLimit, startCriteria)}
-                      </span>
+                      <span className="ml-2 font-medium text-gray-800">{formatRequestedLimit(requestedLimit, startCriteria)}</span>
                     </div>
                   )}
                   {sgst !== null && sgst !== undefined && (
-                    <div>
-                      <span className="text-gray-500">SGST</span>
-                      <span className="ml-2 font-medium text-gray-800">{sgst}%</span>
-                    </div>
+                    <div><span className="text-gray-500">SGST</span><span className="ml-2 font-medium text-gray-800">{sgst}%</span></div>
                   )}
                   {cgst !== null && cgst !== undefined && (
-                    <div>
-                      <span className="text-gray-500">CGST</span>
-                      <span className="ml-2 font-medium text-gray-800">{cgst}%</span>
-                    </div>
+                    <div><span className="text-gray-500">CGST</span><span className="ml-2 font-medium text-gray-800">{cgst}%</span></div>
                   )}
                   {igst !== null && igst !== undefined && (
-                    <div>
-                      <span className="text-gray-500">IGST</span>
-                      <span className="ml-2 font-medium text-gray-800">{igst}%</span>
-                    </div>
+                    <div><span className="text-gray-500">IGST</span><span className="ml-2 font-medium text-gray-800">{igst}%</span></div>
                   )}
                 </div>
               </div>
@@ -3582,10 +3466,12 @@ const SessionDetailModal = ({ session, loading, error, onClose }) => {
                       <span className="text-gray-500">Connector</span>
                       <span className="text-gray-900">#{session.connector?.number || session.connector_number || 'N/A'}</span>
                     </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-500">Connector ID</span>
-                      <span className="font-mono text-gray-900">{session.connector?.id || session.connector_id || 'N/A'}</span>
-                    </div>
+                    {session.connector?.connector_type && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Connector Type</span>
+                        <span className="text-gray-900">{session.connector.connector_type}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -3600,6 +3486,12 @@ const SessionDetailModal = ({ session, loading, error, onClose }) => {
                       <span className="text-gray-500">Email</span>
                       <span className="text-gray-900">{session.customer?.email || session.customer_email || 'N/A'}</span>
                     </div>
+                    {(session.customer?.phone || session.customer_phone) && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">Phone</span>
+                        <span className="text-gray-900">{session.customer?.phone || session.customer_phone}</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -3672,10 +3564,42 @@ const SessionDetailModal = ({ session, loading, error, onClose }) => {
                 </div>
               )}
 
-              {session.stop_reason && session.stop_reason !== 'N/A' && !isOngoing && (
+              {/* =====================================================
+                  STOP INFORMATION — now shows full stop object
+                  (stop_reason, requested_initiator, requested_reason, ocpp_reason)
+                  ===================================================== */}
+              {hasAnyStopInfo && !isOngoing && (
                 <div className="bg-gradient-to-r from-red-50 to-orange-50 rounded-2xl p-4 border border-red-200 mb-4">
-                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-2">Stop Reason</p>
-                  <p className="text-sm text-gray-700">{session.stop_reason}</p>
+                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <CircleX size={14} className="text-red-600" />
+                    Stop Information
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                    {stopReason && stopReason !== 'N/A' && (
+                      <div className="bg-white/70 rounded-xl px-3 py-2 border border-red-100 flex items-center justify-between">
+                        <span className="text-gray-500">Stop Reason</span>
+                        <span className="font-semibold text-red-700">{stopReason}</span>
+                      </div>
+                    )}
+                    {stopOcppReason && (
+                      <div className="bg-white/70 rounded-xl px-3 py-2 border border-red-100 flex items-center justify-between">
+                        <span className="text-gray-500">OCPP Reason</span>
+                        <span className="font-semibold text-red-700">{stopOcppReason}</span>
+                      </div>
+                    )}
+                    {stopRequestedInitiator && (
+                      <div className="bg-white/70 rounded-xl px-3 py-2 border border-red-100 flex items-center justify-between">
+                        <span className="text-gray-500">Requested Initiator</span>
+                        <span className="font-semibold text-orange-700">{stopRequestedInitiator}</span>
+                      </div>
+                    )}
+                    {stopRequestedReason && (
+                      <div className="bg-white/70 rounded-xl px-3 py-2 border border-red-100 flex items-center justify-between">
+                        <span className="text-gray-500">Requested Reason</span>
+                        <span className="font-semibold text-orange-700">{stopRequestedReason}</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -3688,8 +3612,7 @@ const SessionDetailModal = ({ session, loading, error, onClose }) => {
                   onClick={onClose}
                   className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 transition flex items-center justify-center gap-2 font-medium shadow-lg shadow-blue-500/25"
                 >
-                  <X size={18} />
-                  Close
+                  <X size={18} /> Close
                 </button>
               </div>
             </>
@@ -3701,7 +3624,7 @@ const SessionDetailModal = ({ session, loading, error, onClose }) => {
 };
 
 // ==========================================================================
-// TraceModal (unchanged)
+// TraceModal
 // ==========================================================================
 const compareTraceEventsChronological = (a, b) => {
   const at = new Date(a?.occurred_at || 0).getTime();
@@ -3818,7 +3741,6 @@ const TraceModal = ({ traceData, loading, error, pagination, loadingMore, stream
         <div><span className="font-medium">Event ID:</span> <span className="font-mono break-all">{event?.id || 'N/A'}</span></div>
         <div><span className="font-medium">Trace ID:</span> <span className="font-mono break-all">{event?.trace_id || traceData?.trace_id || 'N/A'}</span></div>
         <div><span className="font-medium">Occurred:</span> <time dateTime={event?.occurred_at || undefined}>{formatTraceDate(event?.occurred_at)}</time></div>
-        <div><span className="font-medium">Recorded:</span> <time dateTime={event?.recorded_at || undefined}>{formatTraceDate(event?.recorded_at)}</time></div>
         {event?.correlation_id && <div><span className="font-medium">Correlation:</span> <span className="font-mono break-all">{event.correlation_id}</span></div>}
         {(event?.state_before || event?.state_after) && (
           <div><span className="font-medium">State:</span> {event?.state_before || '—'} → {event?.state_after || '—'}</div>
@@ -3864,7 +3786,6 @@ const TraceModal = ({ traceData, loading, error, pagination, loadingMore, stream
             <div className="mt-1">→ <time dateTime={occurredEnd}>{formatTraceDate(occurredEnd)}</time></div>
           )}
         </div>
-
         {SOURCE_ORDER.map((lane) => {
           const isSource = source === lane;
           return (
@@ -3876,21 +3797,10 @@ const TraceModal = ({ traceData, loading, error, pagination, loadingMore, stream
                   </div>
                   <div className="mt-1 text-sm font-semibold text-gray-800">{summary}</div>
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    <span className="px-2 py-0.5 rounded-full bg-white border border-gray-200 text-[10px] text-gray-600">
-                      {event.phase || 'UNKNOWN'}
-                    </span>
-                    <span className="px-2 py-0.5 rounded-full bg-white border border-gray-200 text-[10px] text-gray-600">
-                      {event.protocol || 'UNKNOWN'}
-                    </span>
-                    <span className="px-2 py-0.5 rounded-full bg-white border border-gray-200 text-[10px] text-gray-600">
-                      {event.category || 'UNKNOWN'}
-                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-white border border-gray-200 text-[10px] text-gray-600">{event.phase || 'UNKNOWN'}</span>
+                    <span className="px-2 py-0.5 rounded-full bg-white border border-gray-200 text-[10px] text-gray-600">{event.protocol || 'UNKNOWN'}</span>
+                    <span className="px-2 py-0.5 rounded-full bg-white border border-gray-200 text-[10px] text-gray-600">{event.category || 'UNKNOWN'}</span>
                   </div>
-                  {(event.state_before || event.state_after) && (
-                    <div className="mt-2 text-xs text-gray-600">
-                      {event.state_before || '—'} → {event.state_after || '—'}
-                    </div>
-                  )}
                   {meterGroup && (
                     <div className="mt-2 text-xs text-gray-600">
                       {firstMeter !== null || lastMeter !== null ? (
@@ -3913,55 +3823,29 @@ const TraceModal = ({ traceData, loading, error, pagination, loadingMore, stream
             </div>
           );
         })}
-
         {sourceKnown && targetKnown && (
           <div className="absolute left-[150px] right-0 top-0 h-[64px] pointer-events-none z-10" aria-hidden="true">
             {source === target ? (
               <>
-                <div
-                  className="absolute top-[8px] w-9 h-6 rounded-t-full border-2 border-b-0 border-indigo-400"
-                  style={{ left: `calc(${sourceX}% - 18px)` }}
-                />
-                <span
-                  className="absolute top-[22px] w-0 h-0 border-y-[5px] border-y-transparent border-l-[8px] border-l-indigo-500"
-                  style={{ left: `calc(${sourceX}% + 10px)` }}
-                />
-                <span
-                  className="absolute top-[25px] w-3 h-3 rounded-full bg-indigo-500 ring-4 ring-white -translate-x-1/2"
-                  style={{ left: `${sourceX}%` }}
-                />
+                <div className="absolute top-[8px] w-9 h-6 rounded-t-full border-2 border-b-0 border-indigo-400" style={{ left: `calc(${sourceX}% - 18px)` }} />
+                <span className="absolute top-[22px] w-0 h-0 border-y-[5px] border-y-transparent border-l-[8px] border-l-indigo-500" style={{ left: `calc(${sourceX}% + 10px)` }} />
+                <span className="absolute top-[25px] w-3 h-3 rounded-full bg-indigo-500 ring-4 ring-white -translate-x-1/2" style={{ left: `${sourceX}%` }} />
               </>
             ) : (
               <>
-                <div
-                  className="absolute top-[30px] h-[2px] bg-indigo-400"
-                  style={{ left: `${arrowLeft}%`, width: `${arrowWidth}%` }}
-                />
-                <span
-                  className="absolute top-[25px] w-3 h-3 rounded-full bg-indigo-500 ring-4 ring-white -translate-x-1/2"
-                  style={{ left: `${sourceX}%` }}
-                />
-                <span
-                  className="absolute top-[25px] w-3 h-3 rounded-full bg-white border-2 border-indigo-500 ring-4 ring-white -translate-x-1/2"
-                  style={{ left: `${targetX}%` }}
-                />
+                <div className="absolute top-[30px] h-[2px] bg-indigo-400" style={{ left: `${arrowLeft}%`, width: `${arrowWidth}%` }} />
+                <span className="absolute top-[25px] w-3 h-3 rounded-full bg-indigo-500 ring-4 ring-white -translate-x-1/2" style={{ left: `${sourceX}%` }} />
+                <span className="absolute top-[25px] w-3 h-3 rounded-full bg-white border-2 border-indigo-500 ring-4 ring-white -translate-x-1/2" style={{ left: `${targetX}%` }} />
                 {movesRight ? (
-                  <span
-                    className="absolute top-[25px] w-0 h-0 border-y-[6px] border-y-transparent border-l-[10px] border-l-indigo-500"
-                    style={{ left: `calc(${targetX}% - 15px)` }}
-                  />
+                  <span className="absolute top-[25px] w-0 h-0 border-y-[6px] border-y-transparent border-l-[10px] border-l-indigo-500" style={{ left: `calc(${targetX}% - 15px)` }} />
                 ) : (
-                  <span
-                    className="absolute top-[25px] w-0 h-0 border-y-[6px] border-y-transparent border-r-[10px] border-r-indigo-500"
-                    style={{ left: `calc(${targetX}% + 5px)` }}
-                  />
+                  <span className="absolute top-[25px] w-0 h-0 border-y-[6px] border-transparent border-r-[10px] border-r-indigo-500" style={{ left: `calc(${targetX}% + 5px)` }} />
                 )}
               </>
             )}
             <span className="sr-only">{source} to {target}: {summary}</span>
           </div>
         )}
-
         {(!sourceKnown || !targetKnown) && (
           <div className="col-start-2 col-span-4 px-4 pb-4">
             <div className="rounded-xl border border-gray-300 bg-gray-50 p-3 text-sm text-gray-700">
@@ -4020,7 +3904,6 @@ const TraceModal = ({ traceData, loading, error, pagination, loadingMore, stream
               <X size={22} />
             </button>
           </div>
-
           <div className="p-6">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
               <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
@@ -4040,35 +3923,12 @@ const TraceModal = ({ traceData, loading, error, pagination, loadingMore, stream
                 <p className="text-sm font-mono text-gray-800 truncate">{traceData?.ocpp_transaction_id ?? 'N/A'}</p>
               </div>
             </div>
-
-            <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50 p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-semibold text-gray-600">Persisted evidence sources:</span>
-                {sourcesPresent.length > 0 ? (
-                  sourcesPresent.map((source) => {
-                    const color = getSourceColor(source);
-                    return (
-                      <span
-                        key={`source-present-${source}`}
-                        className={`px-2.5 py-1 rounded-full border ${color.border} ${color.light} ${color.text} text-xs font-semibold`}
-                      >
-                        {source}
-                      </span>
-                    );
-                  })
-                ) : (
-                  <span className="text-xs text-gray-500">None reported in this response.</span>
-                )}
-              </div>
-            </div>
-
             {loading && !traceData && (
               <div className="flex items-center justify-center py-20">
                 <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
                 <span className="ml-3 text-gray-500">Loading trace events...</span>
               </div>
             )}
-
             {error && (
               <div className={`mb-6 rounded-xl p-4 flex items-center gap-2 border ${
                 traceUnavailable ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-red-50 border-red-200 text-red-700'
@@ -4077,13 +3937,11 @@ const TraceModal = ({ traceData, loading, error, pagination, loadingMore, stream
                 {error}
               </div>
             )}
-
             {!loading && traceData && sortedEvents.length === 0 && (
               <div className="bg-gray-50 rounded-xl p-8 text-center border border-gray-200">
                 <p className="text-gray-600">No diagnostic events are available for this trace.</p>
               </div>
             )}
-
             {!loading && traceData && sortedEvents.length > 0 && (
               <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
                 <div className="hidden md:block max-h-[65vh] overflow-auto scrollbar-hide relative">
@@ -4102,7 +3960,6 @@ const TraceModal = ({ traceData, loading, error, pagination, loadingMore, stream
                         );
                       })}
                     </div>
-
                     {phaseSegments.map((segment, segmentIndex) => {
                       const phaseColor = getPhaseColor(segment.phase);
                       return (
@@ -4118,7 +3975,6 @@ const TraceModal = ({ traceData, loading, error, pagination, loadingMore, stream
                     })}
                   </div>
                 </div>
-
                 <div className="md:hidden p-3 space-y-4">
                   {phaseSegments.map((segment, segmentIndex) => {
                     const phaseColor = getPhaseColor(segment.phase);
@@ -4134,7 +3990,6 @@ const TraceModal = ({ traceData, loading, error, pagination, loadingMore, stream
                     );
                   })}
                 </div>
-
                 <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 flex flex-wrap items-center gap-3 text-xs text-gray-500">
                   <span>Each arrow is exactly one backend-declared source → target event.</span>
                   {pagination?.has_more && (
@@ -4182,19 +4037,22 @@ const Sessions = () => {
   const [pagination, setPagination] = useState({
     limit: 20,
     has_more: false,
-    before: null,
-    before_id: null,
+    cursor_value: null,
+    cursor_id: null,
   });
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  const [isLoadingMoreComplete, setIsLoadingMoreComplete] = useState(false);
 
   const [statusFilter, setStatusFilter] = useState('All');
 
-  // **NEW**: sorting state
-  const [sortBy, setSortBy] = useState('start_time');
+  const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState('desc');
+
+  const [dateFilter, setDateFilter] = useState('today');
+  const [customDate, setCustomDate] = useState(null);
+  const [showDateDropdown, setShowDateDropdown] = useState(false);
+  const dateDropdownRef = useRef(null);
 
   const [showDetailModal, setShowDetailModal] = useState(() => sessionStorage.getItem('sessionModalOpen') === 'true');
   const [selectedSession, setSelectedSession] = useState(() => {
@@ -4244,6 +4102,73 @@ const Sessions = () => {
   const traceStreamTraceIdRef = useRef(null);
   const traceReplayCursorRef = useRef(0);
 
+  const initialFilterEffectDoneRef = useRef(false);
+
+  const dateRange = useMemo(() => {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+    switch(dateFilter) {
+      case 'today': {
+        const to = new Date(today);
+        to.setDate(to.getDate() + 1);
+        return { from: today.toISOString(), to: to.toISOString() };
+      }
+      case 'yesterday': {
+        const from = new Date(today);
+        from.setDate(from.getDate() - 1);
+        return { from: from.toISOString(), to: today.toISOString() };
+      }
+      case 'week': {
+        const from = new Date(today);
+        const day = from.getDay();
+        const diff = day === 0 ? 6 : day - 1;
+        from.setDate(from.getDate() - diff);
+        const to = new Date(today);
+        to.setDate(to.getDate() + 1);
+        return { from: from.toISOString(), to: to.toISOString() };
+      }
+      case 'month': {
+        const from = new Date(today.getFullYear(), today.getMonth(), 1);
+        const to = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+        return { from: from.toISOString(), to: to.toISOString() };
+      }
+      case 'year': {
+        const from = new Date(today.getFullYear(), 0, 1);
+        const to = new Date(today.getFullYear() + 1, 0, 1);
+        return { from: from.toISOString(), to: to.toISOString() };
+      }
+      case 'custom': {
+        if (!customDate) return null;
+        const from = new Date(customDate);
+        from.setHours(0, 0, 0, 0);
+        const to = new Date(from);
+        to.setDate(to.getDate() + 1);
+        return { from: from.toISOString(), to: to.toISOString() };
+      }
+      default:
+        return null;
+    }
+  }, [dateFilter, customDate]);
+
+  const dateFilterLabel = useMemo(() => {
+    switch (dateFilter) {
+      case 'today': return 'Today';
+      case 'yesterday': return 'Yesterday';
+      case 'week': return 'This Week';
+      case 'month': return 'This Month';
+      case 'year': return 'This Year';
+      case 'custom':
+        if (customDate) {
+          return new Date(customDate).toLocaleDateString('en-IN', {
+            day: '2-digit', month: 'short', year: 'numeric'
+          });
+        }
+        return 'Custom Date';
+      default: return 'Select Date';
+    }
+  }, [dateFilter, customDate]);
+
   useEffect(() => {
     if (showDetailModal) {
       sessionStorage.setItem('sessionModalOpen', 'true');
@@ -4264,6 +4189,17 @@ const Sessions = () => {
     }
     return () => { document.body.style.overflow = ''; };
   }, [showDetailModal, showTraceModal]);
+
+  useEffect(() => {
+    if (!showDateDropdown) return;
+    const handler = (e) => {
+      if (dateDropdownRef.current && !dateDropdownRef.current.contains(e.target)) {
+        setShowDateDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showDateDropdown]);
 
   useEffect(() => {
     if (!isAuthenticated) { navigate('/signin'); return; }
@@ -4295,7 +4231,21 @@ const Sessions = () => {
         traceStreamRetryTimeoutRef.current = null;
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, navigate]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (!initialFilterEffectDoneRef.current) {
+      initialFilterEffectDoneRef.current = true;
+      return;
+    }
+    setLoading(true);
+    setAllSessions([]);
+    setPagination({ limit: 20, has_more: false, cursor_value: null, cursor_id: null });
+    fetchSessions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, sortBy, sortOrder, dateFilter, customDate]);
 
   useEffect(() => {
     if (liveDurationIntervalRef.current) clearInterval(liveDurationIntervalRef.current);
@@ -4305,7 +4255,6 @@ const Sessions = () => {
     return () => { if (liveDurationIntervalRef.current) clearInterval(liveDurationIntervalRef.current); };
   }, []);
 
-  // **COMPLETED**: refresh completed session
   const refreshCompletedSession = useCallback(async (sessionId) => {
     if (!sessionId) return;
     if (completedSessionsFetchRef.current.has(String(sessionId))) return;
@@ -4334,10 +4283,7 @@ const Sessions = () => {
 
       setAllSessions(prev => {
         const idx = prev.findIndex(s => String(s.id || s.session_id) === String(sessionId));
-        if (idx < 0) return prev;
-        const updated = [...prev];
-        updated[idx] = {
-          ...updated[idx],
+        const updatedEntry = {
           ...session,
           is_live: false,
           live_data: null,
@@ -4347,6 +4293,11 @@ const Sessions = () => {
             getCompletedDurationSeconds(session.start_time || session.started_at, session.end_time)
             ?? session.duration_seconds ?? null
         };
+        if (idx < 0) {
+          return [updatedEntry, ...prev];
+        }
+        const updated = [...prev];
+        updated[idx] = { ...updated[idx], ...updatedEntry };
         return updated;
       });
 
@@ -4367,8 +4318,6 @@ const Sessions = () => {
     }
   }, []);
 
-  // **UPDATED**: Robust live-session merge — new live sessions automatically
-  // appear in BOTH Ongoing AND All Sessions without any refresh.
   useEffect(() => {
     const currentLiveIds = new Set(
       liveSessionsData.sessions.map(s => String(s.session_id || s.id))
@@ -4416,7 +4365,6 @@ const Sessions = () => {
     });
     liveSessionsMapRef.current = map;
 
-    // Refresh modal if open
     if (showDetailModal && selectedSessionId) {
       const liveData = map[selectedSessionId];
       if (liveData) {
@@ -4446,33 +4394,12 @@ const Sessions = () => {
       }
     }
 
-    // Update ongoing sessions
     const ongoing = liveSessionsData.sessions.filter(s =>
       isOngoingStatus(s.status) || s.status === 'ACTIVE' || s.status === 'STOP_PENDING'
     );
     setOngoingSessions(ongoing);
-
-    // Merge live sessions into allSessions — this makes them appear instantly in "All Sessions"
-    setAllSessions(prev => {
-      const updated = [...prev];
-      liveSessionsData.sessions.forEach(liveSession => {
-        const lId = liveSession.id || liveSession.session_id;
-        const index = updated.findIndex(s => {
-          const sId = s.id || s.session_id;
-          return String(sId) === String(lId);
-        });
-        if (index >= 0) {
-          updated[index] = { ...updated[index], ...liveSession, is_live: true };
-        } else if (isOngoingStatus(liveSession.status) || liveSession.status === 'ACTIVE' || liveSession.status === 'STOP_PENDING') {
-          // Newly-started live session — auto-insert into All Sessions
-          updated.unshift({ ...liveSession, is_live: true });
-        }
-      });
-      return updated;
-    });
   }, [liveSessionsData, showDetailModal, selectedSessionId, refreshCompletedSession]);
 
-  // Modal live data ticker
   useEffect(() => {
     if (modalLiveDataIntervalRef.current) clearInterval(modalLiveDataIntervalRef.current);
     if (showDetailModal && selectedSessionId) {
@@ -4482,26 +4409,7 @@ const Sessions = () => {
           const liveData = liveSessionsMapRef.current[selectedSessionId];
           setSelectedSession(prev => {
             if (!prev || (!isOngoingStatus(prev.status) && prev.status !== 'ACTIVE')) return prev;
-            return {
-              ...prev,
-              ...liveData,
-              is_live: true,
-              consumed_wh: liveData.consumed_wh || prev.consumed_wh,
-              total_kwh: liveData.consumed_wh ? parseFloat(liveData.consumed_wh) / 1000 : prev.total_kwh,
-              soc_percent: liveData.soc_percent || prev.soc_percent,
-              duration_seconds: liveData.duration_seconds ?? prev.duration_seconds,
-              status: liveData.status || prev.status,
-              charger_name: liveData.charger_name || prev.charger_name,
-              charger_id: liveData.charger_id || prev.charger_id,
-              hub_name: liveData.hub_name || prev.hub_name,
-              connector_number: liveData.connector_number || prev.connector_number,
-              customer_name: liveData.customer_name || prev.customer_name,
-              started_at: liveData.started_at || prev.started_at,
-              ocpp_transaction_id: liveData.ocpp_transaction_id || prev.ocpp_transaction_id,
-              transaction_id: liveData.ocpp_transaction_id || liveData.transaction_id || prev.transaction_id,
-              projected_amount: liveData.projected_amount || prev.projected_amount,
-              currency: liveData.currency || prev.currency
-            };
+            return { ...prev, ...liveData, is_live: true };
           });
         }
       }, 1000);
@@ -4527,7 +4435,6 @@ const Sessions = () => {
     }
   };
 
-  // ========== SSE ==========
   const startLiveSessionsSSE = () => {
     try {
       if (eventSourceRef.current) {
@@ -4552,8 +4459,7 @@ const Sessions = () => {
       .then(response => {
         if (!response.ok) {
           if (response.status === 401) {
-            setIsStreaming(false);
-            setShowLiveIndicator(false);
+            setIsStreaming(false); setShowLiveIndicator(false);
             refreshToken().then(newToken => {
               if (newToken && isMountedRef.current) setTimeout(startLiveSessionsSSE, 10000);
             });
@@ -4561,10 +4467,7 @@ const Sessions = () => {
           }
           throw new Error(`HTTP error! status: ${response.status}`);
         }
-        if (isMountedRef.current) {
-          setIsStreaming(true);
-          setShowLiveIndicator(true);
-        }
+        if (isMountedRef.current) { setIsStreaming(true); setShowLiveIndicator(true); }
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
@@ -4572,10 +4475,7 @@ const Sessions = () => {
           if (!isMountedRef.current) return;
           reader.read().then(({ done, value }) => {
             if (done || !isMountedRef.current) {
-              if (isMountedRef.current) {
-                setIsStreaming(false);
-                setShowLiveIndicator(false);
-              }
+              if (isMountedRef.current) { setIsStreaming(false); setShowLiveIndicator(false); }
               if (!streamRetryTimeoutRef.current && isMountedRef.current) {
                 streamRetryTimeoutRef.current = setTimeout(() => {
                   streamRetryTimeoutRef.current = null;
@@ -4597,10 +4497,7 @@ const Sessions = () => {
           }).catch(error => {
             if (error.name !== 'AbortError') {
               console.error('📡 SSE Stream error:', error);
-              if (isMountedRef.current) {
-                setIsStreaming(false);
-                setShowLiveIndicator(false);
-              }
+              if (isMountedRef.current) { setIsStreaming(false); setShowLiveIndicator(false); }
             }
           });
         };
@@ -4609,18 +4506,12 @@ const Sessions = () => {
       .catch(error => {
         if (error.name !== 'AbortError') {
           console.error('📡 SSE Stream fetch error:', error);
-          if (isMountedRef.current) {
-            setIsStreaming(false);
-            setShowLiveIndicator(false);
-          }
+          if (isMountedRef.current) { setIsStreaming(false); setShowLiveIndicator(false); }
         }
       });
     } catch (error) {
       console.error('Error starting SSE stream:', error);
-      if (isMountedRef.current) {
-        setIsStreaming(false);
-        setShowLiveIndicator(false);
-      }
+      if (isMountedRef.current) { setIsStreaming(false); setShowLiveIndicator(false); }
     }
   };
 
@@ -4691,7 +4582,6 @@ const Sessions = () => {
     setShowLiveIndicator(false);
   };
 
-  // ========== Trace SSE ==========
   const stopTraceSSE = useCallback((resetStatus = true) => {
     traceStreamEnabledRef.current = false;
     traceStreamTraceIdRef.current = null;
@@ -4752,10 +4642,7 @@ const Sessions = () => {
         const source = typeof event.source === 'string' && event.source.trim() ? event.source : null;
         return {
           ...previous,
-          replay_cursor: Math.max(
-            Number(previous.replay_cursor) || 0,
-            Number.isFinite(replayCursor) ? replayCursor : 0
-          ),
+          replay_cursor: Math.max(Number(previous.replay_cursor) || 0, Number.isFinite(replayCursor) ? replayCursor : 0),
           sources_present: source
             ? Array.from(new Set([...(previous.sources_present || []), source]))
             : (previous.sources_present || []),
@@ -4767,11 +4654,7 @@ const Sessions = () => {
     async function connect() {
       if (!stillCurrent()) return;
       const token = localStorage.getItem('token');
-      if (!token) {
-        setTraceStreamError('Authentication is required for live trace updates.');
-        scheduleReconnect(3000);
-        return;
-      }
+      if (!token) { setTraceStreamError('Authentication is required for live trace updates.'); scheduleReconnect(3000); return; }
       const controller = new AbortController();
       traceStreamRef.current = controller;
       const after = traceReplayCursorRef.current;
@@ -4791,14 +4674,10 @@ const Sessions = () => {
         });
 
         if (!stillCurrent()) return;
-
         if (response.status === 401) {
           setTraceStreamError('Refreshing session for live trace updates…');
           const newToken = await refreshToken();
-          if (newToken && stillCurrent()) {
-            setTraceStreamError('');
-            scheduleReconnect(0);
-          }
+          if (newToken && stillCurrent()) { setTraceStreamError(''); scheduleReconnect(0); }
           return;
         }
         if (response.status === 403) {
@@ -4831,7 +4710,6 @@ const Sessions = () => {
           buffer += decoder.decode(value, { stream: true });
           const frames = buffer.split(/\r?\n\r?\n/);
           buffer = frames.pop() || '';
-
           for (const frame of frames) {
             if (!frame.trim()) continue;
             let eventType = 'message';
@@ -4861,20 +4739,15 @@ const Sessions = () => {
       } catch (streamError) {
         if (streamError?.name === 'AbortError') return;
         console.error('Trace SSE stream error:', streamError);
-        if (stillCurrent()) {
-          setTraceStreamError('Live trace stream interrupted; retrying.');
-          scheduleReconnect();
-        }
+        if (stillCurrent()) { setTraceStreamError('Live trace stream interrupted; retrying.'); scheduleReconnect(); }
       } finally {
         if (traceStreamRef.current === controller) traceStreamRef.current = null;
       }
     }
-
     connect();
   }, [refreshToken]);
 
-  // ========== Fetch Sessions ==========
-  const fetchSessions = useCallback(async (before = null, beforeId = null, isLoadMore = false) => {
+  const fetchSessions = useCallback(async (cursorValue = null, cursorId = null, isLoadMore = false) => {
     if (fetchInProgressRef.current) return;
     if (isLoadMore && loadingMore) return;
 
@@ -4886,8 +4759,16 @@ const Sessions = () => {
     try {
       const token = localStorage.getItem('token');
       let url = `${API_CONFIG.SESSIONS_API}?limit=${pagination.limit}`;
-      if (before) url += `&before=${encodeURIComponent(before)}`;
-      if (beforeId) url += `&before_id=${encodeURIComponent(beforeId)}`;
+      url += `&sort_by=${encodeURIComponent(sortBy)}&sort_order=${encodeURIComponent(sortOrder)}`;
+
+      if (cursorValue) url += `&cursor_value=${encodeURIComponent(cursorValue)}`;
+      if (cursorId) url += `&cursor_id=${encodeURIComponent(cursorId)}`;
+
+      if (dateRange) {
+        url += `&start_time_from=${encodeURIComponent(dateRange.from)}`;
+        url += `&start_time_to=${encodeURIComponent(dateRange.to)}`;
+      }
+
       if (statusFilter !== 'All') url += `&status=${statusFilter}`;
 
       const response = await fetch(url, {
@@ -4908,8 +4789,14 @@ const Sessions = () => {
         if (!Array.isArray(sessionsArray)) sessionsArray = [];
 
         const hasMore = data.has_more || false;
-        const nextBefore = data.next_before || null;
-        const nextBeforeId = data.next_before_id || null;
+        const nextCursorValue =
+          data.next_cursor_value !== undefined && data.next_cursor_value !== null
+            ? data.next_cursor_value
+            : data.next_before || null;
+        const nextCursorId =
+          data.next_cursor_id !== undefined && data.next_cursor_id !== null
+            ? data.next_cursor_id
+            : data.next_before_id || null;
 
         const transformed = sessionsArray.map((session) => {
           const sessionId = session.id || session.session_id;
@@ -4963,38 +4850,21 @@ const Sessions = () => {
           };
         });
 
-        // **IMPORTANT**: When overwriting allSessions from API, we must ALSO
-        // preserve any live sessions that are in the SSE snapshot but not
-        // yet in the historical API response.
-        const liveSnapshot = liveSessionsMapRef.current || {};
-        const transformedIds = new Set(transformed.map(s => String(s.id || s.session_id)));
-        const liveOnlyRows = Object.values(liveSnapshot)
-          .filter(s => {
-            const id = String(s.session_id || s.id);
-            if (transformedIds.has(id)) return false;
-            return isOngoingStatus(s.status) || s.status === 'ACTIVE' || s.status === 'STOP_PENDING';
-          })
-          .map(s => ({ ...s, is_live: true }));
-
         if (isLoadMore) {
           setAllSessions(prev => {
             const existingIds = new Set(prev.map(s => String(s.id || s.session_id)));
-            const newSessions = transformed.filter(s => {
-              const id = String(s.id || s.session_id);
-              return !existingIds.has(id);
-            });
+            const newSessions = transformed.filter(s => !existingIds.has(String(s.id || s.session_id)));
             return [...prev, ...newSessions];
           });
         } else {
-          // Fresh page 1: API rows + any live sessions not in the API response
-          setAllSessions([...liveOnlyRows, ...transformed]);
+          setAllSessions(transformed);
         }
 
         setPagination({
           limit: pagination.limit,
           has_more: hasMore,
-          before: nextBefore,
-          before_id: nextBeforeId,
+          cursor_value: nextCursorValue,
+          cursor_id: nextCursorId,
         });
 
         setHasLoaded(true);
@@ -5003,20 +4873,20 @@ const Sessions = () => {
         setError('Session expired. Please refresh.');
         const newToken = await refreshToken();
         if (newToken && isMountedRef.current) {
-          fetchSessions(before, beforeId, isLoadMore);
+          fetchSessions(cursorValue, cursorId, isLoadMore);
           return;
         }
         if (!isLoadMore && isMountedRef.current) {
           setAllSessions([]);
           setOngoingSessions([]);
         }
-        setPagination({ limit: 20, has_more: false, before: null, before_id: null });
+        setPagination({ limit: 20, has_more: false, cursor_value: null, cursor_id: null });
       } else {
         if (!isLoadMore && isMountedRef.current) {
           setAllSessions([]);
           setOngoingSessions([]);
         }
-        setPagination({ limit: 20, has_more: false, before: null, before_id: null });
+        setPagination({ limit: 20, has_more: false, cursor_value: null, cursor_id: null });
       }
     } catch (error) {
       console.error('❌ Error fetching sessions:', error);
@@ -5024,7 +4894,7 @@ const Sessions = () => {
         setAllSessions([]);
         setOngoingSessions([]);
       }
-      setPagination({ limit: 20, has_more: false, before: null, before_id: null });
+      setPagination({ limit: 20, has_more: false, cursor_value: null, cursor_id: null });
     } finally {
       fetchInProgressRef.current = false;
       if (isMountedRef.current) {
@@ -5032,9 +4902,9 @@ const Sessions = () => {
         setLoadingMore(false);
       }
     }
-  }, [pagination.limit, refreshToken, statusFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pagination.limit, refreshToken, statusFilter, sortBy, sortOrder, dateRange]);
 
-  // ========== Fetch Detail ==========
   const fetchSessionDetail = useCallback(async (sessionId) => {
     if (!sessionId) return;
     setLoadingDetail(true);
@@ -5133,19 +5003,12 @@ const Sessions = () => {
     }
   }, [refreshToken]);
 
-  // ========== Fetch Trace ==========
   const fetchTrace = useCallback(async (sessionId, beforeOccurredAt = null, beforeEventId = null, isLoadMore = false) => {
     if (!sessionId) return;
     if (isLoadMore && loadingMoreTrace) return;
     if (!isLoadMore) {
-      if (traceStreamRef.current) {
-        traceStreamRef.current.abort?.();
-        traceStreamRef.current = null;
-      }
-      if (traceStreamRetryTimeoutRef.current) {
-        clearTimeout(traceStreamRetryTimeoutRef.current);
-        traceStreamRetryTimeoutRef.current = null;
-      }
+      if (traceStreamRef.current) { traceStreamRef.current.abort?.(); traceStreamRef.current = null; }
+      if (traceStreamRetryTimeoutRef.current) { clearTimeout(traceStreamRetryTimeoutRef.current); traceStreamRetryTimeoutRef.current = null; }
       traceStreamEnabledRef.current = false;
       setTraceStreamStatus('idle');
       setTraceStreamError('');
@@ -5174,13 +5037,9 @@ const Sessions = () => {
         const data = await response.json();
         if (isLoadMore) {
           setTraceData(prev => ({
-            ...prev,
-            ...data,
+            ...prev, ...data,
             replay_cursor: prev?.replay_cursor ?? data.replay_cursor,
-            sources_present: Array.from(new Set([
-              ...(prev?.sources_present || []),
-              ...(data.sources_present || [])
-            ])),
+            sources_present: Array.from(new Set([...(prev?.sources_present || []), ...(data.sources_present || [])])),
             events: [...(prev?.events || []), ...(data.events || [])]
           }));
         } else {
@@ -5198,10 +5057,7 @@ const Sessions = () => {
       } else if (response.status === 401) {
         setTraceError('Session expired. Please refresh.');
         const newToken = await refreshToken();
-        if (newToken && isMountedRef.current) {
-          fetchTrace(sessionId, beforeOccurredAt, beforeEventId, isLoadMore);
-          return;
-        }
+        if (newToken && isMountedRef.current) { fetchTrace(sessionId, beforeOccurredAt, beforeEventId, isLoadMore); return; }
       } else if (response.status === 403) {
         setTraceData(null);
         setTracePagination({ has_more: false, next_occurred_at: null, next_event_id: null });
@@ -5216,10 +5072,7 @@ const Sessions = () => {
       console.error('❌ Error fetching trace:', error);
       setTraceError('An error occurred while fetching diagnostic trace');
     } finally {
-      if (isMountedRef.current) {
-        setLoadingTrace(false);
-        setLoadingMoreTrace(false);
-      }
+      if (isMountedRef.current) { setLoadingTrace(false); setLoadingMoreTrace(false); }
     }
   }, [refreshToken, startTraceSSE, loadingMoreTrace]);
 
@@ -5247,8 +5100,13 @@ const Sessions = () => {
   };
 
   const loadMoreSessions = () => {
-    if (pagination.has_more && pagination.before && pagination.before_id && !loadingMore && !loading && !fetchInProgressRef.current) {
-      fetchSessions(pagination.before, pagination.before_id, true);
+    if (
+      pagination.has_more &&
+      pagination.cursor_value &&
+      pagination.cursor_id &&
+      !loadingMore && !loading && !fetchInProgressRef.current
+    ) {
+      fetchSessions(pagination.cursor_value, pagination.cursor_id, true);
     }
   };
 
@@ -5278,10 +5136,8 @@ const Sessions = () => {
   };
 
   const handleLogout = async () => {
-    try {
-      stopLiveSessionsSSE();
-      await logout();
-    } catch (error) {
+    try { stopLiveSessionsSSE(); await logout(); }
+    catch (error) {
       console.error('Logout error:', error);
       localStorage.removeItem('token');
       localStorage.removeItem('refresh_token');
@@ -5295,106 +5151,77 @@ const Sessions = () => {
 
   const handleRefresh = () => {
     if (!fetchInProgressRef.current) {
+      setLoading(true);
       setAllSessions([]);
       setOngoingSessions([]);
-      setPagination({ limit: 20, has_more: false, before: null, before_id: null });
+      setPagination({ limit: 20, has_more: false, cursor_value: null, cursor_id: null });
       fetchSessions();
     }
   };
 
-  // Get current sessions
-  const currentSessions = useMemo(() => {
-    if (activeTab === 'all') {
-      const merged = [...allSessions];
-      liveSessionsData.sessions.forEach(liveSession => {
-        const sessionKey = liveSession.id || liveSession.session_id;
-        const exists = merged.some(s => {
-          const sKey = s.id || s.session_id;
-          return String(sKey) === String(sessionKey);
-        });
-        if (!exists) merged.unshift({ ...liveSession, is_live: true });
-        else {
-          const index = merged.findIndex(s => {
-            const sKey = s.id || s.session_id;
-            return String(sKey) === String(sessionKey);
-          });
-          if (index !== -1) merged[index] = { ...merged[index], ...liveSession, is_live: true };
-        }
-      });
-      return merged;
-    } else {
-      return ongoingSessions;
-    }
-  }, [activeTab, allSessions, ongoingSessions, liveSessionsData.sessions]);
-
   const filteredSessions = useMemo(() => {
-    if (!searchQuery) return currentSessions;
-    const query = searchQuery.toLowerCase();
-    return currentSessions.filter(session => {
+    const liveOnes = ongoingSessions.map(s => ({
+      ...s,
+      is_live: true,
+      id: s.id || s.session_id,
+      session_id: s.session_id || s.id,
+      start_time: s.start_time || s.started_at,
+      started_at: s.started_at || s.start_time,
+      duration_seconds: s.duration_seconds ?? 0,
+      total_kwh: s.consumed_wh ? parseFloat(s.consumed_wh) / 1000 : (s.total_kwh || 0),
+      total_amount: s.projected_amount || s.total_amount || '0'
+    }));
+
+    liveOnes.sort((a, b) => {
+      const at = new Date(a.started_at || a.start_time || 0).getTime();
+      const bt = new Date(b.started_at || b.start_time || 0).getTime();
+      return bt - at;
+    });
+
+    const liveIds = new Set(liveOnes.map(s => String(s.id || s.session_id)));
+    const nonLive = allSessions.filter(s => !liveIds.has(String(s.id || s.session_id)));
+
+    let base;
+    if (activeTab === 'ongoing') {
+      base = liveOnes;
+    } else {
+      base = [...liveOnes, ...nonLive];
+    }
+
+    if (!searchQuery) return base;
+    const q = searchQuery.toLowerCase();
+    return base.filter(session => {
       const idStr = String(session.id || session.session_id || '');
-      const transactionIdStr = String(session.transaction_id || '');
-      const chargerNameStr = String(session.charger_name || '');
-      const chargerIdStr = String(session.charger_id || '');
-      const hubNameStr = String(session.hub_name || '');
-      const customerNameStr = String(session.customer_name || '');
+      const transactionIdStr = String(session.transaction_id || session.ocpp_transaction_id || '');
+      const chargerNameStr = String(session.charger_name || session.charger?.name || '');
+      const chargerIdStr = String(session.charger_id || session.charger?.charger_id || '');
+      const hubNameStr = String(session.hub_name || session.charger?.hub_name || '');
+      const customerNameStr = String(session.customer_name || session.customer?.name || '');
       return (
-        idStr.toLowerCase().includes(query) ||
-        transactionIdStr.toLowerCase().includes(query) ||
-        chargerNameStr.toLowerCase().includes(query) ||
-        chargerIdStr.toLowerCase().includes(query) ||
-        hubNameStr.toLowerCase().includes(query) ||
-        customerNameStr.toLowerCase().includes(query)
+        idStr.toLowerCase().includes(q) ||
+        transactionIdStr.toLowerCase().includes(q) ||
+        chargerNameStr.toLowerCase().includes(q) ||
+        chargerIdStr.toLowerCase().includes(q) ||
+        hubNameStr.toLowerCase().includes(q) ||
+        customerNameStr.toLowerCase().includes(q)
       );
     });
-  }, [currentSessions, searchQuery]);
-
-  // **NEW**: Sort applied after filtering
-  const sortedSessions = useMemo(() => {
-    const arr = [...filteredSessions];
-    arr.sort((a, b) => {
-      let av = 0, bv = 0;
-      switch (sortBy) {
-        case 'start_time': {
-          const at = a.start_time || a.started_at;
-          const bt = b.start_time || b.started_at;
-          av = at ? new Date(at).getTime() : 0;
-          bv = bt ? new Date(bt).getTime() : 0;
-          break;
-        }
-        case 'end_time': {
-          const at = a.end_time;
-          const bt = b.end_time;
-          av = at ? new Date(at).getTime() : Number.MAX_SAFE_INTEGER;
-          bv = bt ? new Date(bt).getTime() : Number.MAX_SAFE_INTEGER;
-          break;
-        }
-        case 'duration': {
-          av = a.duration_seconds || 0;
-          bv = b.duration_seconds || 0;
-          break;
-        }
-        case 'usage': {
-          av = getEnergyKwh(a);
-          bv = getEnergyKwh(b);
-          break;
-        }
-        default:
-          return 0;
-      }
-      if (Number.isNaN(av)) av = 0;
-      if (Number.isNaN(bv)) bv = 0;
-      return sortOrder === 'asc' ? av - bv : bv - av;
-    });
-    return arr;
-  }, [filteredSessions, sortBy, sortOrder]);
+  }, [activeTab, allSessions, ongoingSessions, searchQuery]);
 
   const ongoingCount = useMemo(() => {
-    return currentSessions.filter(s => isOngoingStatus(s.status) || s.status === 'ACTIVE' || s.status === 'STOP_PENDING').length;
-  }, [currentSessions]);
+    return ongoingSessions.filter(s => isOngoingStatus(s.status) || s.status === 'ACTIVE' || s.status === 'STOP_PENDING').length;
+  }, [ongoingSessions]);
 
-  const showLoadMore = pagination.has_more && pagination.before && pagination.before_id && !loadingMore;
+  const showLoadMore = pagination.has_more && pagination.cursor_value && pagination.cursor_id && !loadingMore;
 
-  // Settings menu
+  const DATE_OPTIONS = [
+    { id: 'today',     label: 'Today' },
+    { id: 'yesterday', label: 'Yesterday' },
+    { id: 'week',      label: 'This Week' },
+    { id: 'year',      label: 'This Year' },
+    { id: 'month',     label: 'This Month' },
+  ];
+
   const SettingsMenu = () => (
     <div className="absolute top-full right-0 mt-2 bg-black rounded-2xl w-80 shadow-2xl border border-gray-800 z-50 overflow-hidden">
       <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-5 py-4">
@@ -5445,8 +5272,7 @@ const Sessions = () => {
       <div className="bg-white rounded-2xl w-[500px] max-w-[90vw] shadow-2xl p-6 max-h-[80vh] overflow-y-auto animate-fadeIn">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-            <Filter size={18} className="text-blue-600" />
-            Filters
+            <Filter size={18} className="text-blue-600" /> Filters
           </h3>
           <button onClick={() => setShowFilterPopup(false)} className="p-1 hover:bg-gray-100 rounded-lg transition">
             <X size={18} />
@@ -5462,24 +5288,22 @@ const Sessions = () => {
             >
               <option value="All">All Status</option>
               <option value="COMPLETED">Completed</option>
-              <option value="CHARGING">Charging</option>
               <option value="START_PENDING">Start Pending</option>
-              <option value="STOP_PENDING">Stop Pending</option>
-              <option value="STOPPED">Stopped</option>
-              <option value="FAILED">Failed</option>
-              <option value="CANCELLED">Cancelled</option>
               <option value="ACTIVE">Active</option>
+              <option value="STOP_PENDING">Stop Pending</option>
+              <option value="RECONCILIATION_REQUIRED">Reconciliation Required</option>
+              <option value="FAILED">Failed</option>
             </select>
           </div>
           <div className="flex gap-3 pt-2">
             <button
-              onClick={() => { setShowFilterPopup(false); fetchSessions(); }}
+              onClick={() => { setShowFilterPopup(false); }}
               className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white font-medium hover:bg-blue-700 transition shadow-lg shadow-blue-500/25"
             >
               Apply Filters
             </button>
             <button
-              onClick={() => { setStatusFilter('All'); setSearchQuery(''); fetchSessions(); }}
+              onClick={() => { setStatusFilter('All'); setSearchQuery(''); }}
               className="px-6 py-2.5 rounded-xl bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 transition"
             >
               Clear All
@@ -5490,22 +5314,7 @@ const Sessions = () => {
     </div>
   );
 
-  if (isRefreshing && loading && isInitialLoad) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex">
-        <Sidebar />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading sessions...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // **NEW**: Height for the table's scrollable viewport — leaves room for header + tabs + stats + filters.
-  const tableMaxHeight = 'calc(100vh - 360px)';
+  const tableMaxHeight = 'calc(100vh - 380px)';
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -5527,6 +5336,12 @@ const Sessions = () => {
                 <span className="text-blue-600">/</span>
                 <span className="text-blue-600 font-medium">Sessions</span>
               </div>
+              {isRefreshing && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 border border-blue-200 text-xs font-medium animate-fadeIn">
+                  <RefreshCw size={11} className="animate-spin" />
+                  Refreshing…
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-2 relative">
               <div className="relative">
@@ -5562,24 +5377,90 @@ const Sessions = () => {
             }`}
           >
             <History size={16} /> Sessions
-            <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full ml-1">{allSessions.length}</span>
+            <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full ml-1">{allSessions.length + ongoingSessions.length}</span>
           </button>
         </div>
 
         {activeMainTab === 'sessions' && (
           <div className="p-6">
-            <div className="mb-6">
+
+            <div className="mb-6 flex items-center justify-between gap-4 flex-wrap">
               <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm hover:shadow-md transition group inline-flex items-center gap-4">
                 <div className="w-12 h-12 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition">
                   <Database className="w-6 h-6 text-blue-600" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-500">Loaded Sessions</p>
-                  <p className="text-2xl font-bold text-gray-900">{allSessions.length}</p>
+                  <p className="text-2xl font-bold text-gray-900">{allSessions.length + ongoingSessions.length}</p>
                   {pagination.has_more && (
                     <p className="text-xs text-blue-500">More sessions available — load more below</p>
                   )}
                 </div>
+              </div>
+
+              <div className="relative" ref={dateDropdownRef}>
+                <button
+                  onClick={() => setShowDateDropdown(v => !v)}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 hover:border-blue-300 shadow-sm transition text-sm font-medium text-gray-700 min-w-[190px] justify-between"
+                >
+                  <span className="flex items-center gap-2">
+                    <CalendarIcon size={16} className="text-blue-600" />
+                    <span>{dateFilterLabel}</span>
+                  </span>
+                  <ChevronDown size={14} className={`text-gray-400 transition-transform ${showDateDropdown ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showDateDropdown && (
+                  <div className="absolute top-full right-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-200 z-50 w-64 overflow-hidden">
+                    <div className="p-1.5">
+                      {DATE_OPTIONS.map(opt => {
+                        const active = dateFilter === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            onClick={() => {
+                              setDateFilter(opt.id);
+                              setCustomDate(null);
+                              setShowDateDropdown(false);
+                            }}
+                            className={`w-full flex items-center justify-between text-left px-3 py-2 rounded-lg text-sm font-medium transition ${
+                              active
+                                ? 'bg-blue-50 text-blue-700'
+                                : 'text-gray-700 hover:bg-gray-50'
+                            }`}
+                          >
+                            <span>{opt.label}</span>
+                            {active && <CheckCircle size={14} className="text-blue-600" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="border-t border-gray-100 p-2">
+                      <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider px-2 mb-1">Custom Date</div>
+                      <input
+                        type="date"
+                        value={customDate || ''}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v) {
+                            setCustomDate(v);
+                            setDateFilter('custom');
+                            setShowDateDropdown(false);
+                          } else {
+                            setCustomDate(null);
+                            setDateFilter('today');
+                          }
+                        }}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <div className="mt-2 text-xs text-gray-400 px-1">
+                        {dateFilter === 'custom' && customDate
+                          ? `Showing ${new Date(customDate).toLocaleDateString()}`
+                          : 'Pick a date to filter'}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -5590,7 +5471,7 @@ const Sessions = () => {
               >
                 <div className="flex items-center gap-2">
                   <Grid size={16} /> All Sessions
-                  <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{allSessions.length}</span>
+                  <span className="text-xs bg-gray-200 text-gray-600 px-2 py-0.5 rounded-full">{allSessions.length + ongoingSessions.length}</span>
                 </div>
               </button>
               <button
@@ -5605,26 +5486,17 @@ const Sessions = () => {
               </button>
             </div>
 
-            {/* Search + Sort + Filters */}
-            <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
+            <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
               <div className="flex items-center gap-2 flex-wrap">
-                {statusFilter !== 'All' && (
-                  <button
-                    onClick={() => { setStatusFilter('All'); setSearchQuery(''); fetchSessions(); }}
-                    className="text-xs px-3 py-1.5 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 transition flex items-center gap-1"
-                  >
-                    <X size={12} /> Clear Filters
-                  </button>
-                )}
 
-                {/* **NEW**: Sort By dropdown */}
-                <div className="flex items-center gap-1.5">
-                  <label className="text-xs text-gray-500 font-medium">Sort by</label>
+                <div className="flex items-center gap-1.5 bg-white rounded-xl px-2 py-1 border border-gray-200 shadow-sm">
+                  <label className="text-xs text-gray-500 font-medium whitespace-nowrap">Sort by</label>
                   <select
                     value={sortBy}
                     onChange={(e) => setSortBy(e.target.value)}
-                    className="px-2.5 py-1.5 rounded-xl border border-gray-200 bg-gray-50 text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="px-1.5 py-1 rounded-lg bg-transparent text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 border-0 cursor-pointer"
                   >
+                    <option value="created_at">Created At</option>
                     <option value="start_time">Start Time</option>
                     <option value="end_time">End Time</option>
                     <option value="duration">Duration</option>
@@ -5632,12 +5504,21 @@ const Sessions = () => {
                   </select>
                   <button
                     onClick={() => setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'))}
-                    className="p-1.5 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-600 transition"
+                    className="p-1 rounded-lg hover:bg-gray-100 text-gray-600 transition"
                     title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
                   >
                     {sortOrder === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                   </button>
                 </div>
+
+                {statusFilter !== 'All' && (
+                  <button
+                    onClick={() => setStatusFilter('All')}
+                    className="text-xs px-3 py-1.5 rounded-full bg-red-50 text-red-600 hover:bg-red-100 transition flex items-center gap-1 border border-red-200"
+                  >
+                    <X size={12} /> {getStatusDisplayName(statusFilter)}
+                  </button>
+                )}
               </div>
 
               <div className="flex items-center gap-2">
@@ -5653,7 +5534,7 @@ const Sessions = () => {
                 </div>
                 <button
                   onClick={() => setIsCompact(!isCompact)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-blue-600 transition text-sm font-medium"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-blue-600 transition text-sm font-medium whitespace-nowrap"
                   title={isCompact ? "Switch to Expanded view" : "Switch to Compact view"}
                 >
                   <Sliders size={14} />
@@ -5662,7 +5543,7 @@ const Sessions = () => {
                 <button
                   onClick={handleRefresh}
                   disabled={fetchInProgressRef.current}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-blue-600 transition text-sm font-medium disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-gray-200 text-gray-600 hover:bg-gray-50 hover:text-blue-600 transition text-sm font-medium disabled:opacity-50 whitespace-nowrap"
                 >
                   <RefreshCw size={14} className={fetchInProgressRef.current ? 'animate-spin' : ''} />
                   Refresh
@@ -5671,9 +5552,7 @@ const Sessions = () => {
               </div>
             </div>
 
-            {/* Table — with sticky vertical scroll inside + horizontal scrollbar at the bottom of the visible area */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden relative">
-              {/* Scrollable table viewport */}
               <div
                 className="custom-scrollbar"
                 style={{
@@ -5683,42 +5562,57 @@ const Sessions = () => {
                 }}
               >
                 <table
-                  className={`w-full ${isCompact ? 'table-auto text-xs' : 'text-sm'}`}
-                  style={isCompact ? { minWidth: '860px' } : { minWidth: '1800px' }}
+                  className="w-full"
+                  style={isCompact ? { minWidth: '1080px' } : { minWidth: '1900px' }}
                 >
                   <thead className="sticky top-0 z-20">
                     <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
-                      <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-8 whitespace-nowrap`}>SI</th>
-                      <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-24 whitespace-nowrap`}>Session ID</th>
-                      <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-20 whitespace-nowrap`}>Transaction ID</th>
-                      <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-24 whitespace-nowrap`}>Customer</th>
-                      <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-28 whitespace-nowrap`}>Charger</th>
-                      <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-20 whitespace-nowrap`}>Hub</th>
-                      <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-10 whitespace-nowrap`}>Connector</th>
-                      <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-28 whitespace-nowrap`}>Start Time</th>
-                      <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-28 whitespace-nowrap`}>End Time</th>
-                      <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-14 whitespace-nowrap`}>Duration</th>
-                      <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-24 whitespace-nowrap`}>Usage</th>
-                      <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-20 whitespace-nowrap`}>Start Criteria</th>
-                      <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-14 whitespace-nowrap`}>Req. Limit</th>
-                      <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-20 whitespace-nowrap`}>Amount</th>
-                      <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-20 whitespace-nowrap`}>Status</th>
-                      <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-28 sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.08)] z-30 whitespace-nowrap`}>Action</th>
+                      <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>SI</th>
+                      <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Session ID</th>
+                      <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Transaction ID</th>
+                      <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Customer</th>
+                      <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Charger</th>
+                      <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Hub</th>
+                      <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Connector</th>
+                      <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Start Time</th>
+                      <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>End Time</th>
+                      <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Duration</th>
+                      <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Usage</th>
+                      <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Start Criteria</th>
+                      <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Req. Limit</th>
+                      <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Amount</th>
+                      <th className={`${isCompact ? 'px-2.5 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs whitespace-nowrap`}>Status</th>
+                      <th
+                        className={`${isCompact ? 'px-3 py-3' : 'px-4 py-4'} text-left font-semibold text-gray-600 uppercase tracking-wider text-xs sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.08)] z-30 whitespace-nowrap`}
+                        style={{ minWidth: '170px' }}
+                      >
+                        Action
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
                     {loading && !hasLoaded && isInitialLoad ? (
                       <tr>
-                        <td colSpan="16" className={`${isCompact ? 'px-2 py-6' : 'px-4 py-12'} text-center`}>
+                        <td colSpan="16" className={`${isCompact ? 'px-3 py-6' : 'px-4 py-12'} text-center`}>
                           <Loader2 className="w-6 h-6 text-blue-600 animate-spin mx-auto mb-1" />
-                          <p className="text-gray-500 text-xs">Loading sessions...</p>
+                          <p className="text-gray-500 text-sm">Loading sessions...</p>
+                        </td>
+                      </tr>
+                    ) : loading ? (
+                      <tr>
+                        <td colSpan="16" className={`${isCompact ? 'px-3 py-12' : 'px-4 py-20'} text-center`}>
+                          <div className="flex flex-col items-center justify-center gap-2">
+                            <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+                            <p className="text-gray-500 text-sm font-medium">Loading sessions…</p>
+                            <p className="text-xs text-gray-400">Fetching {dateFilterLabel} data</p>
+                          </div>
                         </td>
                       </tr>
                     ) : error ? (
                       <tr>
-                        <td colSpan="16" className={`${isCompact ? 'px-2 py-6' : 'px-4 py-12'} text-center`}>
+                        <td colSpan="16" className={`${isCompact ? 'px-3 py-6' : 'px-4 py-12'} text-center`}>
                           <AlertCircle className="w-8 h-8 text-red-500 mx-auto mb-1" />
-                          <p className="text-gray-600 text-xs">{error}</p>
+                          <p className="text-gray-600 text-sm">{error}</p>
                           <button
                             onClick={() => { setError(''); fetchSessions(); }}
                             className="mt-2 px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition"
@@ -5727,13 +5621,13 @@ const Sessions = () => {
                           </button>
                         </td>
                       </tr>
-                    ) : sortedSessions.length === 0 ? (
+                    ) : filteredSessions.length === 0 ? (
                       <tr>
-                        <td colSpan="16" className={`${isCompact ? 'px-2 py-6' : 'px-4 py-12'} text-center`}>
-                          <Database size={isCompact ? 28 : 40} className="text-gray-300 mx-auto mb-1" />
-                          <p className="text-gray-500 font-medium text-xs">No Sessions Found</p>
+                        <td colSpan="16" className={`${isCompact ? 'px-3 py-6' : 'px-4 py-12'} text-center`}>
+                          <Database size={isCompact ? 32 : 40} className="text-gray-300 mx-auto mb-1" />
+                          <p className="text-gray-500 font-medium text-sm">No Sessions Found</p>
                           <p className="text-xs text-gray-400 mt-0.5">
-                            {activeTab === 'all' ? 'No charging sessions available.' : 'No ongoing sessions found.'}
+                            {activeTab === 'all' ? `No charging sessions for ${dateFilterLabel}.` : 'No ongoing sessions found.'}
                           </p>
                           {showLiveIndicator && activeTab === 'ongoing' && (
                             <p className="text-xs text-green-600 mt-1">
@@ -5741,16 +5635,10 @@ const Sessions = () => {
                               Waiting for live sessions...
                             </p>
                           )}
-                          <button
-                            onClick={handleRefresh}
-                            className="mt-2 px-3 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition shadow flex items-center gap-1 mx-auto"
-                          >
-                            <RefreshCw size={12} /> Refresh
-                          </button>
                         </td>
                       </tr>
                     ) : (
-                      sortedSessions.map((session, index) => {
+                      filteredSessions.map((session, index) => {
                         const isOngoing = isOngoingStatus(session.status) || session.status === 'ACTIVE' || session.status === 'STOP_PENDING';
                         const durationSeconds = isOngoing
                           ? (session.duration_seconds || 0)
@@ -5783,7 +5671,11 @@ const Sessions = () => {
                         const requestedLimit = session.requested_limit_value;
                         const limitDisplay = formatRequestedLimit(requestedLimit, startCriteria);
 
-                        const rowBg = isLive && isOngoing ? 'bg-green-50/30' : 'bg-white';
+                        const rowBg = isLive && isOngoing ? 'bg-green-50/40' : 'bg-white';
+                        const stickyBg = isLive && isOngoing ? 'bg-green-50' : 'bg-white';
+
+                        const cellPad = isCompact ? 'px-2.5 py-2' : 'px-4 py-3.5';
+                        const cellText = isCompact ? 'text-sm' : 'text-[15px]';
 
                         return (
                           <tr
@@ -5793,81 +5685,76 @@ const Sessions = () => {
                             }`}
                             onClick={() => handleSessionClick(sessionId)}
                           >
-                            <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} text-gray-500 text-center text-xs`}>{index + 1}</td>
-                            <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} font-mono text-gray-600 text-xs truncate max-w-24`} title={sessionId}>{truncateId(sessionId)}</td>
-                            <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} font-mono text-gray-600 text-xs truncate max-w-20`} title={transactionId}>{truncateId(transactionId)}</td>
-                            <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} text-gray-700 text-xs truncate max-w-24`} title={session.customer?.name || session.customer_name}>
+                            <td className={`${cellPad} text-gray-500 text-center text-xs`}>
+                              {isLive && isOngoing ? (
+                                <span className="inline-flex items-center justify-center">
+                                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                                </span>
+                              ) : (index + 1)}
+                            </td>
+                            <td className={`${cellPad} font-mono text-gray-700 ${cellText} truncate max-w-[120px]`} title={sessionId}>{truncateId(sessionId)}</td>
+                            <td className={`${cellPad} font-mono text-gray-700 ${cellText} truncate max-w-[110px]`} title={transactionId}>{truncateId(transactionId)}</td>
+                            <td className={`${cellPad} text-gray-700 ${cellText} truncate max-w-[130px]`} title={session.customer?.name || session.customer_name}>
                               {session.customer?.name || session.customer_name || 'N/A'}
                             </td>
-                            <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} text-gray-700 text-xs`}>
+                            <td className={`${cellPad} text-gray-700 ${cellText}`}>
                               <div className="flex flex-col">
-                                <span className="font-medium text-gray-800 truncate max-w-24" title={chargerName}>{chargerName}</span>
-                                <span className="text-[10px] text-gray-400 truncate max-w-24" title={chargerId}>ID: {truncateId(chargerId)}</span>
+                                <span className="font-medium text-gray-800 truncate max-w-[140px]" title={chargerName}>{chargerName}</span>
+                                <span className="text-[11px] text-gray-400 truncate max-w-[140px]" title={chargerId}>ID: {truncateId(chargerId)}</span>
                               </div>
                             </td>
-                            <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} text-gray-600 text-xs truncate max-w-20`} title={session.charger?.hub_name || session.hub_name}>
+                            <td className={`${cellPad} text-gray-600 ${cellText} truncate max-w-[110px]`} title={session.charger?.hub_name || session.hub_name}>
                               {session.charger?.hub_name || session.hub_name || 'N/A'}
                             </td>
-                            <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} font-mono text-gray-500 text-center text-xs`}>#{connectorNumber}</td>
-                            <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} text-gray-600 text-xs whitespace-nowrap`}>{formatDate(session.start_time || session.started_at)}</td>
-                            <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} text-gray-600 text-xs whitespace-nowrap`}>
-                              {isOngoing ? 'Ongoing' : (session.end_time ? formatDate(session.end_time) : 'N/A')}
+                            <td className={`${cellPad} font-mono text-gray-500 text-center ${cellText}`}>#{connectorNumber}</td>
+                            <td className={`${cellPad} text-gray-600 ${cellText} whitespace-nowrap`}>{formatDate(session.start_time || session.started_at)}</td>
+                            <td className={`${cellPad} ${cellText} whitespace-nowrap`}>
+                              {isOngoing ? (
+                                <span className="text-green-600 font-medium">Ongoing</span>
+                              ) : (session.end_time ? <span className="text-gray-600">{formatDate(session.end_time)}</span> : 'N/A')}
                             </td>
-                            <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} text-xs`}>
-                              <div className="flex items-center gap-0.5">
-                                <span className="font-medium text-gray-700">{durationDisplay}</span>
-                                {isLive && isOngoing && (
-                                  <span className="text-[10px] text-green-600 flex items-center gap-0.5">
-                                    <span className="w-1 h-1 bg-green-500 rounded-full animate-pulse"></span>
-                                  </span>
-                                )}
-                              </div>
+                            <td className={`${cellPad} ${cellText}`}>
+                              <span className="font-medium text-gray-700">{durationDisplay}</span>
                             </td>
-                            <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} text-xs whitespace-nowrap`}>
-                              <div className="flex items-center gap-0.5">
+                            <td className={`${cellPad} ${cellText} whitespace-nowrap`}>
+                              <div className="flex items-center gap-1">
                                 <span className="font-medium text-gray-700">{displayEnergy} kWh</span>
                                 {isLive && displaySoc && (
-                                  <span className="ml-0.5 text-[10px] text-purple-600">· SOC: {displaySoc}%</span>
-                                )}
-                                {isLive && isOngoing && (
-                                  <span className="ml-0.5 text-[10px] text-green-600 flex items-center gap-0.5">
-                                    <span className="w-1 h-1 bg-green-500 rounded-full animate-pulse"></span>Live
-                                  </span>
+                                  <span className="text-xs text-purple-600">· SOC: {displaySoc}%</span>
                                 )}
                               </div>
                             </td>
-                            <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} text-gray-700 text-xs whitespace-nowrap`}>{startCriteria || '—'}</td>
-                            <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} text-gray-700 text-xs`}>{limitDisplay}</td>
-                            <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} font-medium text-gray-700 text-xs whitespace-nowrap`}>
+                            <td className={`${cellPad} text-gray-700 ${cellText} whitespace-nowrap`}>{startCriteria || '—'}</td>
+                            <td className={`${cellPad} text-gray-700 ${cellText}`}>{limitDisplay}</td>
+                            <td className={`${cellPad} font-semibold text-gray-700 ${cellText} whitespace-nowrap`}>
                               {formatCurrency(displayAmount)}
-                              {isLive && isOngoing && (
-                                <span className="ml-0.5 text-[10px] text-green-600 flex items-center gap-0.5">
-                                  <span className="w-1 h-1 bg-green-500 rounded-full animate-pulse"></span>Live
-                                </span>
-                              )}
                             </td>
-                            <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} text-xs`}>
-                              <span className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded-full text-[10px] font-medium ${getStatusColor(session.status)}`}>
+                            <td className={`${cellPad} ${cellText}`}>
+                              <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(session.status)}`}>
                                 {getStatusIcon(session.status)}
                                 {getStatusDisplayName(session.status)}
                               </span>
                             </td>
-                            <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} sticky right-0 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)] ${rowBg}`}>
-                              <div className="flex items-center gap-0.5">
+                            <td
+                              className={`${isCompact ? 'px-3 py-2' : 'px-4 py-3.5'} sticky right-0 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)] ${stickyBg}`}
+                              style={{ minWidth: '170px' }}
+                            >
+                              <div className="flex items-center gap-1.5 flex-nowrap whitespace-nowrap">
                                 <button
-                                  className={`${isCompact ? 'p-0.5' : 'p-1.5'} text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded transition flex items-center gap-0.5 text-[10px] font-medium`}
+                                  className="px-2.5 py-1 text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition flex items-center gap-1 text-[11px] font-semibold flex-shrink-0 shadow-sm"
                                   onClick={(e) => { e.stopPropagation(); handleSessionClick(sessionId); }}
+                                  title="View Session"
                                 >
-                                  <Eye size={isCompact ? 12 : 14} />
-                                  <span className={isCompact ? 'hidden sm:inline' : ''}>View</span>
+                                  <Eye size={12} />
+                                  View
                                 </button>
                                 <button
-                                  className={`${isCompact ? 'p-0.5' : 'p-1.5'} text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 rounded transition flex items-center gap-0.5 text-[10px] font-medium`}
+                                  className="px-2.5 py-1 text-white bg-indigo-600 hover:bg-indigo-700 rounded-md transition flex items-center gap-1 text-[11px] font-semibold flex-shrink-0 shadow-sm"
                                   onClick={(e) => { e.stopPropagation(); openTraceModal(sessionId); }}
                                   title="Diagnostic Trace"
                                 >
-                                  <GitBranch size={isCompact ? 12 : 14} />
-                                  <span className={isCompact ? 'hidden sm:inline' : ''}>Trace</span>
+                                  <GitBranch size={12} />
+                                  Trace
                                 </button>
                               </div>
                             </td>
@@ -5896,10 +5783,10 @@ const Sessions = () => {
               </div>
             )}
 
-            <div className="px-4 py-2 border-t border-gray-200 bg-gray-50 text-[10px] text-gray-500 flex justify-between items-center">
+            <div className="px-4 py-2 border-t border-gray-200 bg-gray-50 text-[11px] text-gray-500 flex justify-between items-center flex-wrap gap-2">
               <span>
-                {sortedSessions.length === 0 ? 'No sessions available' :
-                  `Showing ${sortedSessions.length} of ${allSessions.length} loaded sessions`}
+                {filteredSessions.length === 0 ? 'No sessions available' :
+                  `Showing ${filteredSessions.length} (${ongoingCount} live) of ${allSessions.length + ongoingSessions.length} loaded sessions`}
               </span>
               {showLoadMore && activeTab === 'all' && (
                 <span className="text-blue-600">Load more sessions</span>
@@ -5968,30 +5855,28 @@ const Sessions = () => {
         .animate-pulse-update { animation: pulseUpdate 1.2s ease-in-out forwards; }
         tr.animate-pulse-update { transition: background-color 0.3s ease; }
 
-        /* -------- Vertical + Horizontal scrollbars — thin pill style, sticky to viewport -------- */
         .custom-scrollbar {
           scrollbar-width: thin;
-          scrollbar-color: rgba(99, 102, 241, 0.55) rgba(243, 244, 246, 0.75);
+          scrollbar-color: #ffffff transparent;
         }
         .custom-scrollbar::-webkit-scrollbar {
-          width: 8px;
-          height: 8px;
+          width: 4px;
+          height: 4px;
           background: transparent;
         }
         .custom-scrollbar::-webkit-scrollbar-track {
-          background: rgba(243, 244, 246, 0.85);
+          background: transparent;
           border-radius: 999px;
-          margin: 0 16px;
+          margin: 0 8px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: linear-gradient(90deg, rgba(99, 102, 241, 0.55), rgba(79, 70, 229, 0.7));
+          background: rgba(255, 255, 255, 0.85);
           border-radius: 999px;
-          border: 2px solid transparent;
+          border: 1px solid rgba(0, 0, 0, 0.06);
           background-clip: padding-box;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: linear-gradient(90deg, rgba(79, 70, 229, 0.8), rgba(67, 56, 202, 0.9));
-          background-clip: padding-box;
+          background: #ffffff;
         }
         .custom-scrollbar::-webkit-scrollbar-corner { background: transparent; }
 

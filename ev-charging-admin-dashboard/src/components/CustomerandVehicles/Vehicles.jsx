@@ -1,40 +1,39 @@
 // src/components/CustomerandVehicles/Vehicles.jsx
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../Authentication/AuthContext';
 import {
   Settings,
   Plus,
   ChevronDown,
+  ChevronUp,
   User,
   Building,
   LogOut,
-  UsersIcon,
+  Users as UsersIcon,
   UserCog as UserCogIcon,
   CheckCircle,
   AlertCircle,
   X,
   Loader2,
   Mail,
-  Phone,
   Filter,
   RefreshCw,
   ChevronLeft,
   ChevronRight,
   ArrowLeft,
-  MoreVertical,
   Search as SearchIcon,
   Zap,
   Car,
   Battery,
-  Calendar as CalendarIcon,
-  MapPin,
   Bell,
   ArrowUpDown,
   CircleCheck,
   CircleX,
   CircleAlert,
-  Activity
+  Activity,
+  Hash,
+  Calendar as CalendarIcon
 } from 'lucide-react';
 import Sidebar from '../Sidebar/Sidebar';
 
@@ -53,267 +52,243 @@ const tabs = [
   { id: 'vehicles', label: 'Vehicles', icon: <Car size={16} />, path: '/vehicles' },
 ];
 
+// ============================================================================
+// Helpers
+// ============================================================================
+const formatDateTime = (dateString) => {
+  if (!dateString) return 'N/A';
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return 'N/A';
+  return date.toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+const formatDateOnly = (dateString) => {
+  if (!dateString) return 'N/A';
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return 'N/A';
+  return date.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  });
+};
+
+// Vehicle body-type → badge colour
+const getTypeBadgeStyle = (type) => {
+  const t = String(type || '').toLowerCase();
+  if (t.includes('sedan')) return 'bg-blue-100 text-blue-700 border-blue-200';
+  if (t.includes('suv')) return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+  if (t.includes('hatch')) return 'bg-purple-100 text-purple-700 border-purple-200';
+  if (t.includes('coupe')) return 'bg-pink-100 text-pink-700 border-pink-200';
+  if (t.includes('truck')) return 'bg-orange-100 text-orange-700 border-orange-200';
+  if (t.includes('van')) return 'bg-yellow-100 text-yellow-700 border-yellow-200';
+  if (t.includes('bike') || t.includes('scooter') || t.includes('motorcycle'))
+    return 'bg-cyan-100 text-cyan-700 border-cyan-200';
+  if (t.includes('electric')) return 'bg-green-100 text-green-700 border-green-200';
+  return 'bg-gray-100 text-gray-700 border-gray-200';
+};
+
+// ============================================================================
+// Vehicles Page
+// ============================================================================
 const Vehicles = () => {
   const navigate = useNavigate();
   const { authenticatedRequest, logout, isRefreshing, isAuthenticated, user } = useAuth();
 
-  // State
+  // ---------------- State ----------------
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [userData, setUserData] = useState(null);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [vehicles, setVehicles] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState('All');
-  const [sortConfig, setSortConfig] = useState({ key: null, direction: 'asc' });
 
-  // Pagination state (cursor-based)
+  // Vehicles data
+  const [vehicles, setVehicles] = useState([]);
+
+  // Client-side UI state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedType, setSelectedType] = useState('All');
+  const [sortConfig, setSortConfig] = useState({ key: 'date_added', direction: 'desc' });
+
+  // Pagination (keyset: before + before_id)
   const [nextBefore, setNextBefore] = useState(null);
   const [nextBeforeId, setNextBeforeId] = useState(null);
   const [hasMore, setHasMore] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  // We'll store a stack of page cursors to allow going back
-  const [pageCursors, setPageCursors] = useState([]);
+  const [pageCursors, setPageCursors] = useState([]); // stack of { before, beforeId }
 
   const itemsPerPage = 50;
+  const isMountedRef = useRef(true);
 
-  // Filter Types
-  const filterTypes = ['All', 'Active', 'Inactive', 'Maintenance', 'Electric', 'Hybrid', 'ICE'];
+  // ---------------- User info ----------------
+  const fetchUserInfo = async () => {
+    try {
+      const response = await authenticatedRequest(`${API_BASE_URL}/api/v1/auth/me`, { method: 'GET' });
+      if (response.ok) {
+        const data = await response.json();
+        if (isMountedRef.current) setUserData(data);
+      }
+    } catch (err) {
+      console.error('Error fetching user info:', err);
+    }
+  };
 
-  // Fetch user info
+  // ---------------- Fetch vehicles ----------------
+  const fetchVehicles = useCallback(async (cursorBefore = null, cursorBeforeId = null) => {
+    if (!isMountedRef.current) return;
+    setLoading(true);
+    setError('');
+    try {
+      let url = `${API_CONFIG.VEHICLES_API}?limit=${itemsPerPage}`;
+      if (cursorBefore && cursorBeforeId) {
+        url += `&before=${encodeURIComponent(cursorBefore)}&before_id=${encodeURIComponent(cursorBeforeId)}`;
+      }
+
+      const response = await authenticatedRequest(url, { method: 'GET' });
+
+      if (!isMountedRef.current) return;
+
+      if (response.ok) {
+        const data = await response.json();
+        // Per API: { vehicles: [...], has_more: bool, next_before?, next_before_id? }
+        const list = Array.isArray(data.vehicles) ? data.vehicles : [];
+        setVehicles(list);
+        setNextBefore(data.next_before || null);
+        setNextBeforeId(data.next_before_id || null);
+        setHasMore(!!data.has_more);
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        setError(errData.message || 'Failed to fetch vehicles');
+        setVehicles([]);
+        setHasMore(false);
+      }
+    } catch (err) {
+      console.error('Error fetching vehicles:', err);
+      if (isMountedRef.current) {
+        setError('An error occurred while fetching vehicles');
+        setVehicles([]);
+        setHasMore(false);
+      }
+    } finally {
+      if (isMountedRef.current) setLoading(false);
+    }
+  }, [authenticatedRequest, itemsPerPage]);
+
+  // ---------------- Initial load ----------------
   useEffect(() => {
     if (!isAuthenticated) {
       navigate('/signin');
       return;
     }
+    isMountedRef.current = true;
     fetchUserInfo();
     fetchVehicles();
+    return () => {
+      isMountedRef.current = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, navigate]);
 
-  const fetchUserInfo = async () => {
-    try {
-      const response = await authenticatedRequest(`${API_BASE_URL}/api/v1/auth/me`, {
-        method: 'GET'
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setUserData(data);
-      }
-    } catch (error) {
-      console.error('Error fetching user info:', error);
-    }
-  };
-
-  // Fetch vehicles with cursor-based pagination
-  const fetchVehicles = useCallback(async (direction = 'next', cursorBefore = null, cursorBeforeId = null) => {
-    setLoading(true);
-    setError('');
-    try {
-      let url = `${API_CONFIG.VEHICLES_API}?limit=${itemsPerPage}`;
-
-      if (direction === 'next' && cursorBefore && cursorBeforeId) {
-        url += `&before=${encodeURIComponent(cursorBefore)}&before_id=${encodeURIComponent(cursorBeforeId)}`;
-      }
-
-      const response = await authenticatedRequest(url, {
-        method: 'GET'
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const vehicleList = data.vehicles || [];
-        setVehicles(vehicleList);
-        setNextBefore(data.next_before || null);
-        setNextBeforeId(data.next_before_id || null);
-        setHasMore(data.has_more || false);
-
-        // Update pagination state
-        if (direction === 'next') {
-          // Store the current cursor for going back
-          if (cursorBefore && cursorBeforeId) {
-            setPageCursors(prev => [...prev, { before: cursorBefore, beforeId: cursorBeforeId }]);
-          }
-          setCurrentPage(prev => prev + 1);
-        } else if (direction === 'prev') {
-          // Remove the last cursor from stack
-          setPageCursors(prev => {
-            const newStack = [...prev];
-            newStack.pop();
-            return newStack;
-          });
-          setCurrentPage(prev => Math.max(prev - 1, 1));
-        }
-
-        // Calculate total pages (approximate based on hasMore)
-        // We don't know the exact total, but we can estimate
-        if (!data.has_more && vehicleList.length < itemsPerPage) {
-          setTotalPages(currentPage);
-        } else if (data.has_more) {
-          setTotalPages(currentPage + 1);
-        }
-      } else {
-        setError('Failed to fetch vehicles');
-        setVehicles([]);
-      }
-    } catch (error) {
-      console.error('Error fetching vehicles:', error);
-      setError('An error occurred while fetching vehicles');
-      setVehicles([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [authenticatedRequest, itemsPerPage, currentPage]);
-
-  // Load next page
+  // ---------------- Pagination controls ----------------
   const loadNextPage = () => {
-    if (hasMore && nextBefore && nextBeforeId) {
-      fetchVehicles('next', nextBefore, nextBeforeId);
-    }
+    if (!hasMore || !nextBefore || !nextBeforeId) return;
+    // Push current cursor to stack so we can go back
+    setPageCursors(prev => [...prev, { before: nextBefore, beforeId: nextBeforeId }]);
+    setCurrentPage(prev => prev + 1);
+    fetchVehicles(nextBefore, nextBeforeId);
   };
 
-  // Load previous page
   const loadPrevPage = () => {
-    if (pageCursors.length > 0) {
-      const prevCursor = pageCursors[pageCursors.length - 1];
-      fetchVehicles('prev', prevCursor.before, prevCursor.beforeId);
-    }
+    if (pageCursors.length === 0) return;
+    const newStack = [...pageCursors];
+    newStack.pop();
+    setPageCursors(newStack);
+    setCurrentPage(prev => Math.max(prev - 1, 1));
+    // Re-fetch: first page has no cursor; subsequent pages use last cursor in stack
+    const last = newStack[newStack.length - 1];
+    if (last) fetchVehicles(last.before, last.beforeId);
+    else fetchVehicles();
   };
 
-  // Reset to first page
   const resetToFirstPage = () => {
     setPageCursors([]);
     setCurrentPage(1);
-    setTotalPages(1);
-    fetchVehicles('next', null, null);
+    fetchVehicles();
   };
 
-  // Filter and Search Logic (client-side filtering on current page)
-  const filteredVehicles = useMemo(() => {
-    let filtered = vehicles;
+  // ---------------- Derived: type options from loaded data ----------------
+  const typeOptions = useMemo(() => {
+    const set = new Set();
+    vehicles.forEach(v => {
+      if (v.type && String(v.type).trim()) set.add(String(v.type).trim());
+    });
+    return ['All', ...Array.from(set).sort()];
+  }, [vehicles]);
 
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(vehicle =>
-        vehicle.vehicle_number?.toLowerCase().includes(query) ||
-        vehicle.make?.toLowerCase().includes(query) ||
-        vehicle.model?.toLowerCase().includes(query) ||
-        vehicle.type?.toLowerCase().includes(query) ||
-        vehicle.customer_name?.toLowerCase().includes(query)
+  // ---------------- Filter / search / sort ----------------
+  const filteredVehicles = useMemo(() => {
+    let list = vehicles;
+
+    // Search
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      list = list.filter(v =>
+        (v.vehicle_number || '').toLowerCase().includes(q) ||
+        (v.make || '').toLowerCase().includes(q) ||
+        (v.model || '').toLowerCase().includes(q) ||
+        (v.type || '').toLowerCase().includes(q) ||
+        (v.customer_name || '').toLowerCase().includes(q) ||
+        (v.customer_email || '').toLowerCase().includes(q)
       );
     }
 
-    if (selectedFilter !== 'All') {
-      if (['Active', 'Inactive', 'Maintenance'].includes(selectedFilter)) {
-        // Note: The API may not return a 'status' field. We'll use a fallback or derive from other data.
-        // For now, we'll filter by type if it matches, otherwise show all.
-        // Since the API doesn't have status, we'll just filter by type.
-        if (['Electric', 'Hybrid', 'ICE'].includes(selectedFilter)) {
-          filtered = filtered.filter(v =>
-            v.type?.toLowerCase() === selectedFilter.toLowerCase()
-          );
-        }
-        // For status filters, we'll just show all since the API doesn't provide status
-        // You can add a status field if the API returns it
-      } else {
-        filtered = filtered.filter(v =>
-          v.type?.toLowerCase() === selectedFilter.toLowerCase()
-        );
-      }
+    // Type filter
+    if (selectedType !== 'All') {
+      list = list.filter(v => (v.type || '').toLowerCase() === selectedType.toLowerCase());
     }
 
+    // Sort
     if (sortConfig.key) {
-      filtered = [...filtered].sort((a, b) => {
-        const aVal = a[sortConfig.key] || '';
-        const bVal = b[sortConfig.key] || '';
-        if (aVal < bVal) {
-          return sortConfig.direction === 'asc' ? -1 : 1;
-        }
-        if (aVal > bVal) {
-          return sortConfig.direction === 'asc' ? 1 : -1;
-        }
+      list = [...list].sort((a, b) => {
+        const av = a[sortConfig.key] ?? '';
+        const bv = b[sortConfig.key] ?? '';
+        if (av < bv) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (av > bv) return sortConfig.direction === 'asc' ? 1 : -1;
         return 0;
       });
     }
 
-    return filtered;
-  }, [vehicles, searchQuery, selectedFilter, sortConfig]);
+    return list;
+  }, [vehicles, searchQuery, selectedType, sortConfig]);
 
-  // Handle Sort
   const handleSort = (key) => {
-    let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-    setSortConfig({ key, direction });
+    setSortConfig(prev => {
+      if (prev.key === key) {
+        return { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' };
+      }
+      return { key, direction: 'asc' };
+    });
   };
 
-  // Get Status Badge (fallback - API may not have status)
-  const getStatusBadge = (vehicle) => {
-    // If the API returns a status field, use it. Otherwise, derive from other data.
-    const status = vehicle.status || 'active';
-    const statusMap = {
-      active: { label: 'Active', color: 'bg-green-100 text-green-800 border-green-200', icon: <CircleCheck size={12} className="mr-1" /> },
-      inactive: { label: 'Inactive', color: 'bg-gray-100 text-gray-800 border-gray-200', icon: <CircleX size={12} className="mr-1" /> },
-      maintenance: { label: 'Maintenance', color: 'bg-yellow-100 text-yellow-800 border-yellow-200', icon: <CircleAlert size={12} className="mr-1" /> },
-    };
-    const s = status?.toLowerCase() || 'active';
-    const style = statusMap[s] || statusMap.active;
-    return (
-      <span className={`inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full border ${style.color}`}>
-        {style.icon}
-        {style.label}
-      </span>
-    );
-  };
-
-  // Battery Level Indicator (if battery_level is available)
-  const getBatteryLevel = (percentage) => {
-    if (percentage === undefined || percentage === null) {
-      return <span className="text-xs text-gray-400">N/A</span>;
-    }
-    const level = percentage || 0;
-    const colors = level > 70 ? 'bg-green-500' : level > 30 ? 'bg-yellow-500' : 'bg-red-500';
-    return (
-      <div className="flex items-center gap-2">
-        <div className="w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-          <div className={`h-full ${colors} transition-all duration-500`} style={{ width: `${level}%` }} />
-        </div>
-        <span className="text-xs font-medium text-gray-600 min-w-[32px]">{level}%</span>
-      </div>
-    );
-  };
-
-  // Vehicle Type Badge
-  const getTypeBadge = (type) => {
-    const typeMap = {
-      electric: { label: 'Electric', color: 'bg-blue-100 text-blue-700 border-blue-200' },
-      hybrid: { label: 'Hybrid', color: 'bg-purple-100 text-purple-700 border-purple-200' },
-      ice: { label: 'ICE', color: 'bg-gray-100 text-gray-700 border-gray-200' },
-    };
-    const t = type?.toLowerCase() || 'ice';
-    const style = typeMap[t] || typeMap.ice;
-    return (
-      <span className={`px-2.5 py-1 text-xs font-medium rounded-full border ${style.color}`}>
-        {style.label}
-      </span>
-    );
-  };
-
+  // ---------------- Logout / theme ----------------
   const handleLogout = async () => {
     try {
       await logout();
-    } catch (error) {
-      console.error('Logout error:', error);
+    } catch (err) {
+      console.error('Logout error:', err);
       navigate('/signin');
     }
   };
-
   const handleThemeToggle = () => setIsDarkMode(!isDarkMode);
 
-  // Settings Dropdown Menu
+  // ---------------- Settings menu ----------------
   const SettingsMenu = () => (
     <div className="absolute top-full right-0 mt-2 bg-black rounded-2xl w-80 shadow-2xl border border-gray-800 z-50 overflow-hidden">
       <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-5 py-4">
@@ -352,12 +327,12 @@ const Vehicles = () => {
     </div>
   );
 
-  // Add Dropdown Menu - Add Hub & Add Charger
+  // ---------------- Add menu ----------------
   const AddMenu = () => (
     <div className="absolute top-full right-0 mt-2 bg-white rounded-2xl w-56 shadow-2xl border border-gray-200 z-50 overflow-hidden">
       <div className="p-2">
         <button
-          onClick={() => { setShowAddMenu(false); navigate("/add-hub"); }}
+          onClick={() => { setShowAddMenu(false); navigate('/add-hub'); }}
           className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-50 text-sm font-medium text-gray-700 hover:text-gray-900 flex items-center gap-3 transition"
         >
           <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
@@ -366,7 +341,7 @@ const Vehicles = () => {
           <span>Add Hub</span>
         </button>
         <button
-          onClick={() => { setShowAddMenu(false); navigate("/add-charger"); }}
+          onClick={() => { setShowAddMenu(false); navigate('/add-charger'); }}
           className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-50 text-sm font-medium text-gray-700 hover:text-gray-900 flex items-center gap-3 transition"
         >
           <div className="w-8 h-8 bg-green-50 rounded-lg flex items-center justify-center">
@@ -413,12 +388,11 @@ const Vehicles = () => {
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-bold text-gray-800">Customers & Vehicles</h1>
                 <span className="text-gray-300 text-xl">/</span>
-                <span className="text-sm text-blue-400 font-medium mt-1">Vehicles</span>
+                <span className="text-sm text-blue-500 font-medium mt-1">Vehicles</span>
               </div>
             </div>
 
             <div className="flex items-center gap-2 relative">
-              {/* Settings Button */}
               <div className="relative">
                 <button
                   onClick={() => setShowSettingsMenu(!showSettingsMenu)}
@@ -429,8 +403,6 @@ const Vehicles = () => {
                 </button>
                 {showSettingsMenu && <SettingsMenu />}
               </div>
-
-              {/* Plus Button - Add Hub & Add Charger */}
               <div className="relative">
                 <button
                   onClick={() => setShowAddMenu(!showAddMenu)}
@@ -443,10 +415,9 @@ const Vehicles = () => {
             </div>
           </div>
 
-          {/* Separator Line */}
           <div className="mt-3 border-b border-gray-200"></div>
 
-          {/* Navigation Tabs with Icons */}
+          {/* Tabs */}
           <div className="flex items-center justify-between mt-3">
             <div className="flex items-center gap-1">
               {tabs.map((tab) => (
@@ -481,12 +452,12 @@ const Vehicles = () => {
         <div className="p-6">
           {/* Filters and Search Bar */}
           <div className="bg-white rounded-2xl border border-gray-200 p-4 mb-6 shadow-sm">
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="flex-1 min-w-[200px] relative">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex-1 min-w-[220px] relative">
                 <SearchIcon size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Search vehicles by number, make, model..."
+                  placeholder="Search by number, make, model, customer, email..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm outline-none bg-gray-50 hover:bg-white transition"
@@ -496,12 +467,12 @@ const Vehicles = () => {
               <div className="flex items-center gap-2">
                 <Filter size={18} className="text-gray-400" />
                 <select
-                  value={selectedFilter}
-                  onChange={(e) => setSelectedFilter(e.target.value)}
+                  value={selectedType}
+                  onChange={(e) => setSelectedType(e.target.value)}
                   className="px-4 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-gray-50 hover:bg-white transition cursor-pointer"
                 >
-                  {filterTypes.map(type => (
-                    <option key={type} value={type}>{type}</option>
+                  {typeOptions.map(t => (
+                    <option key={t} value={t}>{t === 'All' ? 'All Types' : t}</option>
                   ))}
                 </select>
               </div>
@@ -509,17 +480,20 @@ const Vehicles = () => {
               <button
                 onClick={resetToFirstPage}
                 className="p-2.5 border border-gray-300 rounded-xl hover:bg-gray-50 transition"
+                title="Refresh"
               >
                 <RefreshCw size={18} className={`text-gray-500 ${loading ? 'animate-spin' : ''}`} />
               </button>
 
               <span className="text-sm text-gray-500 ml-auto">
-                Showing {vehicles.length} vehicles (Page {currentPage})
+                {filteredVehicles.length !== vehicles.length
+                  ? `Showing ${filteredVehicles.length} of ${vehicles.length} (Page ${currentPage})`
+                  : `Showing ${vehicles.length} vehicles (Page ${currentPage})`}
               </span>
             </div>
           </div>
 
-          {/* Error/Success Messages */}
+          {/* Error */}
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4 flex items-center gap-2 text-red-700">
               <AlertCircle size={18} className="flex-shrink-0" />
@@ -541,8 +515,8 @@ const Vehicles = () => {
               </div>
             ) : (
               <>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
+                <div className="overflow-x-auto custom-scrollbar">
+                  <table className="w-full min-w-[1000px]">
                     <thead className="bg-gradient-to-r from-gray-50 to-white border-b border-gray-200">
                       <tr>
                         {[
@@ -552,13 +526,13 @@ const Vehicles = () => {
                           { key: 'model', label: 'MODEL' },
                           { key: 'customer_name', label: 'CUSTOMER' },
                           { key: 'customer_email', label: 'EMAIL' },
-                          { key: 'last_charged', label: 'LAST CHARGED' },
                           { key: 'date_added', label: 'DATE ADDED' },
+                          { key: 'updated_at', label: 'LAST UPDATED' },
                         ].map(({ key, label }) => (
                           <th
                             key={key}
                             onClick={() => handleSort(key)}
-                            className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:text-gray-900 transition group"
+                            className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider cursor-pointer hover:text-gray-900 transition group whitespace-nowrap"
                           >
                             <div className="flex items-center gap-1.5">
                               {label}
@@ -576,11 +550,15 @@ const Vehicles = () => {
                     <tbody className="divide-y divide-gray-100">
                       {filteredVehicles.length === 0 ? (
                         <tr>
-                          <td colSpan="9" className="px-4 py-12 text-center">
+                          <td colSpan="8" className="px-4 py-16 text-center">
                             <div className="flex flex-col items-center gap-2">
-                              <Car size={40} className="text-gray-300" />
+                              <Car size={44} className="text-gray-300" />
                               <p className="text-gray-500 font-medium">No vehicles found</p>
-                              <p className="text-sm text-gray-400">Try adjusting your search or filter</p>
+                              <p className="text-sm text-gray-400">
+                                {vehicles.length === 0
+                                  ? 'No vehicles have been added yet.'
+                                  : 'Try adjusting your search or filter.'}
+                              </p>
                             </div>
                           </td>
                         </tr>
@@ -588,15 +566,22 @@ const Vehicles = () => {
                         filteredVehicles.map((vehicle) => (
                           <tr
                             key={vehicle.id}
-                            className="hover:bg-gray-50 transition-colors"
+                            className="hover:bg-blue-50/40 transition-colors"
                           >
                             <td className="px-4 py-3.5">
-                              <span className="font-mono text-sm font-medium text-gray-900">
-                                {vehicle.vehicle_number || 'N/A'}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                                  <Car size={15} className="text-blue-600" />
+                                </div>
+                                <span className="font-mono text-sm font-semibold text-gray-900">
+                                  {vehicle.vehicle_number || 'N/A'}
+                                </span>
+                              </div>
                             </td>
                             <td className="px-4 py-3.5">
-                              {getTypeBadge(vehicle.type)}
+                              <span className={`inline-flex items-center px-2.5 py-1 text-xs font-medium rounded-full border ${getTypeBadgeStyle(vehicle.type)}`}>
+                                {vehicle.type || 'N/A'}
+                              </span>
                             </td>
                             <td className="px-4 py-3.5 text-sm text-gray-700 font-medium">
                               {vehicle.make || 'N/A'}
@@ -608,22 +593,21 @@ const Vehicles = () => {
                               {vehicle.customer_name || 'N/A'}
                             </td>
                             <td className="px-4 py-3.5 text-sm text-gray-600">
-                              <div className="flex items-center gap-1">
-                                <Mail size={14} className="text-gray-400" />
-                                {vehicle.customer_email || 'N/A'}
+                              <div className="flex items-center gap-1.5">
+                                <Mail size={14} className="text-gray-400 flex-shrink-0" />
+                                <span className="truncate max-w-[180px]" title={vehicle.customer_email}>
+                                  {vehicle.customer_email || 'N/A'}
+                                </span>
                               </div>
                             </td>
-                            <td className="px-4 py-3.5 text-sm text-gray-600">
-                              {vehicle.last_charged
-                                ? new Date(vehicle.last_charged).toLocaleString()
-                                : 'N/A'}
+                            <td className="px-4 py-3.5 text-sm text-gray-600 whitespace-nowrap">
+                              <div className="flex items-center gap-1.5">
+                                <CalendarIcon size={14} className="text-gray-400 flex-shrink-0" />
+                                {formatDateOnly(vehicle.date_added || vehicle.created_at)}
+                              </div>
                             </td>
-                            <td className="px-4 py-3.5 text-sm text-gray-600">
-                              {vehicle.date_added
-                                ? new Date(vehicle.date_added).toLocaleDateString()
-                                : vehicle.created_at
-                                  ? new Date(vehicle.created_at).toLocaleDateString()
-                                  : 'N/A'}
+                            <td className="px-4 py-3.5 text-sm text-gray-600 whitespace-nowrap">
+                              {formatDateTime(vehicle.updated_at)}
                             </td>
                           </tr>
                         ))
@@ -632,28 +616,32 @@ const Vehicles = () => {
                   </table>
                 </div>
 
-                {/* Table Footer with Pagination */}
+                {/* Footer / Pagination */}
                 <div className="px-4 py-3.5 bg-gray-50 border-t border-gray-200 flex flex-wrap items-center justify-between gap-3">
                   <div className="text-sm text-gray-600">
-                    Showing {vehicles.length} vehicles (Page {currentPage})
+                    {filteredVehicles.length !== vehicles.length
+                      ? `Showing ${filteredVehicles.length} of ${vehicles.length} vehicles (Page ${currentPage})`
+                      : `Showing ${vehicles.length} vehicles (Page ${currentPage})`}
                   </div>
 
                   <div className="flex items-center gap-2">
                     <button
                       onClick={loadPrevPage}
                       disabled={currentPage <= 1 || pageCursors.length === 0}
-                      className="px-3.5 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-white transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
                     >
                       <ChevronLeft size={16} />
+                      Prev
                     </button>
                     <span className="px-3 py-1.5 text-sm font-medium text-gray-700">
                       Page {currentPage}
                     </span>
                     <button
                       onClick={loadNextPage}
-                      disabled={!hasMore}
-                      className="px-3.5 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      disabled={!hasMore || !nextBefore || !nextBeforeId}
+                      className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-white transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
                     >
+                      Next
                       <ChevronRight size={16} />
                     </button>
                   </div>
@@ -700,6 +688,32 @@ const Vehicles = () => {
           </div>
         </div>
       </div>
+
+      <style>{`
+        .custom-scrollbar {
+          scrollbar-width: thin;
+          scrollbar-color: rgba(99, 102, 241, 0.55) rgba(243, 244, 246, 0.75);
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+          height: 8px;
+          width: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: rgba(243, 244, 246, 0.85);
+          border-radius: 999px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: linear-gradient(90deg, rgba(99, 102, 241, 0.55), rgba(79, 70, 229, 0.7));
+          border-radius: 999px;
+          border: 2px solid transparent;
+          background-clip: padding-box;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: linear-gradient(90deg, rgba(79, 70, 229, 0.8), rgba(67, 56, 202, 0.9));
+          background-clip: padding-box;
+        }
+        .custom-scrollbar::-webkit-scrollbar-corner { background: transparent; }
+      `}</style>
     </div>
   );
 };
