@@ -55,11 +55,12 @@ const Sidebar = ({ isDarkMode = false, onThemeToggle }) => {
   const [orgError, setOrgError] = useState('');
   const [userEmail, setUserEmail] = useState('');
   const [userName, setUserName] = useState('');
+  const [userRole, setUserRole] = useState(''); // <-- NEW: store role
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [fetchAttempted, setFetchAttempted] = useState(false);
 
-  // Menu items
-  const menuItems = [
+  // Menu items (all, will be filtered by role)
+  const allMenuItems = [
     { name: "Dashboard", icon: FaHome, path: "/dashboard" },
     { name: "Chargers & Sessions", icon: FaChargingStation, path: "/charger-session" },
     { name: "Revenue Management", icon: FaWallet, path: "/revenue/overview" },
@@ -69,13 +70,21 @@ const Sidebar = ({ isDarkMode = false, onThemeToggle }) => {
     { name: "Alerts", icon: FaBell, path: "/alerts" },
     { name: "Reports & Analytics", icon: FaChartBar, path: "/reports" },
     { name: "App Management", icon: FaMobileAlt, path: "/app-management" },
-    { name: "Payment Gateway", icon: FaCreditCard, path: "/payment-integration" },
+    { name: "Payment Gateway", icon: FaCreditCard, path: "/payment-integration", adminOnly: true },
     { name: "Support Tickets", icon: FaTicketAlt, path: "/support-ticket" },
-    { name: "User Access Control", icon: FaUserShield, path: "/user-access" },
+    { name: "User Access Control", icon: FaUserShield, path: "/user-access", adminOnly: true },
     { name: "Help & Support", icon: FaHeadset, path: "/help-support" },
   ];
 
-  // Fetch organization data on mount
+  // Filter menu items based on role
+  const menuItems = allMenuItems.filter(item => {
+    if (item.adminOnly) {
+      return userRole === 'ADMIN';
+    }
+    return true;
+  });
+
+  // Fetch user info on mount
   useEffect(() => {
     if (isAuthenticated) {
       if (!fetchAttempted || user) {
@@ -90,6 +99,7 @@ const Sidebar = ({ isDarkMode = false, onThemeToggle }) => {
           const parsedInfo = JSON.parse(storedInfo);
           setUserName(parsedInfo.name || 'Admin User');
           setUserEmail(parsedInfo.email || 'admin@transev.com');
+          setUserRole(parsedInfo.role || '');
         } catch (e) {
           console.error('Error parsing stored user info:', e);
         }
@@ -110,14 +120,16 @@ const Sidebar = ({ isDarkMode = false, onThemeToggle }) => {
         
         const email = data.user?.email || user?.email || '';
         const name = data.user?.full_name || data.user?.name || user?.name || 'Admin User';
+        const role = data.role || ''; // <-- extract role
         
         setUserEmail(email);
         setUserName(name);
+        setUserRole(role); // <-- store role
         
         const userInfo = {
           name: name,
           email: email,
-          role: data.role || '',
+          role: role,
           ...data
         };
         localStorage.setItem('userInfo', JSON.stringify(userInfo));
@@ -129,6 +141,7 @@ const Sidebar = ({ isDarkMode = false, onThemeToggle }) => {
             const parsedInfo = JSON.parse(storedInfo);
             setUserName(parsedInfo.name || 'Admin User');
             setUserEmail(parsedInfo.email || 'admin@transev.com');
+            setUserRole(parsedInfo.role || '');
           } catch (e) {
             console.error('Error parsing stored user info:', e);
           }
@@ -142,6 +155,7 @@ const Sidebar = ({ isDarkMode = false, onThemeToggle }) => {
           const parsedInfo = JSON.parse(storedInfo);
           setUserName(parsedInfo.name || 'Admin User');
           setUserEmail(parsedInfo.email || 'admin@transev.com');
+          setUserRole(parsedInfo.role || '');
         } catch (e) {
           console.error('Error parsing stored user info:', e);
         }
@@ -275,7 +289,8 @@ const Sidebar = ({ isDarkMode = false, onThemeToggle }) => {
         <div className="space-y-1">
           {menuItems.map((item) => {
             const Icon = item.icon;
-            const isActive = location.pathname === item.path;
+            // Use startsWith to match sub‑routes (e.g., /charger-session/sessions)
+            const isActive = location.pathname.startsWith(item.path);
 
             return (
               <Link

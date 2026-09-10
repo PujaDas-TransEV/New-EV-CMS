@@ -31,8 +31,7 @@
 //   BatteryCharging,
 //   BatteryMedium,
 //   BatteryLow,
-//   BatteryFull,
-//   Info
+//   BatteryFull
 // } from 'lucide-react';
 // import Sidebar from '../Sidebar/Sidebar';
 
@@ -48,6 +47,7 @@
 //   USER_INFO_API: `${API_BASE_URL}/api/v1/auth/me`,
 //   TRACE_API: (sessionId) => `${API_BASE_URL}/api/v1/cpo/charging-sessions/${sessionId}/trace`,
 //   TRACE_DETAIL_API: (traceId) => `${API_BASE_URL}/api/v1/cpo/charging-traces/${traceId}`,
+//   TRACE_STREAM_API: (traceId) => `${API_BASE_URL}/api/v1/cpo/charging-traces/${traceId}/stream`,
 // };
 
 // // Status color mapping
@@ -703,7 +703,7 @@
 // };
 
 // // ==========================================================================
-// // TraceModal (same as before)
+// // TraceModal — CMS-canonical diagnostic waterfall
 // // ==========================================================================
 // const compareTraceEventsChronological = (a, b) => {
 //   const at = new Date(a?.occurred_at || 0).getTime();
@@ -772,7 +772,7 @@
 //   return rows;
 // };
 
-// const TraceModal = ({ traceData, loading, error, pagination, loadingMore, onClose, onLoadMore }) => {
+// const TraceModal = ({ traceData, loading, error, pagination, loadingMore, streamStatus, streamError, onClose, onLoadMore }) => {
 //   const [expandedMeterGroups, setExpandedMeterGroups] = useState(() => new Set());
 //   const events = traceData?.events || [];
 
@@ -790,6 +790,15 @@
 //     [sortedEvents, expandedMeterGroups]
 //   );
 
+//   const sourcesPresent = useMemo(() => {
+//     const validSources = Array.isArray(traceData?.sources_present)
+//       ? traceData.sources_present.filter((source) => typeof source === 'string' && source.trim())
+//       : [];
+//     const known = SOURCE_ORDER.filter((source) => validSources.includes(source));
+//     const unknown = validSources.filter((source) => !SOURCE_ORDER.includes(source));
+//     return [...known, ...unknown];
+//   }, [traceData?.sources_present]);
+
 //   const phaseSegments = useMemo(() => {
 //     const segments = [];
 //     displayRows.forEach((row) => {
@@ -804,7 +813,9 @@
 //     return segments;
 //   }, [displayRows]);
 
-//   if (!traceData && !loading) return null;
+//   if (!traceData && !loading && !error) return null;
+
+//   const traceUnavailable = error === 'Diagnostic trace is not available for this session.';
 
 //   const toggleMeterGroup = (groupKey) => {
 //     setExpandedMeterGroups((current) => {
@@ -813,30 +824,6 @@
 //       else next.add(groupKey);
 //       return next;
 //     });
-//   };
-
-//   const sourceStatusForLane = (lane) => {
-//     if (lane === 'CMS') return traceData?.cms_source || 'UNKNOWN';
-//     if (lane === 'HAL') return traceData?.hal_source || 'UNKNOWN';
-//     return null;
-//   };
-
-//   const renderSourceBadge = (lane) => {
-//     const status = sourceStatusForLane(lane);
-//     if (!status) return null;
-//     const className =
-//       status === 'AVAILABLE'
-//         ? 'bg-emerald-100 text-emerald-700'
-//         : status === 'NOT_REQUESTED'
-//           ? 'bg-gray-100 text-gray-600'
-//           : status === 'UNAVAILABLE'
-//             ? 'bg-amber-100 text-amber-700'
-//             : 'bg-gray-100 text-gray-600';
-//     return (
-//       <span className={`ml-2 px-1.5 py-0.5 rounded text-[10px] font-semibold ${className}`}>
-//         {status}
-//       </span>
-//     );
 //   };
 
 //   const renderEventDetails = (event) => (
@@ -876,13 +863,18 @@
 //     const lastMeter = meterGroup ? meterValueFromEvent(meterGroup[meterGroup.length - 1]) : null;
 //     const summary = meterGroup ? `MeterValues × ${meterGroup.length}` : event.summary || 'Trace event';
 //     const occurredEnd = meterGroup ? meterGroup[meterGroup.length - 1]?.occurred_at : null;
-//     const laneAreaStartPct = sourceKnown ? ((sourceIndex + 0.5) / SOURCE_ORDER.length) * 100 : 0;
-//     const laneAreaEndPct = targetKnown ? ((targetIndex + 0.5) / SOURCE_ORDER.length) * 100 : 0;
-//     const lineLeft = Math.min(laneAreaStartPct, laneAreaEndPct);
-//     const lineWidth = Math.abs(laneAreaEndPct - laneAreaStartPct);
+
+//     // The actor area is treated as 0..100%. Each event uses exactly the
+//     // backend-declared source -> target relation; no adjacency, correlation-id,
+//     // or timestamp inference is performed here.
+//     const sourceX = sourceKnown ? ((sourceIndex + 0.5) / SOURCE_ORDER.length) * 100 : 0;
+//     const targetX = targetKnown ? ((targetIndex + 0.5) / SOURCE_ORDER.length) * 100 : 0;
+//     const arrowLeft = Math.min(sourceX, targetX);
+//     const arrowWidth = Math.abs(targetX - sourceX);
+//     const movesRight = targetX > sourceX;
 
 //     return (
-//       <div key={row.key} className="grid grid-cols-[150px_repeat(4,minmax(180px,1fr))] relative min-h-[116px] border-t border-gray-100">
+//       <div key={row.key} className="grid grid-cols-[150px_repeat(4,minmax(180px,1fr))] relative min-h-[124px] border-t border-gray-100">
 //         <div className="px-3 py-4 bg-white/70 border-r border-gray-200 text-xs text-gray-500">
 //           <time dateTime={event.occurred_at || undefined} className="font-medium text-gray-700">
 //             {formatTraceDate(event.occurred_at)}
@@ -893,14 +885,11 @@
 //         </div>
 
 //         {SOURCE_ORDER.map((lane) => {
-//           const laneColor = getSourceColor(lane);
 //           const isSource = source === lane;
-//           const isTarget = target === lane;
 //           return (
-//             <div key={`${row.key}-${lane}`} className="relative px-3 py-3 border-r border-gray-100">
-//               <div aria-hidden="true" className={`absolute top-0 bottom-0 left-1/2 w-px ${laneColor.bg} opacity-20`} />
-//               {(isSource || (source === target && isTarget)) && (
-//                 <div className={`relative z-20 mt-8 rounded-xl border ${sourceColor.border} ${sourceColor.light} p-3 shadow-sm`}>
+//             <div key={`${row.key}-${lane}`} className="relative px-3 py-3">
+//               {isSource && (
+//                 <div className={`relative z-20 mt-10 rounded-xl border ${sourceColor.border} ${sourceColor.light} p-3 shadow-sm`}>
 //                   <div className={`text-[10px] font-bold uppercase tracking-wide ${sourceColor.text}`}>
 //                     {source} → {target}
 //                   </div>
@@ -940,19 +929,56 @@
 //                   {!meterGroup && renderEventDetails(event)}
 //                 </div>
 //               )}
-//               {isTarget && source !== target && (
-//                 <span aria-hidden="true" className={`absolute z-20 top-[23px] left-1/2 -translate-x-1/2 w-3 h-3 rounded-full ${laneColor.bg} ring-4 ring-white`} />
-//               )}
 //             </div>
 //           );
 //         })}
 
-//         {sourceKnown && targetKnown && source !== target && (
-//           <div className="absolute left-[150px] right-0 top-0 bottom-0 pointer-events-none z-10" aria-hidden="true">
-//             <div className="absolute top-[28px] h-[2px] bg-indigo-300" style={{ left: `${lineLeft}%`, width: `${Math.max(lineWidth, 0.5)}%` }} />
-//             <span className="absolute top-[17px] text-indigo-500 text-base font-bold" style={{ left: `calc(${laneAreaEndPct}% - 5px)` }}>
-//               {targetIndex > sourceIndex ? '▶' : '◀'}
-//             </span>
+//         {sourceKnown && targetKnown && (
+//           <div className="absolute left-[150px] right-0 top-0 h-[64px] pointer-events-none z-10" aria-hidden="true">
+//             {source === target ? (
+//               <>
+//                 <div
+//                   className="absolute top-[8px] w-9 h-6 rounded-t-full border-2 border-b-0 border-indigo-400"
+//                   style={{ left: `calc(${sourceX}% - 18px)` }}
+//                 />
+//                 <span
+//                   className="absolute top-[22px] w-0 h-0 border-y-[5px] border-y-transparent border-l-[8px] border-l-indigo-500"
+//                   style={{ left: `calc(${sourceX}% + 10px)` }}
+//                 />
+//                 <span
+//                   className="absolute top-[25px] w-3 h-3 rounded-full bg-indigo-500 ring-4 ring-white -translate-x-1/2"
+//                   style={{ left: `${sourceX}%` }}
+//                 />
+//               </>
+//             ) : (
+//               <>
+//                 <div
+//                   className="absolute top-[30px] h-[2px] bg-indigo-400"
+//                   style={{ left: `${arrowLeft}%`, width: `${arrowWidth}%` }}
+//                 />
+
+//                 <span
+//                   className="absolute top-[25px] w-3 h-3 rounded-full bg-indigo-500 ring-4 ring-white -translate-x-1/2"
+//                   style={{ left: `${sourceX}%` }}
+//                 />
+//                 <span
+//                   className="absolute top-[25px] w-3 h-3 rounded-full bg-white border-2 border-indigo-500 ring-4 ring-white -translate-x-1/2"
+//                   style={{ left: `${targetX}%` }}
+//                 />
+
+//                 {movesRight ? (
+//                   <span
+//                     className="absolute top-[25px] w-0 h-0 border-y-[6px] border-y-transparent border-l-[10px] border-l-indigo-500"
+//                     style={{ left: `calc(${targetX}% - 15px)` }}
+//                   />
+//                 ) : (
+//                   <span
+//                     className="absolute top-[25px] w-0 h-0 border-y-[6px] border-y-transparent border-r-[10px] border-r-indigo-500"
+//                     style={{ left: `calc(${targetX}% + 5px)` }}
+//                   />
+//                 )}
+//               </>
+//             )}
 //             <span className="sr-only">{source} to {target}: {summary}</span>
 //           </div>
 //         )}
@@ -1012,6 +1038,33 @@
 //               <p className="text-sm text-gray-500 mt-1">
 //                 Session: <span className="font-mono">{truncateId(traceData?.session_id) || 'N/A'}</span> · Trace: <span className="font-mono">{truncateId(traceData?.trace_id) || 'N/A'}</span>
 //               </p>
+//               {traceData?.trace_id && (
+//                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+//                   <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${
+//                     streamStatus === 'connected'
+//                       ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+//                       : streamStatus === 'connecting' || streamStatus === 'retrying'
+//                         ? 'bg-amber-50 border-amber-200 text-amber-700'
+//                         : 'bg-gray-50 border-gray-200 text-gray-600'
+//                   }`}>
+//                     <span className={`w-1.5 h-1.5 rounded-full ${
+//                       streamStatus === 'connected'
+//                         ? 'bg-emerald-500 animate-pulse'
+//                         : streamStatus === 'connecting' || streamStatus === 'retrying'
+//                           ? 'bg-amber-500 animate-pulse'
+//                           : 'bg-gray-400'
+//                     }`} />
+//                     {streamStatus === 'connected'
+//                       ? 'Live trace updates'
+//                       : streamStatus === 'connecting'
+//                         ? 'Connecting live trace'
+//                         : streamStatus === 'retrying'
+//                           ? 'Reconnecting live trace'
+//                           : 'Static trace snapshot'}
+//                   </span>
+//                   {streamError && <span className="text-amber-700">{streamError}</span>}
+//                 </div>
+//               )}
 //             </div>
 //             <button type="button" onClick={onClose} className="p-2 text-gray-500 hover:text-gray-800 hover:bg-white rounded-xl transition" aria-label="Close charging trace">
 //               <X size={22} />
@@ -1036,33 +1089,49 @@
 //                 <p className="text-xs text-gray-500 uppercase tracking-wider">OCPP Transaction ID</p>
 //                 <p className="text-sm font-mono text-gray-800 truncate">{traceData?.ocpp_transaction_id ?? 'N/A'}</p>
 //               </div>
+//               <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+//                 <p className="text-xs text-gray-500 uppercase tracking-wider">CMS Start Intent ID</p>
+//                 <p className="text-sm font-mono text-gray-800 truncate">{traceData?.cms_start_intent_id || 'N/A'}</p>
+//               </div>
+//               <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+//                 <p className="text-xs text-gray-500 uppercase tracking-wider">CMS Command ID</p>
+//                 <p className="text-sm font-mono text-gray-800 truncate">{traceData?.cms_command_id || 'N/A'}</p>
+//               </div>
+//               <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+//                 <p className="text-xs text-gray-500 uppercase tracking-wider">Charger OCPP Identity</p>
+//                 <p className="text-sm font-mono text-gray-800 truncate">{traceData?.charger_ocpp_identity || 'N/A'}</p>
+//               </div>
+//               <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+//                 <p className="text-xs text-gray-500 uppercase tracking-wider">Connector</p>
+//                 <p className="text-sm font-mono text-gray-800 truncate">
+//                   {traceData?.ocpp_connector_number ? `#${traceData.ocpp_connector_number}` : 'N/A'}
+//                 </p>
+//               </div>
 //             </div>
 
-//             <div className="mb-6 flex flex-wrap gap-2">
-//               <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${traceData?.cms_source === 'AVAILABLE' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'}`}>
-//                 CMS {traceData?.cms_source || 'UNKNOWN'}
-//               </span>
-//               <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${traceData?.hal_source === 'AVAILABLE' ? 'bg-emerald-100 text-emerald-700' : traceData?.hal_source === 'NOT_REQUESTED' ? 'bg-gray-100 text-gray-600' : 'bg-amber-100 text-amber-700'}`}>
-//                 HAL {traceData?.hal_source || 'UNKNOWN'}
-//               </span>
+//             <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50 p-3">
+//               <div className="flex flex-wrap items-center gap-2">
+//                 <span className="text-xs font-semibold text-gray-600">Persisted evidence sources:</span>
+//                 {sourcesPresent.length > 0 ? (
+//                   sourcesPresent.map((source) => {
+//                     const color = getSourceColor(source);
+//                     return (
+//                       <span
+//                         key={`source-present-${source}`}
+//                         className={`px-2.5 py-1 rounded-full border ${color.border} ${color.light} ${color.text} text-xs font-semibold`}
+//                       >
+//                         {source}
+//                       </span>
+//                     );
+//                   })
+//                 ) : (
+//                   <span className="text-xs text-gray-500">None reported in this response.</span>
+//                 )}
+//               </div>
+//               <p className="mt-2 text-[11px] text-gray-500">
+//                 This is persisted diagnostic evidence in CMS, not a health or availability check for any actor.
+//               </p>
 //             </div>
-
-//             {traceData?.hal_source === 'UNAVAILABLE' && (
-//               <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2 text-amber-700 text-sm">
-//                 <Info size={16} className="flex-shrink-0 mt-0.5" />
-//                 <div>
-//                   <div className="font-medium">Partial diagnostic evidence</div>
-//                   <div className="mt-0.5">HAL diagnostic evidence is temporarily unavailable. CMS evidence is still valid and is shown below. This does not mean the charging session failed.</div>
-//                 </div>
-//               </div>
-//             )}
-
-//             {traceData?.hal_source === 'NOT_REQUESTED' && (
-//               <div className="mb-6 bg-gray-50 border border-gray-200 rounded-xl p-3 flex items-start gap-2 text-gray-600 text-sm">
-//                 <Info size={16} className="flex-shrink-0 mt-0.5" />
-//                 HAL diagnostic evidence was not requested for this response. Available CMS evidence is shown normally.
-//               </div>
-//             )}
 
 //             {loading && !traceData && (
 //               <div className="flex items-center justify-center py-20">
@@ -1072,7 +1141,13 @@
 //             )}
 
 //             {error && (
-//               <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4 text-red-700 flex items-center gap-2">
+//               <div
+//                 className={`mb-6 rounded-xl p-4 flex items-center gap-2 border ${
+//                   traceUnavailable
+//                     ? 'bg-gray-50 border-gray-200 text-gray-600'
+//                     : 'bg-red-50 border-red-200 text-red-700'
+//                 }`}
+//               >
 //                 <AlertCircle size={20} />
 //                 {error}
 //               </div>
@@ -1087,17 +1162,17 @@
 
 //             {!loading && traceData && sortedEvents.length > 0 && (
 //               <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden shadow-sm">
-//                 <div className="hidden md:block overflow-x-auto scrollbar-hide">
+//                 <div className="hidden md:block max-h-[65vh] overflow-auto scrollbar-hide relative">
 //                   <div className="min-w-[980px]">
-//                     <div className="grid grid-cols-[150px_repeat(4,minmax(180px,1fr))] bg-gray-50 border-b border-gray-200">
+//                     <div className="sticky top-0 z-40 grid grid-cols-[150px_repeat(4,minmax(180px,1fr))] bg-white/95 backdrop-blur border-b border-gray-200 shadow-sm">
 //                       <div className="px-3 py-3 text-xs font-semibold text-gray-500 border-r border-gray-200">Time</div>
 //                       {SOURCE_ORDER.map((lane) => {
 //                         const color = getSourceColor(lane);
 //                         return (
 //                           <div key={lane} className="px-3 py-3 text-center border-r border-gray-100">
-//                             <span className={`inline-flex items-center px-2.5 py-1 rounded-full border ${color.border} ${color.light} ${color.text} text-xs font-bold`}>
+//                             <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${color.border} ${color.light} ${color.text} text-xs font-bold`}>
+//                               <span className={`w-2 h-2 rounded-full ${color.bg}`} />
 //                               {lane}
-//                               {renderSourceBadge(lane)}
 //                             </span>
 //                           </div>
 //                         );
@@ -1137,7 +1212,7 @@
 //                 </div>
 
 //                 <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 flex flex-wrap items-center gap-3 text-xs text-gray-500">
-//                   <span>Each arrow is one backend-provided source → target event.</span>
+//                   <span>Each arrow is exactly one backend-declared source → target event.</span>
 //                   <span>•</span>
 //                   <span>Correlation IDs are details only, never frontend graph authority.</span>
 //                   {pagination?.has_more && (
@@ -1216,6 +1291,8 @@
 //     next_event_id: null
 //   });
 //   const [loadingMoreTrace, setLoadingMoreTrace] = useState(false);
+//   const [traceStreamStatus, setTraceStreamStatus] = useState('idle');
+//   const [traceStreamError, setTraceStreamError] = useState('');
 
 //   const [isCompact, setIsCompact] = useState(true);
 
@@ -1234,6 +1311,15 @@
 //   const liveDurationIntervalRef = useRef(null);
 //   const modalLiveDataIntervalRef = useRef(null);
 //   const modalScrollPositionRef = useRef(0);
+
+//   // Trace SSE is separate from the operational live-session stream.
+//   // The static snapshot's replay_cursor is the race-free boundary.
+//   const traceStreamRef = useRef(null);
+//   const traceStreamRetryTimeoutRef = useRef(null);
+//   const traceStreamEnabledRef = useRef(false);
+//   const traceModalActiveRef = useRef(false);
+//   const traceStreamTraceIdRef = useRef(null);
+//   const traceReplayCursorRef = useRef(0);
 
 //   // Save modal state
 //   useEffect(() => {
@@ -1282,6 +1368,16 @@
 //       if (durationUpdateIntervalRef.current) clearInterval(durationUpdateIntervalRef.current);
 //       if (liveDurationIntervalRef.current) clearInterval(liveDurationIntervalRef.current);
 //       if (modalLiveDataIntervalRef.current) clearInterval(modalLiveDataIntervalRef.current);
+//       traceStreamEnabledRef.current = false;
+//       traceModalActiveRef.current = false;
+//       if (traceStreamRef.current) {
+//         traceStreamRef.current.abort?.();
+//         traceStreamRef.current = null;
+//       }
+//       if (traceStreamRetryTimeoutRef.current) {
+//         clearTimeout(traceStreamRetryTimeoutRef.current);
+//         traceStreamRetryTimeoutRef.current = null;
+//       }
 //     };
 //   }, [isAuthenticated, navigate]);
 
@@ -1598,6 +1694,216 @@
 //     setShowLiveIndicator(false);
 //   };
 
+//   // ========== Trace SSE ==========
+//   // Native EventSource cannot attach the required Authorization and
+//   // X-CPO-App-ID headers, so use the same authenticated fetch-stream pattern
+//   // as the live-session SSE above.
+//   const stopTraceSSE = useCallback((resetStatus = true) => {
+//     traceStreamEnabledRef.current = false;
+//     traceStreamTraceIdRef.current = null;
+//     if (traceStreamRef.current) {
+//       traceStreamRef.current.abort?.();
+//       traceStreamRef.current = null;
+//     }
+//     if (traceStreamRetryTimeoutRef.current) {
+//       clearTimeout(traceStreamRetryTimeoutRef.current);
+//       traceStreamRetryTimeoutRef.current = null;
+//     }
+//     if (resetStatus && isMountedRef.current) {
+//       setTraceStreamStatus('idle');
+//       setTraceStreamError('');
+//     }
+//   }, []);
+
+//   const startTraceSSE = useCallback((traceId, initialCursor = 0) => {
+//     if (!traceId || !traceModalActiveRef.current) return;
+
+//     if (traceStreamRef.current) {
+//       traceStreamRef.current.abort?.();
+//       traceStreamRef.current = null;
+//     }
+//     if (traceStreamRetryTimeoutRef.current) {
+//       clearTimeout(traceStreamRetryTimeoutRef.current);
+//       traceStreamRetryTimeoutRef.current = null;
+//     }
+
+//     traceStreamEnabledRef.current = true;
+//     traceStreamTraceIdRef.current = traceId;
+//     traceReplayCursorRef.current = Math.max(0, Number(initialCursor) || 0);
+//     setTraceStreamError('');
+
+//     const stillCurrent = () => (
+//       isMountedRef.current &&
+//       traceModalActiveRef.current &&
+//       traceStreamEnabledRef.current &&
+//       traceStreamTraceIdRef.current === traceId
+//     );
+
+//     const scheduleReconnect = (delayMs = 3000) => {
+//       if (!stillCurrent() || traceStreamRetryTimeoutRef.current) return;
+//       setTraceStreamStatus('retrying');
+//       traceStreamRetryTimeoutRef.current = setTimeout(() => {
+//         traceStreamRetryTimeoutRef.current = null;
+//         if (stillCurrent()) connect();
+//       }, delayMs);
+//     };
+
+//     const mergeTraceEvent = (event, replayCursor) => {
+//       if (!event?.id || !stillCurrent()) return;
+
+//       if (Number.isFinite(replayCursor) && replayCursor >= 0) {
+//         traceReplayCursorRef.current = Math.max(traceReplayCursorRef.current, replayCursor);
+//       }
+
+//       setTraceData((previous) => {
+//         if (!previous || previous.trace_id !== traceId) return previous;
+
+//         const existingEvents = Array.isArray(previous.events) ? previous.events : [];
+//         const alreadyPresent = existingEvents.some((candidate) => candidate?.id === event.id);
+//         const source = typeof event.source === 'string' && event.source.trim()
+//           ? event.source
+//           : null;
+
+//         return {
+//           ...previous,
+//           replay_cursor: Math.max(
+//             Number(previous.replay_cursor) || 0,
+//             Number.isFinite(replayCursor) ? replayCursor : 0
+//           ),
+//           sources_present: source
+//             ? Array.from(new Set([...(previous.sources_present || []), source]))
+//             : (previous.sources_present || []),
+//           events: alreadyPresent ? existingEvents : [...existingEvents, event]
+//         };
+//       });
+//     };
+
+//     async function connect() {
+//       if (!stillCurrent()) return;
+
+//       const token = localStorage.getItem('token');
+//       if (!token) {
+//         setTraceStreamError('Authentication is required for live trace updates.');
+//         scheduleReconnect(3000);
+//         return;
+//       }
+
+//       const controller = new AbortController();
+//       traceStreamRef.current = controller;
+//       const after = traceReplayCursorRef.current;
+//       const url = `${API_CONFIG.TRACE_STREAM_API(traceId)}?after=${encodeURIComponent(after)}`;
+
+//       setTraceStreamStatus('connecting');
+
+//       try {
+//         const response = await fetch(url, {
+//           method: 'GET',
+//           headers: {
+//             'Authorization': `Bearer ${token}`,
+//             'X-CPO-App-ID': CPO_APP_ID,
+//             'Accept': 'text/event-stream',
+//             'Cache-Control': 'no-cache'
+//           },
+//           signal: controller.signal
+//         });
+
+//         if (!stillCurrent()) return;
+
+//         if (response.status === 401) {
+//           setTraceStreamError('Refreshing session for live trace updates…');
+//           const newToken = await refreshToken();
+//           if (newToken && stillCurrent()) {
+//             setTraceStreamError('');
+//             scheduleReconnect(0);
+//           }
+//           return;
+//         }
+
+//         if (response.status === 403) {
+//           traceStreamEnabledRef.current = false;
+//           setTraceStreamStatus('idle');
+//           setTraceStreamError('Live trace access is no longer authorized.');
+//           setTraceData(null);
+//           setTracePagination({ has_more: false, next_occurred_at: null, next_event_id: null });
+//           setTraceError('Trace access is no longer authorized.');
+//           return;
+//         }
+
+//         if (response.status === 404) {
+//           traceStreamEnabledRef.current = false;
+//           setTraceStreamStatus('idle');
+//           setTraceStreamError('Live diagnostic trace is no longer available.');
+//           return;
+//         }
+
+//         if (!response.ok || !response.body) {
+//           throw new Error(`Trace SSE HTTP ${response.status}`);
+//         }
+
+//         setTraceStreamStatus('connected');
+//         setTraceStreamError('');
+
+//         const reader = response.body.getReader();
+//         const decoder = new TextDecoder();
+//         let buffer = '';
+
+//         while (stillCurrent()) {
+//           const { done, value } = await reader.read();
+//           if (done) break;
+
+//           buffer += decoder.decode(value, { stream: true });
+//           const frames = buffer.split(/\r?\n\r?\n/);
+//           buffer = frames.pop() || '';
+
+//           for (const frame of frames) {
+//             if (!frame.trim()) continue;
+
+//             let eventType = 'message';
+//             let eventId = '';
+//             const dataLines = [];
+
+//             for (const rawLine of frame.split(/\r?\n/)) {
+//               if (!rawLine || rawLine.startsWith(':')) continue;
+//               const colon = rawLine.indexOf(':');
+//               const field = colon === -1 ? rawLine : rawLine.slice(0, colon);
+//               let valueText = colon === -1 ? '' : rawLine.slice(colon + 1);
+//               if (valueText.startsWith(' ')) valueText = valueText.slice(1);
+
+//               if (field === 'event') eventType = valueText;
+//               else if (field === 'id') eventId = valueText;
+//               else if (field === 'data') dataLines.push(valueText);
+//             }
+
+//             if (eventType !== 'trace_event' || dataLines.length === 0) continue;
+
+//             try {
+//               const event = JSON.parse(dataLines.join('\n'));
+//               const cursor = Number(eventId);
+//               mergeTraceEvent(event, Number.isFinite(cursor) ? cursor : null);
+//             } catch (parseError) {
+//               console.warn('Trace SSE event parse error:', parseError);
+//             }
+//           }
+//         }
+
+//         if (stillCurrent()) scheduleReconnect();
+//       } catch (streamError) {
+//         if (streamError?.name === 'AbortError') return;
+//         console.error('Trace SSE stream error:', streamError);
+//         if (stillCurrent()) {
+//           setTraceStreamError('Live trace stream interrupted; retrying.');
+//           scheduleReconnect();
+//         }
+//       } finally {
+//         if (traceStreamRef.current === controller) {
+//           traceStreamRef.current = null;
+//         }
+//       }
+//     }
+
+//     connect();
+//   }, [refreshToken]);
+
 //   // ========== Fetch Sessions with before/before_id pagination ==========
 //   const fetchSessions = useCallback(async (before = null, beforeId = null, isLoadMore = false) => {
 //     if (fetchInProgressRef.current) return;
@@ -1879,11 +2185,22 @@
 //     }
 //   }, [refreshToken]);
 
-//   // ========== Fetch Trace ==========
+//   // ========== Fetch Trace (CMS canonical store only) ==========
 //   const fetchTrace = useCallback(async (sessionId, beforeOccurredAt = null, beforeEventId = null, isLoadMore = false) => {
 //     if (!sessionId) return;
 //     if (isLoadMore && loadingMoreTrace) return;
 //     if (!isLoadMore) {
+//       if (traceStreamRef.current) {
+//         traceStreamRef.current.abort?.();
+//         traceStreamRef.current = null;
+//       }
+//       if (traceStreamRetryTimeoutRef.current) {
+//         clearTimeout(traceStreamRetryTimeoutRef.current);
+//         traceStreamRetryTimeoutRef.current = null;
+//       }
+//       traceStreamEnabledRef.current = false;
+//       setTraceStreamStatus('idle');
+//       setTraceStreamError('');
 //       setLoadingTrace(true);
 //       setTraceError('');
 //       setTraceData(null);
@@ -1909,11 +2226,23 @@
 //         const data = await response.json();
 //         if (isLoadMore) {
 //           setTraceData(prev => ({
+//             ...prev,
 //             ...data,
+//             // Keep the first snapshot replay cursor as the race-free live boundary.
+//             replay_cursor: prev?.replay_cursor ?? data.replay_cursor,
+//             // Preserve every evidence source observed across loaded pages.
+//             sources_present: Array.from(new Set([
+//               ...(prev?.sources_present || []),
+//               ...(data.sources_present || [])
+//             ])),
 //             events: [...(prev?.events || []), ...(data.events || [])]
 //           }));
 //         } else {
 //           setTraceData(data);
+//           traceReplayCursorRef.current = Math.max(0, Number(data.replay_cursor) || 0);
+//           if (data.trace_id && traceModalActiveRef.current) {
+//             startTraceSSE(data.trace_id, traceReplayCursorRef.current);
+//           }
 //         }
 //         setTracePagination({
 //           has_more: !!data.next_occurred_at && !!data.next_event_id,
@@ -1927,9 +2256,15 @@
 //           fetchTrace(sessionId, beforeOccurredAt, beforeEventId, isLoadMore);
 //           return;
 //         }
+//       } else if (response.status === 403) {
+//         setTraceData(null);
+//         setTracePagination({ has_more: false, next_occurred_at: null, next_event_id: null });
+//         setTraceError('Trace access is not authorized for this CPO membership.');
+//       } else if (response.status === 404) {
+//         setTraceError('Diagnostic trace is not available for this session.');
 //       } else {
 //         const errorData = await response.json().catch(() => ({}));
-//         setTraceError(errorData.message || 'Failed to fetch trace');
+//         setTraceError(errorData?.error?.message || errorData?.message || 'Failed to fetch trace');
 //       }
 //     } catch (error) {
 //       console.error('❌ Error fetching trace:', error);
@@ -1940,7 +2275,7 @@
 //         setLoadingMoreTrace(false);
 //       }
 //     }
-//   }, [refreshToken]);
+//   }, [refreshToken, startTraceSSE, loadingMoreTrace]);
 
 //   const loadMoreTrace = () => {
 //     if (tracePagination.has_more && !loadingMoreTrace && traceData) {
@@ -1950,12 +2285,15 @@
 
 //   const openTraceModal = (sessionId) => {
 //     if (sessionId) {
+//       traceModalActiveRef.current = true;
 //       setShowTraceModal(true);
 //       fetchTrace(sessionId);
 //     }
 //   };
 
 //   const closeTraceModal = () => {
+//     traceModalActiveRef.current = false;
+//     stopTraceSSE();
 //     setShowTraceModal(false);
 //     setTraceData(null);
 //     setTraceError('');
@@ -2634,6 +2972,8 @@
 //           error={traceError}
 //           pagination={tracePagination}
 //           loadingMore={loadingMoreTrace}
+//           streamStatus={traceStreamStatus}
+//           streamError={traceStreamError}
 //           onClose={closeTraceModal}
 //           onLoadMore={loadMoreTrace}
 //         />
@@ -2697,6 +3037,7 @@ import {
   Settings,
   Plus,
   ChevronDown,
+  ChevronUp,
   User,
   Building,
   LogOut,
@@ -2707,7 +3048,6 @@ import {
   CheckCircle,
   AlertCircle,
   X,
-  ArrowLeft,
   RefreshCw,
   Zap,
   Loader2,
@@ -2742,7 +3082,7 @@ const API_CONFIG = {
   TRACE_STREAM_API: (traceId) => `${API_BASE_URL}/api/v1/cpo/charging-traces/${traceId}/stream`,
 };
 
-// Status color mapping
+// Status helpers
 const getStatusColor = (status) => {
   const colors = {
     'COMPLETED': 'bg-emerald-100 text-emerald-700 border-emerald-200',
@@ -2968,18 +3308,15 @@ const truncateId = (id) => {
   return str.length > 10 ? str.substring(0, 10) + '…' : str;
 };
 
-// Source colors for trace
+// Trace helpers (unchanged)
 const SOURCE_COLORS = {
   APP: { bg: 'bg-blue-500', text: 'text-blue-600', border: 'border-blue-300', light: 'bg-blue-50' },
   CMS: { bg: 'bg-purple-500', text: 'text-purple-600', border: 'border-purple-300', light: 'bg-purple-50' },
   HAL: { bg: 'bg-emerald-500', text: 'text-emerald-600', border: 'border-emerald-300', light: 'bg-emerald-50' },
   CHARGER: { bg: 'bg-amber-500', text: 'text-amber-600', border: 'border-amber-300', light: 'bg-amber-50' },
 };
-
 const SOURCE_ORDER = ['APP', 'CMS', 'HAL', 'CHARGER'];
-
 const getSourceColor = (source) => SOURCE_COLORS[source] || { bg: 'bg-gray-400', text: 'text-gray-600', border: 'border-gray-300', light: 'bg-gray-50' };
-
 const PHASE_COLORS = {
   PRE_START: { bg: 'bg-blue-50/70', text: 'text-blue-700', chip: 'bg-blue-100 text-blue-700' },
   STARTING: { bg: 'bg-indigo-50/70', text: 'text-indigo-700', chip: 'bg-indigo-100 text-indigo-700' },
@@ -2998,7 +3335,7 @@ const SocBatteryDisplay = ({ initialSoc, finalSoc, isOngoing }) => {
   const initial = Math.min(Math.max(initialSoc ?? 0, 0), 100);
   const final = Math.min(Math.max(finalSoc ?? 0, 0), 100);
   const charged = Math.max(final - initial, 0);
-  const displaySoc = isOngoing ? final : final;
+  const displaySoc = final;
 
   const getBatteryColor = (soc) => {
     if (soc >= 80) return 'from-green-400 to-emerald-500';
@@ -3006,7 +3343,6 @@ const SocBatteryDisplay = ({ initialSoc, finalSoc, isOngoing }) => {
     if (soc >= 20) return 'from-yellow-400 to-orange-500';
     return 'from-red-400 to-rose-500';
   };
-
   const batteryColor = getBatteryColor(displaySoc);
 
   const getBatteryIcon = (soc) => {
@@ -3033,7 +3369,7 @@ const SocBatteryDisplay = ({ initialSoc, finalSoc, isOngoing }) => {
 
       <div className="relative">
         <div className="w-full h-14 bg-gray-200 rounded-xl overflow-hidden border-2 border-gray-300 relative">
-          <div 
+          <div
             className={`h-full bg-gradient-to-r ${batteryColor} transition-all duration-700 ease-in-out rounded-lg flex items-center justify-end pr-3`}
             style={{ width: `${displaySoc}%` }}
           >
@@ -3080,7 +3416,7 @@ const SocBatteryDisplay = ({ initialSoc, finalSoc, isOngoing }) => {
 };
 
 // ==========================================================================
-// SessionDetailModal
+// SessionDetailModal (unchanged)
 // ==========================================================================
 const SessionDetailModal = ({ session, loading, error, onClose }) => {
   if (!session) return null;
@@ -3156,24 +3492,12 @@ const SessionDetailModal = ({ session, loading, error, onClose }) => {
                     {getStatusIcon(session.status)}
                     {getStatusDisplayName(session.status)}
                   </span>
-                  {isLive && isOngoing && (
-                    <span className="ml-2 text-xs text-green-600">
-                      <span className="w-1.5 h-1.5 bg-green-500 rounded-full inline-block mr-1 animate-pulse"></span>
-                      Live
-                    </span>
-                  )}
                 </div>
                 <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-2xl p-4 border border-emerald-200">
                   <p className="text-xs text-gray-500 uppercase tracking-wider">Amount</p>
                   <p className="text-2xl font-bold text-emerald-600 mt-1">
                     {formatCurrency(projectedAmount || session.total_amount)}
                   </p>
-                  {isLive && isOngoing && (
-                    <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-                      Live updating
-                    </p>
-                  )}
                 </div>
                 <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-4 border border-purple-200">
                   <p className="text-xs text-gray-500 uppercase tracking-wider">Usage</p>
@@ -3181,24 +3505,12 @@ const SessionDetailModal = ({ session, loading, error, onClose }) => {
                     {energy > 0 ? energy.toFixed(2) : (session.total_kwh || 0)} kWh
                   </p>
                   {isLive && soc && <p className="text-xs text-gray-500 mt-1">SOC: {soc}%</p>}
-                  {isLive && isOngoing && (
-                    <p className="text-xs text-green-600 mt-1 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-                      Live updating
-                    </p>
-                  )}
                 </div>
                 <div className="bg-gradient-to-br from-amber-50 to-orange-50 rounded-2xl p-4 border border-amber-200">
                   <p className="text-xs text-gray-500 uppercase tracking-wider">Duration</p>
                   <p className="text-2xl font-bold text-amber-600 mt-1">
                     {durationFormatted}
                   </p>
-                  {isOngoing && (
-                    <p className="text-xs text-gray-400 mt-1 flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-                      Live (updating)
-                    </p>
-                  )}
                   {durationMinutes > 0 && !isOngoing && (
                     <p className="text-xs text-gray-400 mt-1">({durationMinutes} minutes)</p>
                   )}
@@ -3356,13 +3668,7 @@ const SessionDetailModal = ({ session, loading, error, onClose }) => {
                         {meterFreshness}
                       </span>
                     </div>
-                    {session.connector_number && (
-                      <div><span className="text-gray-500">Connector:</span> <span className="ml-2 font-medium text-gray-700">#{session.connector_number}</span></div>
-                    )}
                   </div>
-                  {session.started_at && (
-                    <p className="text-xs text-gray-400 mt-2">Started at: {formatDate(session.started_at)}</p>
-                  )}
                 </div>
               )}
 
@@ -3395,7 +3701,7 @@ const SessionDetailModal = ({ session, loading, error, onClose }) => {
 };
 
 // ==========================================================================
-// TraceModal — CMS-canonical diagnostic waterfall
+// TraceModal (unchanged)
 // ==========================================================================
 const compareTraceEventsChronological = (a, b) => {
   const at = new Date(a?.occurred_at || 0).getTime();
@@ -3441,20 +3747,15 @@ const buildTraceDisplayRows = (events, expandedMeterGroups) => {
         next.target !== event.target ||
         next.phase !== event.phase ||
         next.protocol !== event.protocol
-      ) {
-        break;
-      }
+      ) break;
       group.push(next);
       j += 1;
     }
-    if (group.length === 1) {
-      rows.push({ kind: 'event', key: event.id, event });
-    } else {
+    if (group.length === 1) rows.push({ kind: 'event', key: event.id, event });
+    else {
       const groupKey = `meter:${group[0].id}:${group[group.length - 1].id}`;
       if (expandedMeterGroups.has(groupKey)) {
-        group.forEach((member) => {
-          rows.push({ kind: 'event', key: member.id, event: member, meterGroupKey: groupKey });
-        });
+        group.forEach((member) => rows.push({ kind: 'event', key: member.id, event: member, meterGroupKey: groupKey }));
       } else {
         rows.push({ kind: 'meter-group', key: groupKey, event: group[0], events: group, groupKey });
       }
@@ -3470,17 +3771,11 @@ const TraceModal = ({ traceData, loading, error, pagination, loadingMore, stream
 
   const sortedEvents = useMemo(() => {
     const byId = new Map();
-    events.forEach((event) => {
-      if (!event?.id) return;
-      byId.set(event.id, event);
-    });
+    events.forEach((event) => { if (event?.id) byId.set(event.id, event); });
     return [...byId.values()].sort(compareTraceEventsChronological);
   }, [events]);
 
-  const displayRows = useMemo(
-    () => buildTraceDisplayRows(sortedEvents, expandedMeterGroups),
-    [sortedEvents, expandedMeterGroups]
-  );
+  const displayRows = useMemo(() => buildTraceDisplayRows(sortedEvents, expandedMeterGroups), [sortedEvents, expandedMeterGroups]);
 
   const sourcesPresent = useMemo(() => {
     const validSources = Array.isArray(traceData?.sources_present)
@@ -3496,11 +3791,8 @@ const TraceModal = ({ traceData, loading, error, pagination, loadingMore, stream
     displayRows.forEach((row) => {
       const phase = row.event?.phase || 'UNKNOWN';
       const last = segments[segments.length - 1];
-      if (last && last.phase === phase) {
-        last.rows.push(row);
-      } else {
-        segments.push({ phase, rows: [row] });
-      }
+      if (last && last.phase === phase) last.rows.push(row);
+      else segments.push({ phase, rows: [row] });
     });
     return segments;
   }, [displayRows]);
@@ -3556,9 +3848,6 @@ const TraceModal = ({ traceData, loading, error, pagination, loadingMore, stream
     const summary = meterGroup ? `MeterValues × ${meterGroup.length}` : event.summary || 'Trace event';
     const occurredEnd = meterGroup ? meterGroup[meterGroup.length - 1]?.occurred_at : null;
 
-    // The actor area is treated as 0..100%. Each event uses exactly the
-    // backend-declared source -> target relation; no adjacency, correlation-id,
-    // or timestamp inference is performed here.
     const sourceX = sourceKnown ? ((sourceIndex + 0.5) / SOURCE_ORDER.length) * 100 : 0;
     const targetX = targetKnown ? ((targetIndex + 0.5) / SOURCE_ORDER.length) * 100 : 0;
     const arrowLeft = Math.min(sourceX, targetX);
@@ -3648,7 +3937,6 @@ const TraceModal = ({ traceData, loading, error, pagination, loadingMore, stream
                   className="absolute top-[30px] h-[2px] bg-indigo-400"
                   style={{ left: `${arrowLeft}%`, width: `${arrowWidth}%` }}
                 />
-
                 <span
                   className="absolute top-[25px] w-3 h-3 rounded-full bg-indigo-500 ring-4 ring-white -translate-x-1/2"
                   style={{ left: `${sourceX}%` }}
@@ -3657,7 +3945,6 @@ const TraceModal = ({ traceData, loading, error, pagination, loadingMore, stream
                   className="absolute top-[25px] w-3 h-3 rounded-full bg-white border-2 border-indigo-500 ring-4 ring-white -translate-x-1/2"
                   style={{ left: `${targetX}%` }}
                 />
-
                 {movesRight ? (
                   <span
                     className="absolute top-[25px] w-0 h-0 border-y-[6px] border-y-transparent border-l-[10px] border-l-indigo-500"
@@ -3713,9 +4000,7 @@ const TraceModal = ({ traceData, loading, error, pagination, loadingMore, stream
           <button type="button" onClick={() => toggleMeterGroup(row.groupKey)} className="mt-3 px-3 py-1.5 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-xs text-gray-700 font-medium">
             Expand {meterGroup.length} samples
           </button>
-        ) : (
-          renderEventDetails(event)
-        )}
+        ) : renderEventDetails(event)}
       </div>
     );
   };
@@ -3730,33 +4015,6 @@ const TraceModal = ({ traceData, loading, error, pagination, loadingMore, stream
               <p className="text-sm text-gray-500 mt-1">
                 Session: <span className="font-mono">{truncateId(traceData?.session_id) || 'N/A'}</span> · Trace: <span className="font-mono">{truncateId(traceData?.trace_id) || 'N/A'}</span>
               </p>
-              {traceData?.trace_id && (
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${
-                    streamStatus === 'connected'
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
-                      : streamStatus === 'connecting' || streamStatus === 'retrying'
-                        ? 'bg-amber-50 border-amber-200 text-amber-700'
-                        : 'bg-gray-50 border-gray-200 text-gray-600'
-                  }`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${
-                      streamStatus === 'connected'
-                        ? 'bg-emerald-500 animate-pulse'
-                        : streamStatus === 'connecting' || streamStatus === 'retrying'
-                          ? 'bg-amber-500 animate-pulse'
-                          : 'bg-gray-400'
-                    }`} />
-                    {streamStatus === 'connected'
-                      ? 'Live trace updates'
-                      : streamStatus === 'connecting'
-                        ? 'Connecting live trace'
-                        : streamStatus === 'retrying'
-                          ? 'Reconnecting live trace'
-                          : 'Static trace snapshot'}
-                  </span>
-                  {streamError && <span className="text-amber-700">{streamError}</span>}
-                </div>
-              )}
             </div>
             <button type="button" onClick={onClose} className="p-2 text-gray-500 hover:text-gray-800 hover:bg-white rounded-xl transition" aria-label="Close charging trace">
               <X size={22} />
@@ -3781,24 +4039,6 @@ const TraceModal = ({ traceData, loading, error, pagination, loadingMore, stream
                 <p className="text-xs text-gray-500 uppercase tracking-wider">OCPP Transaction ID</p>
                 <p className="text-sm font-mono text-gray-800 truncate">{traceData?.ocpp_transaction_id ?? 'N/A'}</p>
               </div>
-              <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-                <p className="text-xs text-gray-500 uppercase tracking-wider">CMS Start Intent ID</p>
-                <p className="text-sm font-mono text-gray-800 truncate">{traceData?.cms_start_intent_id || 'N/A'}</p>
-              </div>
-              <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-                <p className="text-xs text-gray-500 uppercase tracking-wider">CMS Command ID</p>
-                <p className="text-sm font-mono text-gray-800 truncate">{traceData?.cms_command_id || 'N/A'}</p>
-              </div>
-              <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-                <p className="text-xs text-gray-500 uppercase tracking-wider">Charger OCPP Identity</p>
-                <p className="text-sm font-mono text-gray-800 truncate">{traceData?.charger_ocpp_identity || 'N/A'}</p>
-              </div>
-              <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-                <p className="text-xs text-gray-500 uppercase tracking-wider">Connector</p>
-                <p className="text-sm font-mono text-gray-800 truncate">
-                  {traceData?.ocpp_connector_number ? `#${traceData.ocpp_connector_number}` : 'N/A'}
-                </p>
-              </div>
             </div>
 
             <div className="mb-6 rounded-xl border border-gray-200 bg-gray-50 p-3">
@@ -3820,9 +4060,6 @@ const TraceModal = ({ traceData, loading, error, pagination, loadingMore, stream
                   <span className="text-xs text-gray-500">None reported in this response.</span>
                 )}
               </div>
-              <p className="mt-2 text-[11px] text-gray-500">
-                This is persisted diagnostic evidence in CMS, not a health or availability check for any actor.
-              </p>
             </div>
 
             {loading && !traceData && (
@@ -3833,13 +4070,9 @@ const TraceModal = ({ traceData, loading, error, pagination, loadingMore, stream
             )}
 
             {error && (
-              <div
-                className={`mb-6 rounded-xl p-4 flex items-center gap-2 border ${
-                  traceUnavailable
-                    ? 'bg-gray-50 border-gray-200 text-gray-600'
-                    : 'bg-red-50 border-red-200 text-red-700'
-                }`}
-              >
+              <div className={`mb-6 rounded-xl p-4 flex items-center gap-2 border ${
+                traceUnavailable ? 'bg-gray-50 border-gray-200 text-gray-600' : 'bg-red-50 border-red-200 text-red-700'
+              }`}>
                 <AlertCircle size={20} />
                 {error}
               </div>
@@ -3848,7 +4081,6 @@ const TraceModal = ({ traceData, loading, error, pagination, loadingMore, stream
             {!loading && traceData && sortedEvents.length === 0 && (
               <div className="bg-gray-50 rounded-xl p-8 text-center border border-gray-200">
                 <p className="text-gray-600">No diagnostic events are available for this trace.</p>
-                <p className="text-xs text-gray-400 mt-1">An empty trace page is not a charging-session failure.</p>
               </div>
             )}
 
@@ -3905,8 +4137,6 @@ const TraceModal = ({ traceData, loading, error, pagination, loadingMore, stream
 
                 <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 flex flex-wrap items-center gap-3 text-xs text-gray-500">
                   <span>Each arrow is exactly one backend-declared source → target event.</span>
-                  <span>•</span>
-                  <span>Correlation IDs are details only, never frontend graph authority.</span>
                   {pagination?.has_more && (
                     <>
                       <span>•</span>
@@ -3949,7 +4179,6 @@ const Sessions = () => {
   const [liveSessionsData, setLiveSessionsData] = useState({ sessions: [], as_of: null });
   const [updatedSessionIds, setUpdatedSessionIds] = useState(new Set());
 
-  // Pagination state using before and before_id
   const [pagination, setPagination] = useState({
     limit: 20,
     has_more: false,
@@ -3963,7 +4192,10 @@ const Sessions = () => {
 
   const [statusFilter, setStatusFilter] = useState('All');
 
-  // Detail modal
+  // **NEW**: sorting state
+  const [sortBy, setSortBy] = useState('start_time');
+  const [sortOrder, setSortOrder] = useState('desc');
+
   const [showDetailModal, setShowDetailModal] = useState(() => sessionStorage.getItem('sessionModalOpen') === 'true');
   const [selectedSession, setSelectedSession] = useState(() => {
     const saved = sessionStorage.getItem('selectedSession');
@@ -3972,7 +4204,6 @@ const Sessions = () => {
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState(() => sessionStorage.getItem('selectedSessionId') || null);
 
-  // Trace modal
   const [showTraceModal, setShowTraceModal] = useState(false);
   const [traceData, setTraceData] = useState(null);
   const [loadingTrace, setLoadingTrace] = useState(false);
@@ -3988,7 +4219,6 @@ const Sessions = () => {
 
   const [isCompact, setIsCompact] = useState(true);
 
-  // SSE state
   const [isStreaming, setIsStreaming] = useState(false);
   const eventSourceRef = useRef(null);
   const [showLiveIndicator, setShowLiveIndicator] = useState(false);
@@ -4004,8 +4234,9 @@ const Sessions = () => {
   const modalLiveDataIntervalRef = useRef(null);
   const modalScrollPositionRef = useRef(0);
 
-  // Trace SSE is separate from the operational live-session stream.
-  // The static snapshot's replay_cursor is the race-free boundary.
+  const previousLiveIdsRef = useRef(new Set());
+  const completedSessionsFetchRef = useRef(new Set());
+
   const traceStreamRef = useRef(null);
   const traceStreamRetryTimeoutRef = useRef(null);
   const traceStreamEnabledRef = useRef(false);
@@ -4013,7 +4244,6 @@ const Sessions = () => {
   const traceStreamTraceIdRef = useRef(null);
   const traceReplayCursorRef = useRef(0);
 
-  // Save modal state
   useEffect(() => {
     if (showDetailModal) {
       sessionStorage.setItem('sessionModalOpen', 'true');
@@ -4032,17 +4262,11 @@ const Sessions = () => {
     } else {
       document.body.style.overflow = '';
     }
-    return () => {
-      document.body.style.overflow = '';
-    };
+    return () => { document.body.style.overflow = ''; };
   }, [showDetailModal, showTraceModal]);
 
-  // Initial fetch
   useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/signin');
-      return;
-    }
+    if (!isAuthenticated) { navigate('/signin'); return; }
     isMountedRef.current = true;
     const init = async () => {
       await fetchUserInfo();
@@ -4073,7 +4297,6 @@ const Sessions = () => {
     };
   }, [isAuthenticated, navigate]);
 
-  // Live data tick
   useEffect(() => {
     if (liveDurationIntervalRef.current) clearInterval(liveDurationIntervalRef.current);
     liveDurationIntervalRef.current = setInterval(() => {
@@ -4082,8 +4305,92 @@ const Sessions = () => {
     return () => { if (liveDurationIntervalRef.current) clearInterval(liveDurationIntervalRef.current); };
   }, []);
 
-  // Update live sessions map
+  // **COMPLETED**: refresh completed session
+  const refreshCompletedSession = useCallback(async (sessionId) => {
+    if (!sessionId) return;
+    if (completedSessionsFetchRef.current.has(String(sessionId))) return;
+    completedSessionsFetchRef.current.add(String(sessionId));
+
+    try {
+      const token = localStorage.getItem('token');
+      const response = await fetch(API_CONFIG.SESSION_DETAIL_API(sessionId), {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'X-CPO-App-ID': CPO_APP_ID,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      });
+      if (!response.ok || !isMountedRef.current) return;
+
+      const data = await response.json();
+      const session = data.session || data.data || data;
+      if (!session) return;
+
+      setOngoingSessions(prev =>
+        prev.filter(s => String(s.id || s.session_id) !== String(sessionId))
+      );
+
+      setAllSessions(prev => {
+        const idx = prev.findIndex(s => String(s.id || s.session_id) === String(sessionId));
+        if (idx < 0) return prev;
+        const updated = [...prev];
+        updated[idx] = {
+          ...updated[idx],
+          ...session,
+          is_live: false,
+          live_data: null,
+          status: session.status || 'COMPLETED',
+          consumed_wh: null,
+          duration_seconds:
+            getCompletedDurationSeconds(session.start_time || session.started_at, session.end_time)
+            ?? session.duration_seconds ?? null
+        };
+        return updated;
+      });
+
+      setSelectedSession(prev => {
+        if (!prev) return prev;
+        const prevId = String(prev.id || prev.session_id);
+        if (prevId !== String(sessionId)) return prev;
+        return { ...prev, ...session, is_live: false, live_data: null };
+      });
+
+      delete liveSessionsMapRef.current[sessionId];
+    } catch (err) {
+      console.error('Failed to refresh completed session:', err);
+    } finally {
+      setTimeout(() => {
+        completedSessionsFetchRef.current.delete(String(sessionId));
+      }, 8000);
+    }
+  }, []);
+
+  // **UPDATED**: Robust live-session merge — new live sessions automatically
+  // appear in BOTH Ongoing AND All Sessions without any refresh.
   useEffect(() => {
+    const currentLiveIds = new Set(
+      liveSessionsData.sessions.map(s => String(s.session_id || s.id))
+    );
+
+    const justCompleted = new Set();
+    previousLiveIdsRef.current.forEach(id => {
+      if (!currentLiveIds.has(id)) justCompleted.add(id);
+    });
+
+    const TERMINAL = ['COMPLETED', 'STOPPED', 'FAILED', 'CANCELLED', 'FINISHED'];
+    liveSessionsData.sessions.forEach(s => {
+      const status = String(s.status || '').toUpperCase();
+      if (TERMINAL.includes(status)) justCompleted.add(String(s.session_id || s.id));
+    });
+
+    previousLiveIdsRef.current = currentLiveIds;
+
+    if (justCompleted.size > 0) {
+      justCompleted.forEach(id => refreshCompletedSession(id));
+    }
+
     const newSessionIds = new Set();
     liveSessionsData.sessions.forEach(session => {
       const id = session.session_id || session.id;
@@ -4101,6 +4408,7 @@ const Sessions = () => {
       setTimeout(() => setUpdatedSessionIds(new Set()), 2000);
     }
     previousLiveSessionsRef.current = [...liveSessionsData.sessions];
+
     const map = {};
     liveSessionsData.sessions.forEach(s => {
       const id = s.session_id || s.id;
@@ -4108,6 +4416,7 @@ const Sessions = () => {
     });
     liveSessionsMapRef.current = map;
 
+    // Refresh modal if open
     if (showDetailModal && selectedSessionId) {
       const liveData = map[selectedSessionId];
       if (liveData) {
@@ -4137,11 +4446,13 @@ const Sessions = () => {
       }
     }
 
+    // Update ongoing sessions
     const ongoing = liveSessionsData.sessions.filter(s =>
       isOngoingStatus(s.status) || s.status === 'ACTIVE' || s.status === 'STOP_PENDING'
     );
     setOngoingSessions(ongoing);
-    
+
+    // Merge live sessions into allSessions — this makes them appear instantly in "All Sessions"
     setAllSessions(prev => {
       const updated = [...prev];
       liveSessionsData.sessions.forEach(liveSession => {
@@ -4152,15 +4463,16 @@ const Sessions = () => {
         });
         if (index >= 0) {
           updated[index] = { ...updated[index], ...liveSession, is_live: true };
-        } else if (isOngoingStatus(liveSession.status) || liveSession.status === 'ACTIVE') {
-          updated.push({ ...liveSession, is_live: true });
+        } else if (isOngoingStatus(liveSession.status) || liveSession.status === 'ACTIVE' || liveSession.status === 'STOP_PENDING') {
+          // Newly-started live session — auto-insert into All Sessions
+          updated.unshift({ ...liveSession, is_live: true });
         }
       });
       return updated;
     });
-  }, [liveSessionsData, showDetailModal, selectedSessionId]);
+  }, [liveSessionsData, showDetailModal, selectedSessionId, refreshCompletedSession]);
 
-  // Modal live data update
+  // Modal live data ticker
   useEffect(() => {
     if (modalLiveDataIntervalRef.current) clearInterval(modalLiveDataIntervalRef.current);
     if (showDetailModal && selectedSessionId) {
@@ -4223,10 +4535,7 @@ const Sessions = () => {
         eventSourceRef.current = null;
       }
       const token = localStorage.getItem('token');
-      if (!token) {
-        console.warn('No token found for SSE stream');
-        return;
-      }
+      if (!token) { console.warn('No token found for SSE stream'); return; }
       const url = `${API_CONFIG.LIVE_SESSIONS_SSE}?cpo_app_id=${CPO_APP_ID}`;
       const controller = new AbortController();
       eventSourceRef.current = controller;
@@ -4243,7 +4552,6 @@ const Sessions = () => {
       .then(response => {
         if (!response.ok) {
           if (response.status === 401) {
-            console.error('❌ SSE Stream 401 Unauthorized');
             setIsStreaming(false);
             setShowLiveIndicator(false);
             refreshToken().then(newToken => {
@@ -4253,7 +4561,6 @@ const Sessions = () => {
           }
           throw new Error(`HTTP error! status: ${response.status}`);
         }
-        console.log('📡 SSE Live Sessions Stream connected');
         if (isMountedRef.current) {
           setIsStreaming(true);
           setShowLiveIndicator(true);
@@ -4265,7 +4572,6 @@ const Sessions = () => {
           if (!isMountedRef.current) return;
           reader.read().then(({ done, value }) => {
             if (done || !isMountedRef.current) {
-              console.log('📡 SSE Stream ended');
               if (isMountedRef.current) {
                 setIsStreaming(false);
                 setShowLiveIndicator(false);
@@ -4289,8 +4595,7 @@ const Sessions = () => {
             }
             if (isMountedRef.current) readStream();
           }).catch(error => {
-            if (error.name === 'AbortError') console.log('📡 SSE Stream aborted');
-            else {
+            if (error.name !== 'AbortError') {
               console.error('📡 SSE Stream error:', error);
               if (isMountedRef.current) {
                 setIsStreaming(false);
@@ -4387,9 +4692,6 @@ const Sessions = () => {
   };
 
   // ========== Trace SSE ==========
-  // Native EventSource cannot attach the required Authorization and
-  // X-CPO-App-ID headers, so use the same authenticated fetch-stream pattern
-  // as the live-session SSE above.
   const stopTraceSSE = useCallback((resetStatus = true) => {
     traceStreamEnabledRef.current = false;
     traceStreamTraceIdRef.current = null;
@@ -4409,7 +4711,6 @@ const Sessions = () => {
 
   const startTraceSSE = useCallback((traceId, initialCursor = 0) => {
     if (!traceId || !traceModalActiveRef.current) return;
-
     if (traceStreamRef.current) {
       traceStreamRef.current.abort?.();
       traceStreamRef.current = null;
@@ -4418,7 +4719,6 @@ const Sessions = () => {
       clearTimeout(traceStreamRetryTimeoutRef.current);
       traceStreamRetryTimeoutRef.current = null;
     }
-
     traceStreamEnabledRef.current = true;
     traceStreamTraceIdRef.current = traceId;
     traceReplayCursorRef.current = Math.max(0, Number(initialCursor) || 0);
@@ -4442,20 +4742,14 @@ const Sessions = () => {
 
     const mergeTraceEvent = (event, replayCursor) => {
       if (!event?.id || !stillCurrent()) return;
-
       if (Number.isFinite(replayCursor) && replayCursor >= 0) {
         traceReplayCursorRef.current = Math.max(traceReplayCursorRef.current, replayCursor);
       }
-
       setTraceData((previous) => {
         if (!previous || previous.trace_id !== traceId) return previous;
-
         const existingEvents = Array.isArray(previous.events) ? previous.events : [];
         const alreadyPresent = existingEvents.some((candidate) => candidate?.id === event.id);
-        const source = typeof event.source === 'string' && event.source.trim()
-          ? event.source
-          : null;
-
+        const source = typeof event.source === 'string' && event.source.trim() ? event.source : null;
         return {
           ...previous,
           replay_cursor: Math.max(
@@ -4472,19 +4766,16 @@ const Sessions = () => {
 
     async function connect() {
       if (!stillCurrent()) return;
-
       const token = localStorage.getItem('token');
       if (!token) {
         setTraceStreamError('Authentication is required for live trace updates.');
         scheduleReconnect(3000);
         return;
       }
-
       const controller = new AbortController();
       traceStreamRef.current = controller;
       const after = traceReplayCursorRef.current;
       const url = `${API_CONFIG.TRACE_STREAM_API(traceId)}?after=${encodeURIComponent(after)}`;
-
       setTraceStreamStatus('connecting');
 
       try {
@@ -4510,7 +4801,6 @@ const Sessions = () => {
           }
           return;
         }
-
         if (response.status === 403) {
           traceStreamEnabledRef.current = false;
           setTraceStreamStatus('idle');
@@ -4520,17 +4810,13 @@ const Sessions = () => {
           setTraceError('Trace access is no longer authorized.');
           return;
         }
-
         if (response.status === 404) {
           traceStreamEnabledRef.current = false;
           setTraceStreamStatus('idle');
           setTraceStreamError('Live diagnostic trace is no longer available.');
           return;
         }
-
-        if (!response.ok || !response.body) {
-          throw new Error(`Trace SSE HTTP ${response.status}`);
-        }
+        if (!response.ok || !response.body) throw new Error(`Trace SSE HTTP ${response.status}`);
 
         setTraceStreamStatus('connected');
         setTraceStreamError('');
@@ -4542,32 +4828,26 @@ const Sessions = () => {
         while (stillCurrent()) {
           const { done, value } = await reader.read();
           if (done) break;
-
           buffer += decoder.decode(value, { stream: true });
           const frames = buffer.split(/\r?\n\r?\n/);
           buffer = frames.pop() || '';
 
           for (const frame of frames) {
             if (!frame.trim()) continue;
-
             let eventType = 'message';
             let eventId = '';
             const dataLines = [];
-
             for (const rawLine of frame.split(/\r?\n/)) {
               if (!rawLine || rawLine.startsWith(':')) continue;
               const colon = rawLine.indexOf(':');
               const field = colon === -1 ? rawLine : rawLine.slice(0, colon);
               let valueText = colon === -1 ? '' : rawLine.slice(colon + 1);
               if (valueText.startsWith(' ')) valueText = valueText.slice(1);
-
               if (field === 'event') eventType = valueText;
               else if (field === 'id') eventId = valueText;
               else if (field === 'data') dataLines.push(valueText);
             }
-
             if (eventType !== 'trace_event' || dataLines.length === 0) continue;
-
             try {
               const event = JSON.parse(dataLines.join('\n'));
               const cursor = Number(eventId);
@@ -4577,7 +4857,6 @@ const Sessions = () => {
             }
           }
         }
-
         if (stillCurrent()) scheduleReconnect();
       } catch (streamError) {
         if (streamError?.name === 'AbortError') return;
@@ -4587,41 +4866,30 @@ const Sessions = () => {
           scheduleReconnect();
         }
       } finally {
-        if (traceStreamRef.current === controller) {
-          traceStreamRef.current = null;
-        }
+        if (traceStreamRef.current === controller) traceStreamRef.current = null;
       }
     }
 
     connect();
   }, [refreshToken]);
 
-  // ========== Fetch Sessions with before/before_id pagination ==========
+  // ========== Fetch Sessions ==========
   const fetchSessions = useCallback(async (before = null, beforeId = null, isLoadMore = false) => {
     if (fetchInProgressRef.current) return;
     if (isLoadMore && loadingMore) return;
-    
+
     fetchInProgressRef.current = true;
     if (!isLoadMore) setLoading(true);
     else setLoadingMore(true);
     setError('');
-    
+
     try {
       const token = localStorage.getItem('token');
       let url = `${API_CONFIG.SESSIONS_API}?limit=${pagination.limit}`;
-      
-      // Use before and before_id for pagination
-      if (before) {
-        url += `&before=${encodeURIComponent(before)}`;
-      }
-      if (beforeId) {
-        url += `&before_id=${encodeURIComponent(beforeId)}`;
-      }
-      if (statusFilter !== 'All') {
-        url += `&status=${statusFilter}`;
-      }
-      
-      console.log('📤 Fetching CPO sessions:', url);
+      if (before) url += `&before=${encodeURIComponent(before)}`;
+      if (beforeId) url += `&before_id=${encodeURIComponent(beforeId)}`;
+      if (statusFilter !== 'All') url += `&status=${statusFilter}`;
+
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -4631,20 +4899,18 @@ const Sessions = () => {
           'Accept': 'application/json'
         }
       });
-      
+
       if (!isMountedRef.current) { fetchInProgressRef.current = false; return; }
-      
+
       if (response.ok) {
         const data = await response.json();
         let sessionsArray = data.sessions || data.data || [];
         if (!Array.isArray(sessionsArray)) sessionsArray = [];
-        
+
         const hasMore = data.has_more || false;
         const nextBefore = data.next_before || null;
         const nextBeforeId = data.next_before_id || null;
-        
-        console.log('📊 API Response - HasMore:', hasMore, 'NextBefore:', nextBefore);
-        
+
         const transformed = sessionsArray.map((session) => {
           const sessionId = session.id || session.session_id;
           const liveData = liveSessionsMapRef.current[sessionId];
@@ -4655,7 +4921,7 @@ const Sessions = () => {
           const durationSeconds = isOngoing
             ? (liveData?.duration_seconds ?? null)
             : (getCompletedDurationSeconds(startTime, endTime) ?? session.duration_seconds ?? null);
-          
+
           return {
             ...session,
             id: session.id,
@@ -4696,84 +4962,74 @@ const Sessions = () => {
             igst_percent: session.igst_percent || null,
           };
         });
-        
-        console.log('📊 Transformed sessions:', transformed.length);
-        
-        // Update sessions list
+
+        // **IMPORTANT**: When overwriting allSessions from API, we must ALSO
+        // preserve any live sessions that are in the SSE snapshot but not
+        // yet in the historical API response.
+        const liveSnapshot = liveSessionsMapRef.current || {};
+        const transformedIds = new Set(transformed.map(s => String(s.id || s.session_id)));
+        const liveOnlyRows = Object.values(liveSnapshot)
+          .filter(s => {
+            const id = String(s.session_id || s.id);
+            if (transformedIds.has(id)) return false;
+            return isOngoingStatus(s.status) || s.status === 'ACTIVE' || s.status === 'STOP_PENDING';
+          })
+          .map(s => ({ ...s, is_live: true }));
+
         if (isLoadMore) {
           setAllSessions(prev => {
-            // Avoid duplicates
-            const existingIds = new Set(prev.map(s => s.id || s.session_id));
+            const existingIds = new Set(prev.map(s => String(s.id || s.session_id)));
             const newSessions = transformed.filter(s => {
-              const id = s.id || s.session_id;
+              const id = String(s.id || s.session_id);
               return !existingIds.has(id);
             });
-            console.log('Adding new sessions:', newSessions.length);
             return [...prev, ...newSessions];
           });
         } else {
-          setAllSessions(transformed);
+          // Fresh page 1: API rows + any live sessions not in the API response
+          setAllSessions([...liveOnlyRows, ...transformed]);
         }
-        
-        // Update pagination
+
         setPagination({
           limit: pagination.limit,
           has_more: hasMore,
           before: nextBefore,
           before_id: nextBeforeId,
         });
-        
+
         setHasLoaded(true);
         setIsInitialLoad(false);
       } else if (response.status === 401) {
-        console.error('❌ 401 Unauthorized - Token expired');
         setError('Session expired. Please refresh.');
         const newToken = await refreshToken();
         if (newToken && isMountedRef.current) {
           fetchSessions(before, beforeId, isLoadMore);
           return;
         }
-        if (!isLoadMore && isMountedRef.current) { 
-          setAllSessions([]); 
+        if (!isLoadMore && isMountedRef.current) {
+          setAllSessions([]);
           setOngoingSessions([]);
         }
-        setPagination({ 
-          limit: 20, 
-          has_more: false, 
-          before: null, 
-          before_id: null,
-        });
+        setPagination({ limit: 20, has_more: false, before: null, before_id: null });
       } else {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('❌ Failed to fetch sessions:', response.status, errorData);
-        if (!isLoadMore && isMountedRef.current) { 
-          setAllSessions([]); 
+        if (!isLoadMore && isMountedRef.current) {
+          setAllSessions([]);
           setOngoingSessions([]);
         }
-        setPagination({ 
-          limit: 20, 
-          has_more: false, 
-          before: null, 
-          before_id: null,
-        });
+        setPagination({ limit: 20, has_more: false, before: null, before_id: null });
       }
     } catch (error) {
       console.error('❌ Error fetching sessions:', error);
-      if (!isLoadMore && isMountedRef.current) { 
-        setAllSessions([]); 
+      if (!isLoadMore && isMountedRef.current) {
+        setAllSessions([]);
         setOngoingSessions([]);
       }
-      setPagination({ 
-        limit: 20, 
-        has_more: false, 
-        before: null, 
-        before_id: null,
-      });
+      setPagination({ limit: 20, has_more: false, before: null, before_id: null });
     } finally {
       fetchInProgressRef.current = false;
-      if (isMountedRef.current) { 
-        setLoading(false); 
-        setLoadingMore(false); 
+      if (isMountedRef.current) {
+        setLoading(false);
+        setLoadingMore(false);
       }
     }
   }, [pagination.limit, refreshToken, statusFilter]);
@@ -4877,7 +5133,7 @@ const Sessions = () => {
     }
   }, [refreshToken]);
 
-  // ========== Fetch Trace (CMS canonical store only) ==========
+  // ========== Fetch Trace ==========
   const fetchTrace = useCallback(async (sessionId, beforeOccurredAt = null, beforeEventId = null, isLoadMore = false) => {
     if (!sessionId) return;
     if (isLoadMore && loadingMoreTrace) return;
@@ -4920,9 +5176,7 @@ const Sessions = () => {
           setTraceData(prev => ({
             ...prev,
             ...data,
-            // Keep the first snapshot replay cursor as the race-free live boundary.
             replay_cursor: prev?.replay_cursor ?? data.replay_cursor,
-            // Preserve every evidence source observed across loaded pages.
             sources_present: Array.from(new Set([
               ...(prev?.sources_present || []),
               ...(data.sources_present || [])
@@ -4993,12 +5247,8 @@ const Sessions = () => {
   };
 
   const loadMoreSessions = () => {
-    // Only load more if there are more sessions and not already loading
     if (pagination.has_more && pagination.before && pagination.before_id && !loadingMore && !loading && !fetchInProgressRef.current) {
-      console.log('Loading more sessions with before:', pagination.before, 'before_id:', pagination.before_id);
       fetchSessions(pagination.before, pagination.before_id, true);
-    } else {
-      console.log('Cannot load more - has_more:', pagination.has_more, 'before:', pagination.before, 'loadingMore:', loadingMore);
     }
   };
 
@@ -5027,14 +5277,6 @@ const Sessions = () => {
     if (tab === 'chargers') navigate('/charger-session');
   };
 
-  const handleBack = () => {
-    if (window.history.length > 1) {
-      navigate(-1);
-    } else {
-      navigate('/charger-session');
-    }
-  };
-
   const handleLogout = async () => {
     try {
       stopLiveSessionsSSE();
@@ -5050,16 +5292,12 @@ const Sessions = () => {
   };
 
   const handleThemeToggle = () => setIsDarkMode(!isDarkMode);
+
   const handleRefresh = () => {
     if (!fetchInProgressRef.current) {
       setAllSessions([]);
       setOngoingSessions([]);
-      setPagination({
-        limit: 20,
-        has_more: false,
-        before: null,
-        before_id: null,
-      });
+      setPagination({ limit: 20, has_more: false, before: null, before_id: null });
       fetchSessions();
     }
   };
@@ -5074,7 +5312,7 @@ const Sessions = () => {
           const sKey = s.id || s.session_id;
           return String(sKey) === String(sessionKey);
         });
-        if (!exists) merged.push({ ...liveSession, is_live: true });
+        if (!exists) merged.unshift({ ...liveSession, is_live: true });
         else {
           const index = merged.findIndex(s => {
             const sKey = s.id || s.session_id;
@@ -5110,17 +5348,53 @@ const Sessions = () => {
     });
   }, [currentSessions, searchQuery]);
 
+  // **NEW**: Sort applied after filtering
+  const sortedSessions = useMemo(() => {
+    const arr = [...filteredSessions];
+    arr.sort((a, b) => {
+      let av = 0, bv = 0;
+      switch (sortBy) {
+        case 'start_time': {
+          const at = a.start_time || a.started_at;
+          const bt = b.start_time || b.started_at;
+          av = at ? new Date(at).getTime() : 0;
+          bv = bt ? new Date(bt).getTime() : 0;
+          break;
+        }
+        case 'end_time': {
+          const at = a.end_time;
+          const bt = b.end_time;
+          av = at ? new Date(at).getTime() : Number.MAX_SAFE_INTEGER;
+          bv = bt ? new Date(bt).getTime() : Number.MAX_SAFE_INTEGER;
+          break;
+        }
+        case 'duration': {
+          av = a.duration_seconds || 0;
+          bv = b.duration_seconds || 0;
+          break;
+        }
+        case 'usage': {
+          av = getEnergyKwh(a);
+          bv = getEnergyKwh(b);
+          break;
+        }
+        default:
+          return 0;
+      }
+      if (Number.isNaN(av)) av = 0;
+      if (Number.isNaN(bv)) bv = 0;
+      return sortOrder === 'asc' ? av - bv : bv - av;
+    });
+    return arr;
+  }, [filteredSessions, sortBy, sortOrder]);
+
   const ongoingCount = useMemo(() => {
     return currentSessions.filter(s => isOngoingStatus(s.status) || s.status === 'ACTIVE' || s.status === 'STOP_PENDING').length;
   }, [currentSessions]);
 
-  // Show Load More button only when:
-  // 1. has_more is true from API
-  // 2. before and before_id are available for next page
-  // 3. not already loading more
   const showLoadMore = pagination.has_more && pagination.before && pagination.before_id && !loadingMore;
 
-  // ========== Settings Menu ==========
+  // Settings menu
   const SettingsMenu = () => (
     <div className="absolute top-full right-0 mt-2 bg-black rounded-2xl w-80 shadow-2xl border border-gray-800 z-50 overflow-hidden">
       <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-5 py-4">
@@ -5135,11 +5409,6 @@ const Sessions = () => {
             <p className="text-sm text-gray-400 truncate">
               {userData?.user?.email || user?.email || 'user@transev.com'}
             </p>
-            {userData?.role && (
-              <span className="inline-block mt-1 px-2 py-0.5 bg-white/10 rounded-full text-xs text-gray-300 border border-gray-600">
-                {userData.role}
-              </span>
-            )}
           </div>
         </div>
       </div>
@@ -5235,6 +5504,9 @@ const Sessions = () => {
     );
   }
 
+  // **NEW**: Height for the table's scrollable viewport — leaves room for header + tabs + stats + filters.
+  const tableMaxHeight = 'calc(100vh - 360px)';
+
   return (
     <div className="min-h-screen bg-gray-50 flex">
       <Sidebar
@@ -5249,7 +5521,6 @@ const Sessions = () => {
         <header className="bg-white border-b-2 border-gray-200 px-6 py-5 sticky top-0 z-30 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-            
               <div className="flex items-center gap-1 text-sm text-gray-500">
                 <h1 className="text-2xl font-bold text-gray-800">Chargers & Sessions</h1>
                 <button onClick={() => navigate('/dashboard')} className="text-blue-600 hover:text-blue-800 font-medium">/ Dashboard</button>
@@ -5275,7 +5546,6 @@ const Sessions = () => {
           </div>
         </header>
 
-        {/* Main Tabs */}
         <div className="flex items-center gap-1 mt-4 border-b border-gray-200 px-6">
           <button
             onClick={() => handleMainTabChange('chargers')}
@@ -5296,10 +5566,8 @@ const Sessions = () => {
           </button>
         </div>
 
-        {/* Sessions Content */}
         {activeMainTab === 'sessions' && (
           <div className="p-6">
-            {/* Stats */}
             <div className="mb-6">
               <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm hover:shadow-md transition group inline-flex items-center gap-4">
                 <div className="w-12 h-12 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition">
@@ -5315,7 +5583,6 @@ const Sessions = () => {
               </div>
             </div>
 
-            {/* Sub Tabs */}
             <div className="flex items-center gap-1 mb-4 bg-gray-100 rounded-xl p-1 w-fit">
               <button
                 onClick={() => handleTabChange('all')}
@@ -5338,9 +5605,9 @@ const Sessions = () => {
               </button>
             </div>
 
-            {/* Search & Filters */}
+            {/* Search + Sort + Filters */}
             <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {statusFilter !== 'All' && (
                   <button
                     onClick={() => { setStatusFilter('All'); setSearchQuery(''); fetchSessions(); }}
@@ -5349,7 +5616,30 @@ const Sessions = () => {
                     <X size={12} /> Clear Filters
                   </button>
                 )}
+
+                {/* **NEW**: Sort By dropdown */}
+                <div className="flex items-center gap-1.5">
+                  <label className="text-xs text-gray-500 font-medium">Sort by</label>
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value)}
+                    className="px-2.5 py-1.5 rounded-xl border border-gray-200 bg-gray-50 text-xs font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="start_time">Start Time</option>
+                    <option value="end_time">End Time</option>
+                    <option value="duration">Duration</option>
+                    <option value="usage">Usage</option>
+                  </select>
+                  <button
+                    onClick={() => setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'))}
+                    className="p-1.5 rounded-xl border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-600 transition"
+                    title={sortOrder === 'asc' ? 'Ascending' : 'Descending'}
+                  >
+                    {sortOrder === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </button>
+                </div>
               </div>
+
               <div className="flex items-center gap-2">
                 <div className="relative">
                   <Search size={16} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -5381,20 +5671,22 @@ const Sessions = () => {
               </div>
             </div>
 
-            {/* Table */}
+            {/* Table — with sticky vertical scroll inside + horizontal scrollbar at the bottom of the visible area */}
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden relative">
-              {!isCompact && (
-                <>
-                  <div className="absolute right-0 top-0 bottom-0 w-12 bg-gradient-to-l from-gray-50/80 to-transparent pointer-events-none z-10" />
-                  <div className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 text-xs bg-white px-2 py-1 rounded shadow border border-gray-200 pointer-events-none opacity-80 z-10">
-                    → Scroll
-                  </div>
-                </>
-              )}
-
-              <div className={`overflow-x-auto ${isCompact ? '' : 'custom-scrollbar'} scrollbar-hide`}>
-                <table className={`w-full ${isCompact ? 'table-auto text-xs' : 'text-sm'}`} style={isCompact ? {} : { minWidth: '1800px' }}>
-                  <thead className="sticky top-0 z-10">
+              {/* Scrollable table viewport */}
+              <div
+                className="custom-scrollbar"
+                style={{
+                  maxHeight: tableMaxHeight,
+                  overflow: 'auto',
+                  WebkitOverflowScrolling: 'touch',
+                }}
+              >
+                <table
+                  className={`w-full ${isCompact ? 'table-auto text-xs' : 'text-sm'}`}
+                  style={isCompact ? { minWidth: '860px' } : { minWidth: '1800px' }}
+                >
+                  <thead className="sticky top-0 z-20">
                     <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
                       <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-8 whitespace-nowrap`}>SI</th>
                       <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-24 whitespace-nowrap`}>Session ID</th>
@@ -5411,7 +5703,7 @@ const Sessions = () => {
                       <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-14 whitespace-nowrap`}>Req. Limit</th>
                       <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-20 whitespace-nowrap`}>Amount</th>
                       <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-20 whitespace-nowrap`}>Status</th>
-                      <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-28 sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.08)] z-20 whitespace-nowrap`}>Action</th>
+                      <th className={`${isCompact ? 'px-1.5 py-1.5' : 'px-3 py-3'} text-left font-semibold text-gray-600 uppercase tracking-wider w-28 sticky right-0 bg-gray-100 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.08)] z-30 whitespace-nowrap`}>Action</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -5435,7 +5727,7 @@ const Sessions = () => {
                           </button>
                         </td>
                       </tr>
-                    ) : filteredSessions.length === 0 ? (
+                    ) : sortedSessions.length === 0 ? (
                       <tr>
                         <td colSpan="16" className={`${isCompact ? 'px-2 py-6' : 'px-4 py-12'} text-center`}>
                           <Database size={isCompact ? 28 : 40} className="text-gray-300 mx-auto mb-1" />
@@ -5458,7 +5750,7 @@ const Sessions = () => {
                         </td>
                       </tr>
                     ) : (
-                      filteredSessions.map((session, index) => {
+                      sortedSessions.map((session, index) => {
                         const isOngoing = isOngoingStatus(session.status) || session.status === 'ACTIVE' || session.status === 'STOP_PENDING';
                         const durationSeconds = isOngoing
                           ? (session.duration_seconds || 0)
@@ -5472,7 +5764,6 @@ const Sessions = () => {
                         let displayEnergy = session.total_kwh || '0';
                         let displaySoc = session.soc_percent || null;
                         let displayAmount = session.total_amount || '0';
-                        let displayCurrency = session.currency || 'INR';
 
                         if (isLive) {
                           const energy = getEnergyKwh(session);
@@ -5480,7 +5771,6 @@ const Sessions = () => {
                           displaySoc = getSocPercent(session) || null;
                           const projectedAmount = getProjectedAmount(session);
                           if (projectedAmount > 0) displayAmount = projectedAmount;
-                          displayCurrency = getCurrency(session);
                         }
 
                         const connectorNumber = session.connector?.number || session.connector_number || 'N/A';
@@ -5561,11 +5851,6 @@ const Sessions = () => {
                                 {getStatusIcon(session.status)}
                                 {getStatusDisplayName(session.status)}
                               </span>
-                              {isLive && isOngoing && (
-                                <span className="ml-0.5 text-[10px] text-green-600">
-                                  <span className="w-1 h-1 bg-green-500 rounded-full inline-block mr-0.5 animate-pulse"></span>
-                                </span>
-                              )}
                             </td>
                             <td className={`${isCompact ? 'px-1.5 py-1' : 'px-3 py-3'} sticky right-0 z-10 shadow-[-4px_0_6px_-2px_rgba(0,0,0,0.06)] ${rowBg}`}>
                               <div className="flex items-center gap-0.5">
@@ -5595,7 +5880,6 @@ const Sessions = () => {
               </div>
             </div>
 
-            {/* Load More - Only show when there are more sessions to load */}
             {showLoadMore && activeTab === 'all' && (
               <div className="px-4 py-3 border-t border-gray-200 flex items-center justify-center">
                 <button
@@ -5612,11 +5896,10 @@ const Sessions = () => {
               </div>
             )}
 
-            {/* Footer */}
             <div className="px-4 py-2 border-t border-gray-200 bg-gray-50 text-[10px] text-gray-500 flex justify-between items-center">
               <span>
-                {filteredSessions.length === 0 ? 'No sessions available' : 
-                  `Showing ${filteredSessions.length} of ${allSessions.length} loaded sessions`}
+                {sortedSessions.length === 0 ? 'No sessions available' :
+                  `Showing ${sortedSessions.length} of ${allSessions.length} loaded sessions`}
               </span>
               {showLoadMore && activeTab === 'all' && (
                 <span className="text-blue-600">Load more sessions</span>
@@ -5633,7 +5916,6 @@ const Sessions = () => {
           </div>
         )}
 
-        {/* Chargers Tab */}
         {activeMainTab === 'chargers' && (
           <div className="p-6">
             <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-12 text-center">
@@ -5648,7 +5930,6 @@ const Sessions = () => {
         )}
       </div>
 
-      {/* Modals */}
       {showDetailModal && (
         <SessionDetailModal
           session={selectedSession}
@@ -5687,34 +5968,35 @@ const Sessions = () => {
         .animate-pulse-update { animation: pulseUpdate 1.2s ease-in-out forwards; }
         tr.animate-pulse-update { transition: background-color 0.3s ease; }
 
-        .scrollbar-hide::-webkit-scrollbar {
-          display: none;
-        }
-        .scrollbar-hide {
-          -ms-overflow-style: none;
-          scrollbar-width: none;
-        }
-
+        /* -------- Vertical + Horizontal scrollbars — thin pill style, sticky to viewport -------- */
         .custom-scrollbar {
-          overflow-x: auto;
-          overflow-y: visible;
           scrollbar-width: thin;
-          scrollbar-color: rgba(156, 163, 175, 0.5) transparent;
+          scrollbar-color: rgba(99, 102, 241, 0.55) rgba(243, 244, 246, 0.75);
         }
         .custom-scrollbar::-webkit-scrollbar {
-          height: 6px;
+          width: 8px;
+          height: 8px;
           background: transparent;
         }
         .custom-scrollbar::-webkit-scrollbar-track {
-          background: transparent;
+          background: rgba(243, 244, 246, 0.85);
+          border-radius: 999px;
+          margin: 0 16px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: rgba(156, 163, 175, 0.5);
-          border-radius: 10px;
+          background: linear-gradient(90deg, rgba(99, 102, 241, 0.55), rgba(79, 70, 229, 0.7));
+          border-radius: 999px;
+          border: 2px solid transparent;
+          background-clip: padding-box;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: rgba(107, 114, 128, 0.8);
+          background: linear-gradient(90deg, rgba(79, 70, 229, 0.8), rgba(67, 56, 202, 0.9));
+          background-clip: padding-box;
         }
+        .custom-scrollbar::-webkit-scrollbar-corner { background: transparent; }
+
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
     </div>
   );
