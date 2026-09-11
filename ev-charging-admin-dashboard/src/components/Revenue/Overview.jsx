@@ -1,3 +1,4 @@
+
 // src/pages/RevenueManagement.jsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -298,6 +299,40 @@ const RevenueManagement = () => {
     { value: 'year', label: 'Year' }
   ];
 
+  // Helper: get display status for charger transactions
+  const getDisplayStatus = (paymentStatus) => {
+    if (!paymentStatus) return 'N/A';
+    const upper = paymentStatus.toUpperCase();
+    if (upper === 'COMPLETED' || upper === 'SUCCESS' || upper === 'PAID') return 'Success';
+    if (upper === 'PENDING') return 'Pending';
+    if (upper === 'PROCESSING') return 'Processing';
+    if (upper === 'FAILED') return 'Failed';
+    return 'N/A';
+  };
+
+  // Helper: get status badge style
+  const getStatusBadgeStyle = (displayStatus) => {
+    const styles = {
+      'Success': 'bg-emerald-100 text-emerald-700 border-emerald-200',
+      'Pending': 'bg-amber-100 text-amber-700 border-amber-200',
+      'Processing': 'bg-blue-100 text-blue-700 border-blue-200',
+      'Failed': 'bg-red-100 text-red-700 border-red-200',
+      'N/A': 'bg-gray-100 text-gray-700 border-gray-200'
+    };
+    return styles[displayStatus] || styles['N/A'];
+  };
+
+  // Helper: get status icon
+  const getStatusIcon = (displayStatus) => {
+    switch(displayStatus) {
+      case 'Success': return <CheckCircle className="w-3 h-3" />;
+      case 'Pending': return <Clock className="w-3 h-3" />;
+      case 'Processing': return <Clock className="w-3 h-3" />;
+      case 'Failed': return <AlertCircle className="w-3 h-3" />;
+      default: return <Circle className="w-3 h-3" />;
+    }
+  };
+
   // Fetch user info
   useEffect(() => {
     const token = localStorage.getItem('token');
@@ -472,10 +507,12 @@ const RevenueManagement = () => {
       }
       
       if (before) {
-        url += `&before=${before}`;
+        // Convert to RFC3339 timestamp (ISO string)
+        const beforeISO = new Date(before).toISOString();
+        url += `&before=${encodeURIComponent(beforeISO)}`;
       }
       if (before_id) {
-        url += `&before_id=${before_id}`;
+        url += `&before_id=${encodeURIComponent(before_id)}`;
       }
 
       const response = await fetchWithTokenRefresh(url, {
@@ -524,10 +561,12 @@ const RevenueManagement = () => {
       }
       
       if (before) {
-        url += `&before=${before}`;
+        // Convert to RFC3339 timestamp (ISO string)
+        const beforeISO = new Date(before).toISOString();
+        url += `&before=${encodeURIComponent(beforeISO)}`;
       }
       if (before_id) {
-        url += `&before_id=${before_id}`;
+        url += `&before_id=${encodeURIComponent(before_id)}`;
       }
 
       const response = await fetchWithTokenRefresh(url, {
@@ -641,38 +680,6 @@ const RevenueManagement = () => {
     return options[period] || period;
   };
 
-  const getStatusColor = (status) => {
-    const colors = {
-      'SUCCESS': 'bg-green-100 text-green-800 border-green-200',
-      'success': 'bg-green-100 text-green-800 border-green-200',
-      'PENDING': 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      'pending': 'bg-yellow-100 text-yellow-800 border-yellow-200',
-      'FAILED': 'bg-red-100 text-red-800 border-red-200',
-      'failed': 'bg-red-100 text-red-800 border-red-200',
-      'PROCESSING': 'bg-blue-100 text-blue-800 border-blue-200',
-      'processing': 'bg-blue-100 text-blue-800 border-blue-200',
-      'CREDIT': 'bg-green-100 text-green-800 border-green-200',
-      'DEBIT': 'bg-orange-100 text-orange-800 border-orange-200'
-    };
-    return colors[status?.toUpperCase()] || 'bg-gray-100 text-gray-800 border-gray-200';
-  };
-
-  const getStatusIcon = (status) => {
-    switch(status?.toUpperCase()) {
-      case 'SUCCESS':
-      case 'CREDIT':
-        return <CheckCircle className="w-3 h-3" />;
-      case 'PENDING':
-      case 'PROCESSING':
-        return <Clock className="w-3 h-3" />;
-      case 'FAILED':
-      case 'DEBIT':
-        return <AlertCircle className="w-3 h-3" />;
-      default:
-        return <AlertCircle className="w-3 h-3" />;
-    }
-  };
-
   // Get unique hub names from transactions
   const getUniqueHubsFromTransactions = () => {
     const hubNames = transactions
@@ -689,7 +696,7 @@ const RevenueManagement = () => {
   // Combine both sources for filter
   const allHubOptions = ['All Hubs', ...new Set([...getUniqueHubsFromTransactions(), ...getHubNamesFromAPI()])];
 
-  // Filter transactions by hub
+  // Filter transactions by hub and status (using display status)
   const filteredTransactions = transactions.filter(t => {
     const transactionId = t.transaction_id || t.id || '';
     const chargerId = t.charger_id || '';
@@ -699,12 +706,15 @@ const RevenueManagement = () => {
     const matchesSearch = transactionId.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           chargerId.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           customerName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || t.payment_status?.toUpperCase() === statusFilter.toUpperCase();
+    
+    const displayStatus = getDisplayStatus(t.payment_status);
+    const matchesStatus = statusFilter === 'all' || displayStatus === statusFilter;
+    
     const matchesHub = hubFilter === 'All Hubs' || hub === hubFilter;
     return matchesSearch && matchesStatus && matchesHub;
   });
 
-  // Filter wallet transactions - no hub filter needed
+  // Filter wallet transactions - no hub/status filter, only search
   const filteredWallet = walletTransactions.filter(t => {
     const transactionId = t.id || t.transaction_id || '';
     const customerName = t.customer_name || '';
@@ -812,6 +822,9 @@ const RevenueManagement = () => {
           <tbody className="divide-y divide-gray-200">
             {data.map((transaction, index) => {
               const transactionId = transaction.transaction_id || transaction.id || `TX-${index}`;
+              const displayStatus = getDisplayStatus(transaction.payment_status);
+              const badgeStyle = getStatusBadgeStyle(displayStatus);
+              const icon = getStatusIcon(displayStatus);
               
               return (
                 <tr key={transactionId} className="hover:bg-gray-50 transition">
@@ -822,36 +835,9 @@ const RevenueManagement = () => {
                     {transactionId}
                   </td>
                   <td className="px-3 py-3">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 w-fit ${
-                      transaction.payment_status?.toUpperCase() === 'COMPLETED' || 
-                      transaction.payment_status?.toUpperCase() === 'SUCCESS' || 
-                      transaction.payment_status?.toUpperCase() === 'PAID'
-                        ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-                        : transaction.payment_status?.toUpperCase() === 'PENDING'
-                        ? 'bg-amber-100 text-amber-700 border-amber-200'
-                        : transaction.payment_status?.toUpperCase() === 'FAILED'
-                        ? 'bg-red-100 text-red-700 border-red-200'
-                        : transaction.payment_status?.toUpperCase() === 'REFUNDED'
-                        ? 'bg-blue-100 text-blue-700 border-blue-200'
-                        : 'bg-gray-100 text-gray-700 border-gray-200'
-                    }`}>
-                      {transaction.payment_status?.toUpperCase() === 'COMPLETED' || 
-                       transaction.payment_status?.toUpperCase() === 'SUCCESS' || 
-                       transaction.payment_status?.toUpperCase() === 'PAID' ? (
-                        <CheckCircle className="w-3 h-3" />
-                      ) : transaction.payment_status?.toUpperCase() === 'PENDING' ? (
-                        <Clock className="w-3 h-3" />
-                      ) : transaction.payment_status?.toUpperCase() === 'FAILED' ? (
-                        <AlertCircle className="w-3 h-3" />
-                      ) : transaction.payment_status?.toUpperCase() === 'REFUNDED' ? (
-                        <RefreshCw className="w-3 h-3" />
-                      ) : (
-                        <Circle className="w-3 h-3" />
-                      )}
-                      {transaction.payment_status?.toUpperCase() === 'COMPLETED' || 
-                       transaction.payment_status?.toUpperCase() === 'SUCCESS' || 
-                       transaction.payment_status?.toUpperCase() === 'PAID' ? 'Success' 
-                       : transaction.payment_status || 'N/A'}
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 w-fit ${badgeStyle}`}>
+                      {icon}
+                      {displayStatus}
                     </span>
                   </td>
                   <td className="px-3 py-3 text-sm font-medium text-gray-900">
@@ -963,7 +949,7 @@ const RevenueManagement = () => {
                     </span>
                   </td>
                   <td className="px-3 py-3">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 w-fit ${getStatusColor(transaction.status)}`}>
+                    <span className={`px-2 py-1 rounded-full text-xs font-medium border flex items-center gap-1 w-fit ${getStatusBadgeStyle(transaction.status)}`}>
                       {getStatusIcon(transaction.status)}
                       {transaction.status || 'N/A'}
                     </span>
@@ -1087,49 +1073,48 @@ const RevenueManagement = () => {
         {/* Overview Content */}
         <div className="p-6">
           {/* Revenue Card with Analytics */}
-       {/* Revenue Card with Analytics */}
-<div className="bg-gradient-to-r from-green-600 to-emerald-700 rounded-2xl p-6 mb-6 shadow-lg shadow-green-100">
-  <div className="flex flex-col md:flex-row items-start md:items-center justify-between">
-    <div>
-      <div className="flex items-center gap-2 mb-1">
-        <Wallet className="w-5 h-5 text-white/80" />
-        <p className="text-white/80 text-sm font-medium">Total Revenue</p>
-      </div>
-      <h2 className="text-4xl font-bold text-white">
-        {loadingAnalytics ? (
-          <Loader2 className="w-8 h-8 text-white animate-spin inline" />
-        ) : (
-          formatCurrency(analyticsData.totalRevenue)
-        )}
-      </h2>
-      <div className="flex items-center gap-3 mt-2 flex-wrap">
-        <p className="text-green-100 text-sm">
-          {selectedPeriod === 'all' ? (
-            <>All Time Revenue</>
-          ) : selectedDate ? (
-            <>{getPeriodLabel(selectedPeriod)} - {formatDateDisplay(selectedDate)}</>
-          ) : (
-            <>{getPeriodLabel(selectedPeriod)}</>
-          )}
-        </p>
-        <button
-          onClick={() => setShowDatePicker(!showDatePicker)}
-          className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-white text-sm font-medium transition flex items-center gap-2"
-        >
-          <Calendar className="w-4 h-4" />
-          <ChevronDown className={`w-4 h-4 transition-transform ${showDatePicker ? 'rotate-180' : ''}`} />
-        </button>
-      </div>
-    </div>
-    
-    {/* Large Revenue Icon */}
-    <div className="mt-4 md:mt-0">
-      <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg">
-        <Wallet className="w-10 h-10 md:w-12 md:h-12 text-white" />
-      </div>
-    </div>
-  </div>
-</div>
+          <div className="bg-gradient-to-r from-green-600 to-emerald-700 rounded-2xl p-6 mb-6 shadow-lg shadow-green-100">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Wallet className="w-5 h-5 text-white/80" />
+                  <p className="text-white/80 text-sm font-medium">Total Revenue</p>
+                </div>
+                <h2 className="text-4xl font-bold text-white">
+                  {loadingAnalytics ? (
+                    <Loader2 className="w-8 h-8 text-white animate-spin inline" />
+                  ) : (
+                    formatCurrency(analyticsData.totalRevenue)
+                  )}
+                </h2>
+                <div className="flex items-center gap-3 mt-2 flex-wrap">
+                  <p className="text-green-100 text-sm">
+                    {selectedPeriod === 'all' ? (
+                      <>All Time Revenue</>
+                    ) : selectedDate ? (
+                      <>{getPeriodLabel(selectedPeriod)} - {formatDateDisplay(selectedDate)}</>
+                    ) : (
+                      <>{getPeriodLabel(selectedPeriod)}</>
+                    )}
+                  </p>
+                  <button
+                    onClick={() => setShowDatePicker(!showDatePicker)}
+                    className="px-3 py-1.5 bg-white/20 hover:bg-white/30 rounded-lg text-white text-sm font-medium transition flex items-center gap-2"
+                  >
+                    <Calendar className="w-4 h-4" />
+                    <ChevronDown className={`w-4 h-4 transition-transform ${showDatePicker ? 'rotate-180' : ''}`} />
+                  </button>
+                </div>
+              </div>
+              
+              {/* Large Revenue Icon */}
+              <div className="mt-4 md:mt-0">
+                <div className="w-20 h-20 md:w-24 md:h-24 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg">
+                  <Wallet className="w-10 h-10 md:w-12 md:h-12 text-white" />
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* Analytics Error Message */}
           {analyticsError && (
@@ -1251,10 +1236,11 @@ const RevenueManagement = () => {
                     className="px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm bg-white"
                   >
                     <option value="all">All Status</option>
-                    <option value="SUCCESS">Success</option>
-                    <option value="PENDING">Pending</option>
-                    <option value="PROCESSING">Processing</option>
-                    <option value="FAILED">Failed</option>
+                    <option value="Success">Success</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Processing">Processing</option>
+                    <option value="Failed">Failed</option>
+                    <option value="N/A">N/A</option>
                   </select>
 
                   <select

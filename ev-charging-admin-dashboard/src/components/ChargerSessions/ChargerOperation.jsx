@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, memo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../Authentication/AuthContext';
 import {
@@ -23,7 +23,6 @@ import {
   Plug,
   Circle,
   ChevronDown,
-  ChevronUp,
   Info,
   AlertTriangle,
   Trash2,
@@ -35,7 +34,9 @@ import {
   Copy,
   HelpCircle,
   Lock,
-  Filter
+  Filter,
+  ScrollText,
+  SearchCheck
 } from 'lucide-react';
 import Sidebar from '../Sidebar/Sidebar';
 
@@ -59,10 +60,12 @@ const CONNECTION_STATUS_CONFIG = {
   'UNKNOWN': { label: 'Unknown', icon: <Circle className="w-3 h-3 text-gray-400" />, color: 'bg-gray-100 text-gray-600 border-gray-200' }
 };
 
+// Per handoff §4.4 — durable ChargerOperation states. Copy intentionally never
+// claims later physical effect from protocol acknowledgement alone.
 const OPERATION_STATE_CONFIG = {
   PERSISTED: {
     label: 'Pending / Recorded',
-    copy: 'Operation recorded; awaiting final acknowledgement.',
+    copy: 'CMS durably recorded the operation before HAL I/O.',
     color: 'bg-blue-100 text-blue-700 border-blue-200',
     icon: <Clock className="w-3.5 h-3.5" />
   },
@@ -80,13 +83,13 @@ const OPERATION_STATE_CONFIG = {
   },
   RECONCILIATION_REQUIRED: {
     label: 'Outcome uncertain',
-    copy: 'Outcome uncertain. Use exact recovery instead of retrying the action.',
+    copy: 'Delivery outcome is uncertain. Use exact recovery instead of retrying the action.',
     color: 'bg-amber-100 text-amber-700 border-amber-200',
     icon: <AlertTriangle className="w-3.5 h-3.5" />
   },
   CONFIRMED_ABSENT: {
     label: 'Not found / Absent',
-    copy: 'Recovery confirmed HAL has no durable operation with this ID.',
+    copy: 'Recovery confirmed the transport layer has no durable operation with this ID.',
     color: 'bg-red-100 text-red-700 border-red-200',
     icon: <AlertCircle className="w-3.5 h-3.5" />
   }
@@ -109,6 +112,65 @@ const getStateDisplay = (state) => {
   };
 };
 
+// Per handoff §18.5 — safe, honest wording per kind/result. Never upgrades
+// protocol acknowledgement into a claim of later physical effect.
+const getResultWording = (op) => {
+  if (!op) return '';
+  const { kind, state, ocpp_result: result } = op;
+  const stateDisplay = getStateDisplay(state);
+
+  if (state === 'RECONCILIATION_REQUIRED' || state === 'CONFIRMED_ABSENT' || state === 'PERSISTED' || state === 'HAL_ACCEPTED') {
+    return stateDisplay.copy;
+  }
+  if (state === 'OCPP_CONFIRMED') {
+    const r = result || 'Unknown';
+    switch (kind) {
+      case 'RESET':
+        return `Charger acknowledged Reset: ${r}.`;
+      case 'UNLOCK_CONNECTOR':
+        return `Charger returned ${r} for Unlock Connector.`;
+      case 'CHANGE_AVAILABILITY':
+        return `Charger returned ${r}.`;
+      case 'CLEAR_CACHE':
+        return `Charger returned ${r} for Clear Cache.`;
+      case 'CHANGE_CONFIGURATION':
+        return `Configuration response: ${r}.`;
+      case 'TRIGGER_MESSAGE':
+        return `Charger accepted TriggerMessage: ${r}. This does not confirm the follow-up notification arrived.`;
+      case 'GET_CONFIGURATION':
+        return `Charger returned ${r} for Get Configuration.`;
+      default:
+        return `Charger acknowledged the command: ${r}.`;
+    }
+  }
+  return stateDisplay.copy;
+};
+
+const FRESHNESS_CONFIG = {
+  FRESH: { label: 'Fresh', color: 'bg-green-100 text-green-700 border-green-200' },
+  STALE: { label: 'Stale', color: 'bg-amber-100 text-amber-700 border-amber-200' },
+  UNKNOWN: { label: 'Unknown', color: 'bg-gray-100 text-gray-600 border-gray-200' }
+};
+
+const getFreshnessDisplay = (freshness) => FRESHNESS_CONFIG[freshness] || FRESHNESS_CONFIG.UNKNOWN;
+
+// Short "3m ago" / "2h ago" style relative time for live `observed_at` timestamps.
+const formatRelativeTime = (isoString) => {
+  if (!isoString) return null;
+  const then = new Date(isoString).getTime();
+  if (Number.isNaN(then)) return null;
+  const diffMs = Date.now() - then;
+  const diffSec = Math.max(0, Math.round(diffMs / 1000));
+  if (diffSec < 5) return 'just now';
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.round(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.round(diffHr / 24);
+  return `${diffDay}d ago`;
+};
+
 const TRIGGER_MESSAGE_ALLOWLIST = [
   'BootNotification',
   'DiagnosticsStatusNotification',
@@ -124,13 +186,216 @@ const OPERATION_KIND_LABEL = {
   CHANGE_AVAILABILITY: 'Change Availability',
   CLEAR_CACHE: 'Clear Cache',
   CHANGE_CONFIGURATION: 'Change Configuration',
-  TRIGGER_MESSAGE: 'Trigger Message'
+  TRIGGER_MESSAGE: 'Trigger Message',
+  GET_CONFIGURATION: 'Get Configuration (Audited)'
+};
+
+// Per handoff §11 — client-side hint only. The server is the sole enforcer;
+// this list exists purely so the UI can explain a 400 before the user hits it.
+const RESERVED_CONFIGURATION_KEYS = new Set([
+  'HeartbeatInterval',
+  'MeterValueInterval',
+  'MeterValueSampleInterval',
+  'AuthorizeRemoteTxRequests',
+  'LocalAuthorizeOffline',
+  'LocalPreAuthorize',
+  'AuthorizationCacheEnabled',
+  'AllowOfflineTxForUnknownId',
+  'StopTransactionOnInvalidId',
+  'ChargePointAuthEnable',
+  'FreeVendEnabled'
+]);
+const SENSITIVE_KEY_FRAGMENTS = ['password', 'secret', 'token', 'privatekey', 'certificate'];
+
+const isLikelyReservedOrSensitiveKey = (rawKey) => {
+  const key = (rawKey || '').trim();
+  if (!key) return null;
+  if (RESERVED_CONFIGURATION_KEYS.has(key)) return 'reserved';
+  const lower = key.toLowerCase();
+  if (lower === 'authorizationkey' || SENSITIVE_KEY_FRAGMENTS.some(f => lower.includes(f))) return 'sensitive';
+  return null;
+};
+
+// Per handoff §20 — friendlier fallback copy keyed by stable error.code.
+// Server message still wins when present; this only fills gaps / adds guidance.
+const ERROR_CODE_HINTS = {
+  forbidden: 'Your account does not have the required permission for this action.',
+  password_change_required: 'You must change your temporary password before continuing.',
+  cpo_app_id_mismatch: 'Your session context is out of date. Please sign in again.',
+  idempotency_conflict: 'This action was already submitted with different details. Refresh and try again as a new action.',
+  invalid_idempotency_key: 'Could not tag this request as a single action — please retry.',
+  mapping_unavailable: 'This charger is not currently synchronized with the transport layer. Try again shortly.',
+  hal_unavailable: 'The charger transport layer is temporarily unavailable. Try again shortly.',
+  charger_not_connected: 'Configuration could not be read — the charger is not currently connected.',
+  reserved_configuration_key: 'This key is managed automatically and cannot be changed here.',
+  sensitive_configuration_key: 'This key requires a secure workflow and cannot be changed here.',
+  unsupported_operation: 'That message type is not on the supported allowlist.',
+  charger_operation_not_found: 'That operation could not be found.',
+  connector_not_found: 'That connector could not be found on this charger.',
+  charger_not_found: 'That charger could not be found.'
+};
+
+// ============================================================================
+// OCPP Protocol Evidence panel — lazy, bounded polling, honest empty states
+// (handoff §14, §16.5, §18.3, §19.6)
+// ============================================================================
+const OCPP_EVIDENCE_POLL_INTERVAL_MS = 2500;
+const OCPP_EVIDENCE_MAX_POLLS = 6; // ~15s bounded window, then require manual refresh
+
+const OcppEvidencePanel = ({ operationId, authenticatedRequest, isVisible }) => {
+  const [exchanges, setExchanges] = useState(null); // null = not yet fetched
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [pollAttempts, setPollAttempts] = useState(0);
+  const pollTimerRef = useRef(null);
+
+  const fetchExchanges = useCallback(async () => {
+    if (!operationId) return;
+    setLoading(true);
+    setError('');
+    try {
+      const response = await authenticatedRequest(
+        `${API_BASE_URL}/api/v1/cpo/operations/charger-operations/${operationId}/ocpp-exchanges`,
+        { method: 'GET' }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setExchanges(data.exchanges || []);
+        return data.exchanges || [];
+      } else {
+        setError('Could not load protocol evidence.');
+        return null;
+      }
+    } catch (e) {
+      setError('Could not load protocol evidence.');
+      return null;
+    } finally {
+      setLoading(false);
+    }
+  }, [operationId, authenticatedRequest]);
+
+  useEffect(() => {
+    setExchanges(null);
+    setPollAttempts(0);
+    setError('');
+    if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    if (isVisible && operationId) {
+      fetchExchanges();
+    }
+    return () => {
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [operationId, isVisible]);
+
+  useEffect(() => {
+    if (!isVisible) return;
+    const isEmpty = Array.isArray(exchanges) && exchanges.length === 0;
+    if (isEmpty && pollAttempts < OCPP_EVIDENCE_MAX_POLLS) {
+      pollTimerRef.current = setTimeout(async () => {
+        const result = await fetchExchanges();
+        setPollAttempts(prev => prev + 1);
+        if (result && result.length > 0 && pollTimerRef.current) {
+          clearTimeout(pollTimerRef.current);
+        }
+      }, OCPP_EVIDENCE_POLL_INTERVAL_MS);
+    }
+    return () => {
+      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [exchanges, pollAttempts, isVisible]);
+
+  if (!operationId) return null;
+
+  return (
+    <div className="mt-2">
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-xs font-semibold text-gray-600 flex items-center gap-1.5">
+          <ScrollText size={14} className="text-gray-400" />
+          OCPP Protocol Evidence
+        </h4>
+        <button
+          onClick={() => { setPollAttempts(0); fetchExchanges(); }}
+          disabled={loading}
+          className="text-[11px] text-gray-400 hover:text-gray-700 flex items-center gap-1"
+        >
+          <RefreshCw size={11} className={loading ? 'animate-spin' : ''} /> Refresh
+        </button>
+      </div>
+
+      {exchanges === null && loading && (
+        <div className="flex items-center gap-2 text-xs text-gray-400 py-3">
+          <Loader2 size={14} className="animate-spin" /> Loading protocol evidence...
+        </div>
+      )}
+
+      {error && (
+        <p className="text-xs text-red-500">{error}</p>
+      )}
+
+      {Array.isArray(exchanges) && exchanges.length === 0 && (
+        <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-xl p-3">
+          {pollAttempts < OCPP_EVIDENCE_MAX_POLLS ? (
+            <>
+              <Loader2 size={13} className="animate-spin flex-shrink-0" />
+              Protocol evidence is still being delivered — this refreshes automatically.
+            </>
+          ) : (
+            <>
+              <Info size={13} className="flex-shrink-0" />
+              No protocol evidence recorded yet. This can be normal for delayed delivery — use Refresh to check again.
+            </>
+          )}
+        </div>
+      )}
+
+      {Array.isArray(exchanges) && exchanges.length > 0 && (
+        <div className="space-y-3">
+          {exchanges.map((ex) => (
+            <div key={ex.unique_id} className="border border-gray-200 rounded-xl p-3 bg-gray-50/50">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold text-gray-700">{ex.action}</span>
+                <span className="text-[10px] font-mono text-gray-400">unique_id: {ex.unique_id}</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div className="bg-white border border-gray-200 rounded-lg p-2">
+                  <p className="text-[10px] font-semibold text-blue-600 mb-1">SENT · {ex.sent?.message_type || 'CALL'}</p>
+                  {ex.sent ? (
+                    <>
+                      <p className="text-[10px] text-gray-400 mb-1">{ex.sent.occurred_at ? new Date(ex.sent.occurred_at).toLocaleTimeString() : ''}</p>
+                      <pre className="text-[10px] font-mono text-gray-700 whitespace-pre-wrap break-all">{JSON.stringify(ex.sent.payload, null, 2)}</pre>
+                    </>
+                  ) : (
+                    <p className="text-[10px] text-gray-400">No sent evidence recorded</p>
+                  )}
+                </div>
+                <div className="bg-white border border-gray-200 rounded-lg p-2">
+                  <p className={`text-[10px] font-semibold mb-1 ${ex.received?.message_type === 'CALLERROR' ? 'text-red-600' : 'text-emerald-600'}`}>
+                    RECEIVED{ex.received ? ` · ${ex.received.message_type}` : ''}
+                  </p>
+                  {ex.received ? (
+                    <>
+                      <p className="text-[10px] text-gray-400 mb-1">{ex.received.occurred_at ? new Date(ex.received.occurred_at).toLocaleTimeString() : ''}</p>
+                      <pre className="text-[10px] font-mono text-gray-700 whitespace-pre-wrap break-all">{JSON.stringify(ex.received.payload, null, 2)}</pre>
+                    </>
+                  ) : (
+                    <p className="text-[10px] text-gray-400">No response evidence recorded</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 };
 
 // ============================================================================
 // History Modal Component
 // ============================================================================
-const HistoryModal = ({ isOpen, onClose, chargerId, cmsChargerId, authenticatedRequest }) => {
+const HistoryModal = ({ isOpen, onClose, cmsChargerId, authenticatedRequest, onOpenOperation }) => {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -140,9 +405,20 @@ const HistoryModal = ({ isOpen, onClose, chargerId, cmsChargerId, authenticatedR
     state: '',
     connector_id: '',
     created_after: '',
-    created_before: ''
+    created_before: '',
+    typedValue: '' // reset_type | availability_type | requested_message | configuration_key, depending on kind
   });
   const [error, setError] = useState('');
+
+  // Per handoff §15.3 — at most one typed parameter filter, and it must match
+  // the selected kind. We derive the active typed-filter name from `kind` so
+  // the UI can never construct a conflicting combination.
+  const typedFilterName = {
+    RESET: 'reset_type',
+    CHANGE_AVAILABILITY: 'availability_type',
+    TRIGGER_MESSAGE: 'requested_message',
+    CHANGE_CONFIGURATION: 'configuration_key'
+  }[filters.kind] || null;
 
   const fetchHistory = useCallback(async (loadMore = false) => {
     if (!cmsChargerId) return;
@@ -157,12 +433,14 @@ const HistoryModal = ({ isOpen, onClose, chargerId, cmsChargerId, authenticatedR
       if (loadMore && cursor.before && cursor.before_id) {
         url += `&before=${encodeURIComponent(cursor.before)}&before_id=${encodeURIComponent(cursor.before_id)}`;
       }
-      // Append filters
       if (filters.kind) url += `&kind=${encodeURIComponent(filters.kind)}`;
       if (filters.state) url += `&state=${encodeURIComponent(filters.state)}`;
       if (filters.connector_id) url += `&connector_id=${encodeURIComponent(filters.connector_id)}`;
-      if (filters.created_after) url += `&created_after=${encodeURIComponent(filters.created_after)}`;
-      if (filters.created_before) url += `&created_before=${encodeURIComponent(filters.created_before)}`;
+      if (filters.created_after) url += `&created_after=${encodeURIComponent(new Date(filters.created_after).toISOString())}`;
+      if (filters.created_before) url += `&created_before=${encodeURIComponent(new Date(filters.created_before).toISOString())}`;
+      if (typedFilterName && filters.typedValue) {
+        url += `&${typedFilterName}=${encodeURIComponent(filters.typedValue)}`;
+      }
 
       const response = await authenticatedRequest(url, { method: 'GET' });
       if (response.ok) {
@@ -176,7 +454,7 @@ const HistoryModal = ({ isOpen, onClose, chargerId, cmsChargerId, authenticatedR
         });
       } else {
         const errData = await response.json().catch(() => ({}));
-        setError(errData.error?.message || 'Failed to load history');
+        setError(ERROR_CODE_HINTS[errData?.error?.code] || errData.error?.message || 'Failed to load history');
       }
     } catch (err) {
       setError('An error occurred while loading history');
@@ -184,16 +462,16 @@ const HistoryModal = ({ isOpen, onClose, chargerId, cmsChargerId, authenticatedR
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [cmsChargerId, authenticatedRequest, cursor.before, cursor.before_id, filters]);
+  }, [cmsChargerId, authenticatedRequest, cursor.before, cursor.before_id, filters, typedFilterName]);
 
-  // Reset and fetch when filters change
   useEffect(() => {
     if (isOpen && cmsChargerId) {
       setHistory([]);
       setCursor({ before: null, before_id: null, has_more: false });
       fetchHistory(false);
     }
-  }, [isOpen, cmsChargerId, filters, fetchHistory]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, cmsChargerId, filters]);
 
   const loadMore = () => {
     if (cursor.has_more && !loadingMore && !loading) {
@@ -202,7 +480,13 @@ const HistoryModal = ({ isOpen, onClose, chargerId, cmsChargerId, authenticatedR
   };
 
   const handleFilterChange = (key, value) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
+    setFilters(prev => {
+      const next = { ...prev, [key]: value };
+      // Changing kind invalidates any previously chosen typed value, since
+      // a typed filter only applies to the kind it belongs to (§15.3).
+      if (key === 'kind') next.typedValue = '';
+      return next;
+    });
   };
 
   const clearFilters = () => {
@@ -211,11 +495,69 @@ const HistoryModal = ({ isOpen, onClose, chargerId, cmsChargerId, authenticatedR
       state: '',
       connector_id: '',
       created_after: '',
-      created_before: ''
+      created_before: '',
+      typedValue: ''
     });
   };
 
   if (!isOpen) return null;
+
+  const renderTypedFilterControl = () => {
+    if (!typedFilterName) return null;
+    if (typedFilterName === 'reset_type') {
+      return (
+        <select
+          value={filters.typedValue}
+          onChange={(e) => handleFilterChange('typedValue', e.target.value)}
+          className="px-3 py-1.5 rounded-xl border border-gray-300 bg-white text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">Any reset type</option>
+          <option value="SOFT">Soft</option>
+          <option value="HARD">Hard</option>
+        </select>
+      );
+    }
+    if (typedFilterName === 'availability_type') {
+      return (
+        <select
+          value={filters.typedValue}
+          onChange={(e) => handleFilterChange('typedValue', e.target.value)}
+          className="px-3 py-1.5 rounded-xl border border-gray-300 bg-white text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">Any availability type</option>
+          <option value="OPERATIVE">Operative</option>
+          <option value="INOPERATIVE">Inoperative</option>
+        </select>
+      );
+    }
+    if (typedFilterName === 'requested_message') {
+      return (
+        <select
+          value={filters.typedValue}
+          onChange={(e) => handleFilterChange('typedValue', e.target.value)}
+          className="px-3 py-1.5 rounded-xl border border-gray-300 bg-white text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">Any message type</option>
+          {TRIGGER_MESSAGE_ALLOWLIST.map((msg) => (
+            <option key={msg} value={msg}>{msg}</option>
+          ))}
+        </select>
+      );
+    }
+    if (typedFilterName === 'configuration_key') {
+      return (
+        <input
+          type="text"
+          value={filters.typedValue}
+          onChange={(e) => handleFilterChange('typedValue', e.target.value)}
+          placeholder="Configuration key"
+          maxLength={100}
+          className="px-3 py-1.5 rounded-xl border border-gray-300 bg-white text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      );
+    }
+    return null;
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
@@ -262,6 +604,7 @@ const HistoryModal = ({ isOpen, onClose, chargerId, cmsChargerId, authenticatedR
                 <option key={key} value={key}>{val.label}</option>
               ))}
             </select>
+            {renderTypedFilterControl()}
             <input
               type="datetime-local"
               value={filters.created_after}
@@ -321,15 +664,23 @@ const HistoryModal = ({ isOpen, onClose, chargerId, cmsChargerId, authenticatedR
                   {history.map((op) => {
                     const stateDisplay = getStateDisplay(op.state);
                     const kindLabel = OPERATION_KIND_LABEL[op.kind] || op.kind;
+                    // Per handoff §15.5 — ChangeConfiguration value is NEVER exposed
+                    // here, only the key. GET_CONFIGURATION exposes requested key
+                    // names only, never returned values.
                     let details = '';
                     if (op.parameters) {
                       if (op.parameters.type) details += `Type: ${op.parameters.type}`;
                       if (op.parameters.reason) details += ` | Reason: ${op.parameters.reason}`;
                       if (op.parameters.requested_message) details += ` | Message: ${op.parameters.requested_message}`;
                       if (op.parameters.key) details += ` | Key: ${op.parameters.key}`;
+                      if (op.parameters.configuration_keys?.length) details += ` | Keys: ${op.parameters.configuration_keys.join(', ')}`;
                     }
                     return (
-                      <tr key={op.id} className="border-b border-gray-100 hover:bg-gray-50 transition">
+                      <tr
+                        key={op.id}
+                        className="border-b border-gray-100 hover:bg-gray-50 transition cursor-pointer"
+                        onClick={() => onOpenOperation && onOpenOperation(op.id)}
+                      >
                         <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
                           {op.created_at ? new Date(op.created_at).toLocaleString() : 'N/A'}
                         </td>
@@ -394,73 +745,68 @@ const HistoryModal = ({ isOpen, onClose, chargerId, cmsChargerId, authenticatedR
 };
 
 // ============================================================================
-// Operation Section Component (memoized)
+// Operation Card — always visible (no accordion). A quiet left accent bar
+// carries the color-coding instead of a heavy gradient icon block, so the
+// grid reads calmly even with every card open at once.
 // ============================================================================
-const OperationSection = memo(({ 
-  id, 
-  title, 
-  icon, 
-  children, 
-  description, 
-  badge, 
-  accent = 'blue', 
-  locked = false, 
+const OperationCard = memo(({
+  title,
+  icon,
+  children,
+  description,
+  badge,
+  accent = 'blue',
+  locked = false,
   lockedNote,
-  isExpanded,
-  onToggle
+  className = ''
 }) => {
   const accentMap = {
-    blue: ['from-blue-500', 'to-indigo-500', 'text-blue-600', 'bg-blue-50'],
-    green: ['from-emerald-500', 'to-teal-500', 'text-emerald-600', 'bg-emerald-50'],
-    purple: ['from-purple-500', 'to-fuchsia-500', 'text-purple-600', 'bg-purple-50'],
-    amber: ['from-amber-500', 'to-orange-500', 'text-amber-600', 'bg-amber-50'],
-    indigo: ['from-indigo-500', 'to-violet-500', 'text-indigo-600', 'bg-indigo-50'],
-    slate: ['from-slate-500', 'to-gray-600', 'text-slate-600', 'bg-slate-50']
+    blue: { bar: 'bg-blue-500', icon: 'text-blue-600 bg-blue-50', badge: 'text-blue-700 bg-blue-50' },
+    green: { bar: 'bg-emerald-500', icon: 'text-emerald-600 bg-emerald-50', badge: 'text-emerald-700 bg-emerald-50' },
+    purple: { bar: 'bg-purple-500', icon: 'text-purple-600 bg-purple-50', badge: 'text-purple-700 bg-purple-50' },
+    amber: { bar: 'bg-amber-500', icon: 'text-amber-600 bg-amber-50', badge: 'text-amber-700 bg-amber-50' },
+    indigo: { bar: 'bg-indigo-500', icon: 'text-indigo-600 bg-indigo-50', badge: 'text-indigo-700 bg-indigo-50' },
+    slate: { bar: 'bg-slate-500', icon: 'text-slate-600 bg-slate-50', badge: 'text-slate-700 bg-slate-50' }
   };
-  const [gradFrom, gradTo, textColor, bgColor] = accentMap[accent] || accentMap.blue;
+  const tone = accentMap[accent] || accentMap.blue;
 
   return (
-    <div className={`group border border-gray-200/70 rounded-3xl overflow-hidden bg-white transition-all duration-300 ${isExpanded ? 'shadow-lg shadow-gray-200/60 ring-1 ring-gray-100' : 'shadow-sm hover:shadow-md hover:-translate-y-0.5'}`}>
-      <button
-        onClick={() => onToggle(id)}
-        className="w-full px-6 py-4 flex items-center justify-between transition"
-        type="button"
-      >
-        <div className="flex items-center gap-4">
-          <div className={`w-11 h-11 rounded-2xl flex items-center justify-center bg-gradient-to-br ${gradFrom} ${gradTo} text-white shadow-md shadow-gray-300/50`}>
-            {icon}
-          </div>
-          <div className="text-left">
-            <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-              {title}
-              {badge && (
-                <span className={`px-2 py-0.5 ${bgColor} ${textColor} text-[10px] font-semibold rounded-full`}>
-                  {badge}
-                </span>
-              )}
-              {locked && (
-                <span className="px-2 py-0.5 bg-gray-100 text-gray-500 text-[10px] font-semibold rounded-full flex items-center gap-1">
-                  <Lock size={10} /> Restricted
-                </span>
-              )}
-            </h3>
-            <p className="text-xs text-gray-500 mt-0.5">{description}</p>
-          </div>
-        </div>
-        <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${isExpanded ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-400 group-hover:bg-gray-200'}`}>
-          {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-        </div>
-      </button>
-      {isExpanded && (
-        <div className="px-6 pb-6 pt-1 border-t border-gray-100 bg-gradient-to-b from-gray-50/60 to-white">
-          {locked ? (
-            <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-xl p-4">
-              <Lock size={14} />
-              {lockedNote || 'You do not have permission to use this operation.'}
+    <div className={`relative flex flex-col bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden ${className}`}>
+      <div className={`absolute left-0 top-0 bottom-0 w-1 ${tone.bar}`} />
+      <div className="pl-6 pr-5 pt-5 pb-2">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${tone.icon}`}>
+              {icon}
             </div>
-          ) : children}
+            <div className="min-w-0">
+              <h3 className="text-[15px] font-semibold text-gray-900 truncate">{title}</h3>
+              <p className="text-xs text-gray-500 mt-0.5">{description}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {locked && (
+              <span className="px-2 py-0.5 bg-gray-100 text-gray-500 text-[10px] font-semibold rounded-full flex items-center gap-1">
+                <Lock size={10} /> Restricted
+              </span>
+            )}
+            {badge && !locked && (
+              <span className={`px-2 py-0.5 text-[10px] font-semibold rounded-full ${tone.badge}`}>
+                {badge}
+              </span>
+            )}
+          </div>
         </div>
-      )}
+      </div>
+      <div className="h-px bg-gray-100 mx-6" />
+      <div className="pl-6 pr-5 py-5 flex-1">
+        {locked ? (
+          <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-xl p-4">
+            <Lock size={14} />
+            {lockedNote || 'You do not have permission to use this operation.'}
+          </div>
+        ) : children}
+      </div>
     </div>
   );
 });
@@ -502,19 +848,37 @@ const ChargerOperations = () => {
   const [configValue, setConfigValue] = useState('');
   const [configData, setConfigData] = useState(null);
   const [configLoading, setConfigLoading] = useState(false);
-
-  // Expanded sections
-  const [expandedSections, setExpandedSections] = useState({
-    reset: false,
-    unlock: false,
-    availability: false,
-    clearCache: false,
-    triggerMessage: false,
-    configuration: false
-  });
+  const [auditedReadKeys, setAuditedReadKeys] = useState('');
 
   // Toast
   const [showToast, setShowToast] = useState({ visible: false, message: '', type: '' });
+
+  // Per handoff §4.3 — one Idempotency-Key represents one user intent. We key
+  // pending intents by operation slot + a hash of the exact payload: a retry
+  // of the SAME request reuses the SAME key; changing the inputs (a genuinely
+  // new intent) mints a fresh one. Keys are cleared once an intent completes.
+  const idempotencyRef = useRef({});
+
+  const getIdempotencyKey = useCallback((operationKey, body) => {
+    const payloadHash = JSON.stringify(body ?? null);
+    const existing = idempotencyRef.current[operationKey];
+    if (existing && existing.payloadHash === payloadHash) {
+      return existing.key;
+    }
+    const key = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
+    idempotencyRef.current[operationKey] = { key, payloadHash };
+    return key;
+  }, []);
+
+  const clearIdempotencyKey = useCallback((operationKey) => {
+    delete idempotencyRef.current[operationKey];
+  }, []);
 
   // The CMS charger UUID
   const cmsChargerId = charger?.id || chargerId;
@@ -534,17 +898,6 @@ const ChargerOperations = () => {
     }, 4500);
   }, []);
 
-  const newIdempotencyKey = () => {
-    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-      return crypto.randomUUID();
-    }
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-      const r = (Math.random() * 16) | 0;
-      const v = c === 'x' ? r : (r & 0x3) | 0x8;
-      return v.toString(16);
-    });
-  };
-
   const parseApiError = async (response) => {
     const requestId = response.headers?.get ? response.headers.get('X-Request-ID') : null;
     let code = 'unknown_error';
@@ -553,8 +906,8 @@ const ChargerOperations = () => {
       const data = await response.json();
       code = data?.error?.code || code;
       message = data?.error?.message || message;
-    } catch (e) {}
-    return { code, message, requestId };
+    } catch (e) { /* no-op: non-JSON error body */ }
+    return { code, message: ERROR_CODE_HINTS[code] || message, requestId };
   };
 
   const connectorLabel = useCallback((connector) => {
@@ -581,15 +934,22 @@ const ChargerOperations = () => {
     setError('');
     try {
       const response = await authenticatedRequest(
-        `${API_BASE_URL}/api/v1/cpo/chargers/${chargerId}`,
-        { method: 'GET' }
+        `${API_BASE_URL}/api/v1/cpo/operations/chargers/${chargerId}`,
+        { method: 'GET', cache: 'no-store' }
       );
       if (response.ok) {
         const data = await response.json();
-        setCharger(data.charger || data.data || data);
+        // The operational-read response shape is { charger: {...}, live: {...} }
+        // — `live` is a SIBLING of `charger`, not nested inside it. Merge it in
+        // here so every downstream read (`charger.live.charger.connection_state`,
+        // `charger.live.connectors[...]`) actually finds it instead of silently
+        // falling back to "Unknown" / offline.
+        const chargerObj = data.charger || data.data || data;
+        const liveObj = data.live || chargerObj?.live || null;
+        setCharger({ ...chargerObj, live: liveObj });
       } else {
-        const errorData = await response.json().catch(() => ({}));
-        setError(errorData.error?.message || errorData.message || 'Failed to fetch charger details');
+        const err = await parseApiError(response);
+        setError(err.message || 'Failed to fetch charger details');
       }
     } catch (err) {
       setError('An error occurred while fetching charger details');
@@ -602,7 +962,7 @@ const ChargerOperations = () => {
     try {
       const response = await authenticatedRequest(
         `${API_BASE_URL}/api/v1/cpo/access/me`,
-        { method: 'GET' }
+        { method: 'GET', cache: 'no-store' }
       );
       if (response.ok) {
         const data = await response.json();
@@ -613,11 +973,15 @@ const ChargerOperations = () => {
     }
   }, [authenticatedRequest]);
 
-  const runOperation = useCallback(async (operationKey, path, body, successPrefix) => {
+  // Generic durable-operation runner. `mapResponse` lets callers (e.g. the
+  // audited configuration read, whose 202 body is { operation, configuration })
+  // normalize the JSON body into { operation, extra } while everything else
+  // (idempotency reuse, error handling, toasts, result modal) stays shared.
+  const runOperation = useCallback(async (operationKey, path, body, successPrefix, mapResponse = (d) => ({ operation: d, extra: null })) => {
     setOperationLoading(true);
     setOperationResult(null);
     setActiveOperation(operationKey);
-    const idempotencyKey = newIdempotencyKey();
+    const idempotencyKey = getIdempotencyKey(operationKey, body);
     try {
       const response = await authenticatedRequest(
         `${API_BASE_URL}/api/v1/cpo/operations/chargers/${cmsChargerId}/${path}`,
@@ -632,25 +996,32 @@ const ChargerOperations = () => {
       );
       const requestId = response.headers.get('X-Request-ID');
       if (response.ok) {
-        const data = await response.json();
-        setOperationResult({ success: true, data, requestId, message: successPrefix });
-        showToastMessage(`${successPrefix} — ${getStateDisplay(data.state).label}`, 'success');
-        return data;
+        const raw = await response.json();
+        const { operation, extra } = mapResponse(raw);
+        clearIdempotencyKey(operationKey); // intent fulfilled; a future click is a new intent
+        setOperationResult({ success: true, data: operation, extra, requestId, message: successPrefix });
+        showToastMessage(`${successPrefix} — ${getStateDisplay(operation.state).label}`, 'success');
+        return operation;
       } else {
+        // Keep the same idempotency key: an unchanged retry of this exact
+        // payload must reuse it, not mint a new physical intent (§4.3, §19.1).
         const err = await parseApiError(response);
+        if (err.code === 'forbidden') fetchPermissions();
         setOperationResult({ success: false, error: err.message, code: err.code, requestId: err.requestId });
         showToastMessage(`${err.code}: ${err.message}`, 'error');
         return null;
       }
     } catch (err) {
-      setOperationResult({ success: false, error: err.message || 'An error occurred' });
+      // Network failure: preserve the key so "Retry" resubmits the identical
+      // intent rather than risking a duplicate physical command (§19.1).
+      setOperationResult({ success: false, error: 'Request failed. Check your connection and retry with the same action.' });
       showToastMessage('Request failed. Check your connection and retry with the same action.', 'error');
       return null;
     } finally {
       setOperationLoading(false);
       setShowResultModal(true);
     }
-  }, [authenticatedRequest, cmsChargerId, showToastMessage]);
+  }, [authenticatedRequest, cmsChargerId, showToastMessage, getIdempotencyKey, clearIdempotencyKey, fetchPermissions]);
 
   // Operation handlers
   const handleReset = useCallback(async () => {
@@ -691,13 +1062,15 @@ const ChargerOperations = () => {
     await runOperation('triggerMessage', 'trigger-message', payload, `${triggerMessage} trigger requested`);
   }, [triggerMessage, triggerConnectorId, runOperation]);
 
+  // Compatibility read (§10.1) — no Idempotency-Key, no durable operation,
+  // no history row. Safe for passive load/refresh.
   const handleGetConfiguration = useCallback(async () => {
     setConfigLoading(true);
     setConfigData(null);
     try {
       const response = await authenticatedRequest(
         `${API_BASE_URL}/api/v1/cpo/operations/chargers/${cmsChargerId}/configuration`,
-        { method: 'GET' }
+        { method: 'GET', cache: 'no-store' }
       );
       if (response.ok) {
         const data = await response.json();
@@ -714,9 +1087,45 @@ const ChargerOperations = () => {
     }
   }, [authenticatedRequest, cmsChargerId, showToastMessage]);
 
+  // Explicit audited read (§10.2) — durable GET_CONFIGURATION operation with
+  // its own Idempotency-Key, history row, and protocol evidence. Deliberately
+  // separate from the compatibility GET above; never used for passive polling.
+  const handleAuditedConfigurationRead = useCallback(async () => {
+    const keys = auditedReadKeys
+      .split(',')
+      .map(k => k.trim())
+      .filter(Boolean);
+    if (keys.length > 64) {
+      showToastMessage('At most 64 keys may be requested at once', 'error');
+      return;
+    }
+    const body = keys.length > 0 ? { keys } : {};
+    const operation = await runOperation(
+      'auditedConfigRead',
+      'configuration/read',
+      body,
+      keys.length > 0 ? `Audited read requested for ${keys.length} key(s)` : 'Audited read requested for all keys',
+      (raw) => ({ operation: raw.operation, extra: raw.configuration || null })
+    );
+    if (operation) {
+      // The transient `configuration` member (if present in this response)
+      // is shown inside the result modal via `extra` — not assumed to be
+      // reproduced on an idempotent retry (§10.2 "Idempotent retry nuance").
+    }
+  }, [auditedReadKeys, runOperation, showToastMessage]);
+
   const handleSetConfiguration = useCallback(async () => {
     if (!configKey || !configValue) {
       showToastMessage('Please enter both key and value', 'error');
+      return;
+    }
+    const keyIssue = isLikelyReservedOrSensitiveKey(configKey);
+    if (keyIssue === 'reserved') {
+      showToastMessage(ERROR_CODE_HINTS.reserved_configuration_key, 'error');
+      return;
+    }
+    if (keyIssue === 'sensitive') {
+      showToastMessage(ERROR_CODE_HINTS.sensitive_configuration_key, 'error');
       return;
     }
     const result = await runOperation(
@@ -732,6 +1141,41 @@ const ChargerOperations = () => {
     }
   }, [configKey, configValue, runOperation, showToastMessage, handleGetConfiguration]);
 
+  // Exact operation read / recovery (§13, §19.2) — never re-POSTs the
+  // physical command; only performed on explicit user action.
+  const fetchExactOperation = useCallback(async (operationId) => {
+    try {
+      const response = await authenticatedRequest(
+        `${API_BASE_URL}/api/v1/cpo/operations/charger-operations/${operationId}`,
+        { method: 'GET', cache: 'no-store' }
+      );
+      if (response.ok) {
+        const data = await response.json();
+        setOperationResult(prev => (prev ? { ...prev, data } : { success: true, data }));
+        setShowResultModal(true);
+        showToastMessage('Operation status refreshed', 'info');
+        return data;
+      } else {
+        const err = await parseApiError(response);
+        showToastMessage(`${err.code}: ${err.message}`, 'error');
+        return null;
+      }
+    } catch (err) {
+      showToastMessage('Failed to check operation status', 'error');
+      return null;
+    }
+  }, [authenticatedRequest, showToastMessage]);
+
+  const handleOpenOperationFromHistory = useCallback(async (operationId) => {
+    setOperationLoading(true);
+    const data = await fetchExactOperation(operationId);
+    setOperationLoading(false);
+    if (data) {
+      setOperationResult({ success: true, data, requestId: null, message: 'Loaded from history' });
+      setShowResultModal(true);
+    }
+  }, [fetchExactOperation]);
+
   // ============================================================================
   // User Info
   // ============================================================================
@@ -739,7 +1183,7 @@ const ChargerOperations = () => {
     try {
       const response = await authenticatedRequest(
         `${API_BASE_URL}/api/v1/auth/me`,
-        { method: 'GET' }
+        { method: 'GET', cache: 'no-store' }
       );
       if (response.ok) {
         const data = await response.json();
@@ -762,16 +1206,6 @@ const ChargerOperations = () => {
     fetchPermissions();
     fetchChargerDetails();
   }, [isAuthenticated, navigate, fetchUserInfo, fetchPermissions, fetchChargerDetails]);
-
-  // ============================================================================
-  // Toggle Sections
-  // ============================================================================
-  const toggleSection = useCallback((section) => {
-    setExpandedSections(prev => ({
-      ...prev,
-      [section]: !prev[section]
-    }));
-  }, []);
 
   // ============================================================================
   // Menus
@@ -822,12 +1256,15 @@ const ChargerOperations = () => {
   );
 
   // ============================================================================
-  // Result Modal
+  // Result Modal — operation truth summary + lazy OCPP protocol evidence
+  // (§18.3). success !== false because a loaded-from-history / exact-GET
+  // result never carries an explicit `success` flag.
   // ============================================================================
   const ResultModal = () => {
     if (!showResultModal || !operationResult) return null;
     const op = operationResult.data;
     const stateDisplay = op ? getStateDisplay(op.state) : null;
+    const wording = op ? getResultWording(op) : '';
 
     return (
       <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
@@ -854,8 +1291,25 @@ const ChargerOperations = () => {
             )}
 
             {operationResult.error && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600">
-                <strong>{operationResult.code || 'Error'}:</strong> {operationResult.error}
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-600 space-y-2">
+                <p><strong>{operationResult.code || 'Error'}:</strong> {operationResult.error}</p>
+                <button
+                  onClick={() => {
+                    // Retry reuses the SAME stored idempotency key because the
+                    // triggering handler re-derives its key from the unchanged
+                    // form state / payload (§19.1).
+                    if (activeOperation === 'reset') handleReset();
+                    else if (activeOperation === 'unlock') handleUnlock();
+                    else if (activeOperation === 'availability') handleAvailability();
+                    else if (activeOperation === 'clearCache') handleClearCache();
+                    else if (activeOperation === 'triggerMessage') handleTriggerMessage();
+                    else if (activeOperation === 'setConfig') handleSetConfiguration();
+                    else if (activeOperation === 'auditedConfigRead') handleAuditedConfigurationRead();
+                  }}
+                  className="text-xs font-medium text-red-700 hover:text-red-900 flex items-center gap-1"
+                >
+                  <RefreshCw size={12} /> Retry same action
+                </button>
               </div>
             )}
 
@@ -866,7 +1320,7 @@ const ChargerOperations = () => {
                     {stateDisplay.icon}
                     {stateDisplay.label}
                   </div>
-                  <p className="text-xs mt-1 opacity-90">{stateDisplay.copy}</p>
+                  <p className="text-xs mt-1 opacity-90">{wording || stateDisplay.copy}</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3 text-xs">
@@ -893,38 +1347,70 @@ const ChargerOperations = () => {
                     </p>
                     <p className="font-mono text-gray-700 mt-0.5 break-all">{op.id}</p>
                   </div>
+                  {op.hal_operation_id && (
+                    <div className="bg-gray-50 rounded-xl p-3 col-span-2">
+                      <p className="text-gray-500">HAL Operation ID (diagnostic only)</p>
+                      <p className="font-mono text-gray-500 mt-0.5 break-all">{op.hal_operation_id}</p>
+                    </div>
+                  )}
                 </div>
+
+                {/* Transient configuration snapshot from an audited GET_CONFIGURATION
+                    response — only present when the sync OCPP confirmation arrived
+                    in this exact HTTP response (§10.2). */}
+                {operationResult.extra?.configuration_keys && (
+                  <div>
+                    <h4 className="text-xs font-semibold text-gray-600 mb-2">Configuration (from this response)</h4>
+                    {operationResult.extra.unknown_keys?.length > 0 && (
+                      <p className="text-xs text-amber-600 mb-2 flex items-center gap-1">
+                        <AlertTriangle size={13} /> Unknown keys: {operationResult.extra.unknown_keys.join(', ')}
+                      </p>
+                    )}
+                    <div className="border border-gray-200 rounded-xl overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-600">Key</th>
+                            <th className="px-3 py-2 text-left font-semibold text-gray-600">Value</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {operationResult.extra.configuration_keys.map((k) => (
+                            <tr key={k.key} className="border-t border-gray-100">
+                              <td className="px-3 py-2 font-mono text-gray-700">{k.key}</td>
+                              <td className="px-3 py-2 text-gray-600">
+                                {k.redacted ? (
+                                  <span className="inline-flex items-center gap-1 text-gray-400"><Lock size={11} /> Redacted</span>
+                                ) : (k.value ?? '—')}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
 
                 {op.state === 'RECONCILIATION_REQUIRED' && (
                   <button
                     onClick={async () => {
                       setOperationLoading(true);
-                      try {
-                        const response = await authenticatedRequest(
-                          `${API_BASE_URL}/api/v1/cpo/operations/charger-operations/${op.id}`,
-                          { method: 'GET' }
-                        );
-                        if (response.ok) {
-                          const data = await response.json();
-                          setOperationResult(prev => ({ ...prev, data }));
-                          showToastMessage('Operation status refreshed', 'info');
-                        } else {
-                          const err = await parseApiError(response);
-                          showToastMessage(`${err.code}: ${err.message}`, 'error');
-                        }
-                      } catch (err) {
-                        showToastMessage('Failed to check operation status', 'error');
-                      } finally {
-                        setOperationLoading(false);
-                      }
+                      await fetchExactOperation(op.id);
+                      setOperationLoading(false);
                     }}
                     disabled={operationLoading}
                     className="w-full px-4 py-2.5 bg-amber-500 text-white rounded-xl hover:bg-amber-600 transition flex items-center justify-center gap-2 text-sm font-medium"
                   >
-                    {operationLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw size={16} />}
+                    {operationLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <SearchCheck size={16} />}
                     Check Status (Exact Recovery)
                   </button>
                 )}
+
+                <OcppEvidencePanel
+                  operationId={op.id}
+                  authenticatedRequest={authenticatedRequest}
+                  isVisible={showResultModal}
+                />
               </>
             )}
 
@@ -1011,10 +1497,13 @@ const ChargerOperations = () => {
   // ============================================================================
   // Main Render
   // ============================================================================
-  const connectionStatus = charger?.live?.charger?.connection_state || 'UNKNOWN';
+  const liveCharger = charger?.live?.charger || null;
+  const connectionStatus = liveCharger?.connection_state || 'UNKNOWN';
   const connectionDisplay = getStatusDisplay(connectionStatus, CONNECTION_STATUS_CONFIG);
   const isOnline = connectionStatus === 'ONLINE';
   const canOperate = isOnline && hasOperationsPermission;
+  const chargerFreshnessDisplay = getFreshnessDisplay(liveCharger?.connection_freshness);
+  const chargerLastSeen = formatRelativeTime(liveCharger?.connection_observed_at);
 
   return (
     <div className="min-h-screen bg-white flex">
@@ -1032,9 +1521,9 @@ const ChargerOperations = () => {
         <HistoryModal
           isOpen={showHistoryModal}
           onClose={() => setShowHistoryModal(false)}
-          chargerId={chargerId}
           cmsChargerId={cmsChargerId}
           authenticatedRequest={authenticatedRequest}
+          onOpenOperation={handleOpenOperationFromHistory}
         />
 
         {/* Header */}
@@ -1064,8 +1553,6 @@ const ChargerOperations = () => {
             </div>
 
             <div className="flex items-center gap-2 relative">
-              {/* History button removed from header — now placed in sub-header below */}
-
               <div className="relative">
                 <button
                   onClick={() => setShowSettingsMenu(prev => !prev)}
@@ -1090,7 +1577,7 @@ const ChargerOperations = () => {
           </div>
         </header>
 
-        {/* Sub-header banner — now contains the History button */}
+        {/* Sub-header banner — History button lives here */}
         <div className="px-6 py-5 border-b border-gray-100 bg-gradient-to-r from-blue-50/50 to-white">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-4">
@@ -1104,6 +1591,16 @@ const ChargerOperations = () => {
                     {connectionDisplay.icon}
                     {connectionDisplay.label}
                   </span>
+                  {liveCharger && (
+                    <span
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-medium border ${chargerFreshnessDisplay.color}`}
+                      title={liveCharger.connection_observed_at ? `Observed at ${new Date(liveCharger.connection_observed_at).toLocaleString()}` : ''}
+                    >
+                      <Circle size={7} className="fill-current" />
+                      {chargerFreshnessDisplay.label}
+                      {chargerLastSeen && <span className="opacity-75">· {chargerLastSeen}</span>}
+                    </span>
+                  )}
                 </h2>
                 <div className="flex items-center gap-3 mt-0.5">
                   <p className="text-sm text-gray-500 font-mono">
@@ -1122,7 +1619,6 @@ const ChargerOperations = () => {
             </div>
 
             <div className="flex items-center gap-3">
-              {/* History button moved here */}
               <button
                 onClick={() => setShowHistoryModal(true)}
                 className="px-4 py-2 bg-white border border-gray-200 rounded-xl hover:bg-gray-50 transition text-gray-700 flex items-center gap-2 shadow-sm text-sm font-medium"
@@ -1155,7 +1651,7 @@ const ChargerOperations = () => {
           )}
 
           {/* Charger Summary Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
             <div className="relative overflow-hidden bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
               <div className="absolute -right-4 -top-4 w-16 h-16 rounded-full bg-blue-50" />
               <p className="text-xs text-gray-500 relative">Total Connectors</p>
@@ -1176,6 +1672,16 @@ const ChargerOperations = () => {
               <p className="text-xs text-gray-500 relative">Admin Status</p>
               <p className="text-2xl font-bold text-gray-900 relative">{charger.status || 'N/A'}</p>
             </div>
+            <div className="relative overflow-hidden bg-white rounded-2xl border border-gray-200 p-4 shadow-sm">
+              <div className={`absolute -right-4 -top-4 w-16 h-16 rounded-full ${isOnline ? 'bg-green-50' : 'bg-red-50'}`} />
+              <p className="text-xs text-gray-500 relative">Live Connection</p>
+              <p className={`text-2xl font-bold relative ${isOnline ? 'text-green-600' : 'text-red-500'}`}>{connectionDisplay.label}</p>
+              {liveCharger && (
+                <p className="text-[11px] text-gray-400 relative mt-0.5">
+                  {chargerFreshnessDisplay.label}{chargerLastSeen ? ` · seen ${chargerLastSeen}` : ''}
+                </p>
+              )}
+            </div>
           </div>
 
           {/* Connectors */}
@@ -1188,11 +1694,17 @@ const ChargerOperations = () => {
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {connectors.map((connector) => {
+                  // Match primarily by CMS connector UUID (live connector objects
+                  // carry `connector_id`, not `connector_number`); fall back to
+                  // connector_number only if a live payload happens to include it.
                   const liveConnector = charger?.live?.connectors?.find(
-                    lc => String(lc.connector_id) === String(connector.id) || Number(lc.connector_number) === Number(connector.connector_number)
+                    lc => String(lc.connector_id) === String(connector.id)
+                      || (lc.connector_number != null && Number(lc.connector_number) === Number(connector.connector_number))
                   );
                   const ocppStatus = liveConnector?.last_ocpp_status || 'Unknown';
                   const ocppDisplay = getStatusDisplay(ocppStatus, OCPP_STATUS_CONFIG);
+                  const connFreshnessDisplay = getFreshnessDisplay(liveConnector?.freshness);
+                  const connLastSeen = formatRelativeTime(liveConnector?.observed_at);
 
                   return (
                     <div key={connector.id} className="relative overflow-hidden bg-white rounded-2xl border border-gray-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
@@ -1207,7 +1719,22 @@ const ChargerOperations = () => {
                         </span>
                       </div>
                       <p className="text-xs text-gray-500">Type: {connector.connector_type || 'N/A'}</p>
-                      <p className="text-xs text-gray-500 mb-2">Capacity: {connector.connector_total_capacity || 0} kW</p>
+                      <p className="text-xs text-gray-500 mb-1">Capacity: {connector.connector_total_capacity || 0} kW</p>
+                      {liveConnector && (
+                        <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+                          {liveConnector.availability && (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium bg-gray-100 text-gray-600">
+                              {liveConnector.availability}
+                            </span>
+                          )}
+                          <span className={`inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-medium ${connFreshnessDisplay.color}`}>
+                            {connFreshnessDisplay.label}
+                          </span>
+                          {connLastSeen && (
+                            <span className="text-[10px] text-gray-400">· {connLastSeen}</span>
+                          )}
+                        </div>
+                      )}
                       <button
                         onClick={() => copyToClipboard(connector.id, `Connector #${connector.connector_number} ID`)}
                         className="w-full mt-1 px-2 py-1.5 bg-gray-50 hover:bg-gray-100 rounded-lg text-[10px] font-mono text-gray-500 flex items-center justify-between gap-2 transition"
@@ -1223,25 +1750,23 @@ const ChargerOperations = () => {
             </div>
           )}
 
-          {/* Operations Grid */}
-          <div className="space-y-4">
-            <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2 mb-4">
-              <Zap size={20} className="text-blue-600" />
-              OCPP Operations
-              <span className="text-xs font-normal text-gray-400 ml-2">(CPO Charger Operations)</span>
-            </h2>
+          {/* Operations */}
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <Zap size={18} className="text-blue-600" />
+              <h2 className="text-lg font-bold text-gray-800">Charger Operations</h2>
+              <span className="text-xs font-normal text-gray-400">— every action below is available at once, no need to expand anything</span>
+            </div>
 
-            {/* 1. Reset Charger */}
-            <OperationSection
-              id="reset"
-              title="Reset Charger"
-              icon={<Power size={20} />}
-              description="Send a soft or hard reset command to the charger"
-              badge="SOFT / HARD"
-              accent="blue"
-              isExpanded={expandedSections.reset}
-              onToggle={toggleSection}
-            >
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              {/* 1. Reset Charger */}
+              <OperationCard
+                title="Reset Charger"
+                icon={<Power size={18} />}
+                description="Send a soft or hard reset command to the charger"
+                badge="SOFT / HARD"
+                accent="blue"
+              >
               <div className="space-y-4">
                 <div className="flex items-center gap-4 flex-wrap">
                   <label className="text-sm font-medium text-gray-700">Reset Type:</label>
@@ -1263,7 +1788,7 @@ const ChargerOperations = () => {
                   </div>
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-600">Reason (required, 3–500 characters)</label>
+                  <label className="text-xs font-medium text-gray-600">Reason (required, 3–500 characters — CMS audit metadata, not sent to the charger)</label>
                   <textarea
                     value={resetReason}
                     onChange={(e) => setResetReason(e.target.value)}
@@ -1291,19 +1816,16 @@ const ChargerOperations = () => {
                 )}
                 {!isOnline && <p className="text-xs text-amber-600 flex items-center gap-1"><AlertTriangle size={14} /> Charger is offline. Operation may not be delivered.</p>}
               </div>
-            </OperationSection>
+              </OperationCard>
 
-            {/* 2. Unlock Connector */}
-            <OperationSection
-              id="unlock"
-              title="Unlock Connector"
-              icon={<Unlock size={20} />}
-              description="Request OCPP UnlockConnector for a specific connector"
-              badge="Connector"
-              accent="green"
-              isExpanded={expandedSections.unlock}
-              onToggle={toggleSection}
-            >
+              {/* 2. Unlock Connector */}
+              <OperationCard
+                title="Unlock Connector"
+                icon={<Unlock size={18} />}
+                description="Request OCPP UnlockConnector for a specific connector"
+                badge="Connector"
+                accent="green"
+              >
               <div className="space-y-4">
                 <div className="flex items-center gap-4 flex-wrap">
                   <label className="text-sm font-medium text-gray-700">Connector:</label>
@@ -1331,19 +1853,16 @@ const ChargerOperations = () => {
                   Unlock Connector
                 </button>
               </div>
-            </OperationSection>
+              </OperationCard>
 
-            {/* 3. Change Availability */}
-            <OperationSection
-              id="availability"
-              title="Change Availability"
-              icon={<Shield size={20} />}
-              description="Change availability for charger or specific connector"
-              badge="OPERATIVE / INOPERATIVE"
-              accent="purple"
-              isExpanded={expandedSections.availability}
-              onToggle={toggleSection}
-            >
+              {/* 3. Change Availability */}
+              <OperationCard
+                title="Change Availability"
+                icon={<Shield size={18} />}
+                description="Change availability for charger or specific connector"
+                badge="OPERATIVE / INOPERATIVE"
+                accent="purple"
+              >
               <div className="space-y-4">
                 <div className="flex items-center gap-4 flex-wrap">
                   <label className="text-sm font-medium text-gray-700">Type:</label>
@@ -1393,22 +1912,19 @@ const ChargerOperations = () => {
                   Change Availability
                 </button>
                 <p className="text-[11px] text-gray-400 flex items-center gap-1">
-                  <Info size={12} /> This is an OCPP availability request — separate from CMS admin status, live connection state, and customer charge eligibility.
+                  <Info size={12} /> This is an OCPP availability request — separate from CMS admin status, live connection state, and customer charge eligibility. A "Scheduled" result is not an already-applied state.
                 </p>
               </div>
-            </OperationSection>
+              </OperationCard>
 
-            {/* 4. Clear Cache */}
-            <OperationSection
-              id="clearCache"
-              title="Clear Cache"
-              icon={<Trash2 size={20} />}
-              description="Request OCPP ClearCache to reset charger authorization cache"
-              badge="Maintenance"
-              accent="amber"
-              isExpanded={expandedSections.clearCache}
-              onToggle={toggleSection}
-            >
+              {/* 4. Clear Cache */}
+              <OperationCard
+                title="Clear Cache"
+                icon={<Trash2 size={18} />}
+                description="Request OCPP ClearCache to reset charger authorization cache"
+                badge="Maintenance"
+                accent="amber"
+              >
               <div className="space-y-4">
                 <p className="text-sm text-gray-500">This clears the charger's authorization cache. Treat it as an explicit maintenance action, not a generic retry mechanism.</p>
                 <button
@@ -1424,19 +1940,16 @@ const ChargerOperations = () => {
                   Clear Cache
                 </button>
               </div>
-            </OperationSection>
+              </OperationCard>
 
-            {/* 5. Trigger Message */}
-            <OperationSection
-              id="triggerMessage"
-              title="Trigger Message"
-              icon={<Send size={20} />}
-              description="Send an allowlisted OCPP TriggerMessage to the charger"
-              badge="Allowlisted"
-              accent="indigo"
-              isExpanded={expandedSections.triggerMessage}
-              onToggle={toggleSection}
-            >
+              {/* 5. Trigger Message */}
+              <OperationCard
+                title="Trigger Message"
+                icon={<Send size={18} />}
+                description="Send an allowlisted OCPP TriggerMessage to the charger"
+                badge="Allowlisted"
+                accent="indigo"
+              >
               <div className="space-y-4">
                 <div className="flex items-center gap-4 flex-wrap">
                   <label className="text-sm font-medium text-gray-700">Message Type:</label>
@@ -1475,26 +1988,29 @@ const ChargerOperations = () => {
                   )}
                   Send {triggerMessage}
                 </button>
+                <p className="text-[11px] text-gray-400 flex items-center gap-1">
+                  <Info size={12} /> "Accepted" confirms the charger accepted the trigger request — it does not confirm the follow-up notification later arrived.
+                </p>
               </div>
-            </OperationSection>
+              </OperationCard>
+            </div>
 
-            {/* 6. Configuration */}
-            <OperationSection
-              id="configuration"
-              title="Configuration"
-              icon={<Settings size={20} />}
-              description="Read and update OCPP configuration keys"
-              badge="Config"
-              accent="slate"
-              isExpanded={expandedSections.configuration}
-              onToggle={toggleSection}
-            >
+            {/* 6. Configuration — full width: it holds three distinct actions */}
+            <div className="mt-5">
+              <OperationCard
+                title="Configuration"
+                icon={<Settings size={18} />}
+                description="Read (ordinary or audited) and update OCPP configuration keys"
+                badge="Config"
+                accent="slate"
+              >
               <div className="space-y-6">
-                {/* Get Configuration */}
+                {/* Compatibility read */}
                 <div>
                   <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                     <FileText size={16} className="text-blue-500" />
                     Read Configuration
+                    <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-semibold rounded-full">Ordinary read — no history record</span>
                   </h4>
                   <button
                     onClick={handleGetConfiguration}
@@ -1541,6 +2057,39 @@ const ChargerOperations = () => {
                   )}
                 </div>
 
+                {/* Explicit audited read — durable GET_CONFIGURATION operation */}
+                <div className="border-t border-gray-200 pt-4">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                    <SearchCheck size={16} className="text-indigo-500" />
+                    Audited Configuration Read
+                    <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] font-semibold rounded-full">Creates a history record</span>
+                  </h4>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Use this when you deliberately want an auditable GetConfiguration interaction with durable protocol evidence — not for routine page refreshes.
+                  </p>
+                  <div className="flex items-center gap-3 flex-wrap mb-3">
+                    <input
+                      type="text"
+                      value={auditedReadKeys}
+                      onChange={(e) => setAuditedReadKeys(e.target.value)}
+                      placeholder="Comma-separated keys (leave blank for all keys)"
+                      className="flex-1 min-w-[240px] px-4 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm bg-white text-gray-900"
+                    />
+                  </div>
+                  <button
+                    onClick={handleAuditedConfigurationRead}
+                    disabled={operationLoading || !canOperate}
+                    className={`px-6 py-2.5 rounded-xl text-white font-medium transition flex items-center gap-2 ${canOperate ? 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:shadow-lg hover:shadow-indigo-500/25' : 'bg-gray-300 cursor-not-allowed'}`}
+                  >
+                    {operationLoading && activeOperation === 'auditedConfigRead' ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <SearchCheck size={18} />
+                    )}
+                    Run Audited Read
+                  </button>
+                </div>
+
                 <div className="border-t border-gray-200 pt-4">
                   <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                     <Edit size={16} className="text-emerald-500" />
@@ -1563,6 +2112,12 @@ const ChargerOperations = () => {
                         disabled={!hasManagePermission}
                         className="w-full px-4 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm mt-1 bg-white text-gray-900 disabled:bg-gray-50 disabled:text-gray-400"
                       />
+                      {configKey && isLikelyReservedOrSensitiveKey(configKey) && (
+                        <p className="text-[10px] text-red-500 mt-1 flex items-center gap-1">
+                          <AlertTriangle size={11} />
+                          {isLikelyReservedOrSensitiveKey(configKey) === 'reserved' ? ERROR_CODE_HINTS.reserved_configuration_key : ERROR_CODE_HINTS.sensitive_configuration_key}
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className="text-xs font-medium text-gray-600">Value</label>
@@ -1579,12 +2134,12 @@ const ChargerOperations = () => {
                   </div>
                   <p className="text-[11px] text-gray-400 mb-3 flex items-start gap-1">
                     <HelpCircle size={13} className="flex-shrink-0 mt-0.5" />
-                    HAL-owned keys (e.g. HeartbeatInterval, LocalPreAuthorize) and sensitive keys (password, secret, token, AuthorizationKey, etc.) are rejected by the server — this UI does not attempt to work around that.
+                    HAL-owned keys (e.g. HeartbeatInterval, LocalPreAuthorize) and sensitive keys (password, secret, token, AuthorizationKey, etc.) are rejected by the server — this UI does not attempt to work around that. The value you submit is never shown back in history or protocol evidence.
                   </p>
                   <button
                     onClick={handleSetConfiguration}
-                    disabled={operationLoading || !canOperate || !hasManagePermission || !configKey || !configValue}
-                    className={`px-6 py-2.5 rounded-xl text-white font-medium transition flex items-center gap-2 ${canOperate && hasManagePermission && configKey && configValue ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:shadow-lg hover:shadow-emerald-500/25' : 'bg-gray-300 cursor-not-allowed'}`}
+                    disabled={operationLoading || !canOperate || !hasManagePermission || !configKey || !configValue || !!isLikelyReservedOrSensitiveKey(configKey)}
+                    className={`px-6 py-2.5 rounded-xl text-white font-medium transition flex items-center gap-2 ${canOperate && hasManagePermission && configKey && configValue && !isLikelyReservedOrSensitiveKey(configKey) ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:shadow-lg hover:shadow-emerald-500/25' : 'bg-gray-300 cursor-not-allowed'}`}
                   >
                     {operationLoading && activeOperation === 'setConfig' ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -1595,7 +2150,8 @@ const ChargerOperations = () => {
                   </button>
                 </div>
               </div>
-            </OperationSection>
+              </OperationCard>
+            </div>
           </div>
         </div>
       </div>

@@ -128,20 +128,21 @@ import {
 } from 'lucide-react';
 import Sidebar from '../components/Sidebar/Sidebar';
 
-// API Configuration
+// API Configuration – all endpoints use the CPO namespace
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://dev-evcmsnew.transev.site';
 const CPO_APP_ID = process.env.REACT_APP_CPO_APP_ID || 'cpo_dummy_5f75674f57829da5f3cae19ef4238d56';
 
 const API_CONFIG = {
+  // Correct CPO endpoints – do NOT use /platform/ for CPO operations
   NOTIFICATIONS_API: `${API_BASE_URL}/api/v1/cpo/notifications`,
-  NOTIFICATION_READ_API: (notificationId) => `${API_BASE_URL}/api/v1/platform/notifications/${notificationId}/read`,
+  NOTIFICATION_READ_API: (notificationId) => `${API_BASE_URL}/api/v1/cpo/notifications/${notificationId}/read`,
   USER_INFO_API: `${API_BASE_URL}/api/v1/auth/me`
 };
 
 const Alerts = () => {
   const navigate = useNavigate();
   const { authenticatedRequest, logout, isRefreshing, isAuthenticated, user } = useAuth();
-  
+
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [userData, setUserData] = useState(null);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
@@ -149,14 +150,14 @@ const Alerts = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  
+
   // Notification states
   const [notifications, setNotifications] = useState([]);
   const [selectedNotification, setSelectedNotification] = useState(null);
   const [showNotificationDetail, setShowNotificationDetail] = useState(false);
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   // Pagination states
   const [before, setBefore] = useState(null);
   const [beforeId, setBeforeId] = useState(null);
@@ -193,27 +194,27 @@ const Alerts = () => {
   // Fetch notifications using GET /api/v1/cpo/notifications
   const fetchNotifications = useCallback(async (loadMore = false) => {
     if (loadMore && !hasMore) return;
-    
+
     if (loadMore) {
       setLoadingMore(true);
     } else {
       setLoading(true);
     }
-    
+
     setError('');
-    
+
     try {
       const params = new URLSearchParams();
       params.append('limit', limit.toString());
       params.append('unread_only', unreadOnly.toString());
-      
+
       if (loadMore && before && beforeId) {
         params.append('before', before);
         params.append('before_id', beforeId);
       }
-      
+
       const url = `${API_CONFIG.NOTIFICATIONS_API}?${params.toString()}`;
-      
+
       const response = await authenticatedRequest(url, {
         method: 'GET',
         headers: {
@@ -224,13 +225,13 @@ const Alerts = () => {
       if (response.ok) {
         const data = await response.json();
         const items = data.notifications || data.data || data || [];
-        
+
         if (loadMore) {
           setNotifications(prev => [...prev, ...items]);
         } else {
           setNotifications(items);
         }
-        
+
         // Update pagination info
         if (data.has_more !== undefined) {
           setHasMore(data.has_more);
@@ -263,10 +264,10 @@ const Alerts = () => {
     setShowNotificationDetail(true);
   };
 
-  // Mark notification as read using POST /api/v1/platform/notifications/{notification_id}/read
+  // Mark a single notification as read – uses POST /api/v1/cpo/notifications/{id}/read
   const markAsRead = useCallback(async (notificationId) => {
     if (!notificationId) return;
-    
+
     try {
       const response = await authenticatedRequest(API_CONFIG.NOTIFICATION_READ_API(notificationId), {
         method: 'POST',
@@ -277,12 +278,11 @@ const Alerts = () => {
       });
 
       if (response.ok) {
-        setNotifications(prev => 
-          prev.map(n => 
+        setNotifications(prev =>
+          prev.map(n =>
             n.id === notificationId ? { ...n, is_read: true } : n
           )
         );
-        // Update selected notification if it's the same
         if (selectedNotification?.id === notificationId) {
           setSelectedNotification(prev => ({ ...prev, is_read: true }));
         }
@@ -306,7 +306,7 @@ const Alerts = () => {
     }
   }, [authenticatedRequest, selectedNotification]);
 
-  // Mark all as read - Using the same endpoint for each notification
+  // Mark all as read – loops over unread notifications and calls the same CPO endpoint
   const markAllAsRead = useCallback(async () => {
     const unreadNotifications = notifications.filter(n => !n.is_read);
     if (unreadNotifications.length === 0) {
@@ -316,7 +316,6 @@ const Alerts = () => {
     }
 
     try {
-      // Mark each unread notification as read
       for (const notification of unreadNotifications) {
         const response = await authenticatedRequest(API_CONFIG.NOTIFICATION_READ_API(notification.id), {
           method: 'POST',
@@ -331,8 +330,7 @@ const Alerts = () => {
         }
       }
 
-      // Update all notifications as read
-      setNotifications(prev => 
+      setNotifications(prev =>
         prev.map(n => ({ ...n, is_read: true }))
       );
       if (selectedNotification) {
@@ -353,12 +351,12 @@ const Alerts = () => {
     const date = new Date(dateString);
     const now = new Date();
     const diff = now - date;
-    
+
     if (diff < 60000) return 'Just now';
     if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
     if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
     if (diff < 604800000) return `${Math.floor(diff / 86400000)}d ago`;
-    
+
     return date.toLocaleDateString('en-US', {
       day: '2-digit',
       month: 'short',
@@ -421,7 +419,7 @@ const Alerts = () => {
           </div>
         </div>
       </div>
-      
+
       <div className="p-2">
         <button onClick={() => { setShowSettingsMenu(false); navigate('/profile'); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition">
           <User size={16} className="text-gray-500" /> <span>Profile</span>
@@ -588,8 +586,8 @@ const Alerts = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      <Sidebar 
-        isDarkMode={isDarkMode} 
+      <Sidebar
+        isDarkMode={isDarkMode}
         onThemeToggle={handleThemeToggle}
         userName={userData?.user?.full_name || user?.name || 'User'}
         userEmail={userData?.user?.email || user?.email || ''}
@@ -612,7 +610,7 @@ const Alerts = () => {
                 </span>
               )}
             </div>
-            
+
             <div className="flex items-center gap-2 relative">
               <div className="relative">
                 <button onClick={() => setShowSettingsMenu(!showSettingsMenu)} className="p-2 hover:bg-gray-100 rounded-xl transition flex items-center gap-1.5">
@@ -714,14 +712,14 @@ const Alerts = () => {
                 </button>
               </div>
               <div className="flex items-center gap-2 w-full sm:w-auto">
-                {/* <button
+                <button
                   onClick={markAllAsRead}
                   disabled={unreadCount === 0}
                   className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 transition text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Check size={16} />
                   Mark All Read
-                </button> */}
+                </button>
                 <button
                   onClick={() => {
                     setBefore(null);
@@ -784,7 +782,7 @@ const Alerts = () => {
                 ) : (
                   <div className="divide-y divide-gray-100 max-h-[600px] overflow-y-auto">
                     {notifications
-                      .filter(n => 
+                      .filter(n =>
                         n.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
                         n.message?.toLowerCase().includes(searchQuery.toLowerCase())
                       )
@@ -856,7 +854,7 @@ const Alerts = () => {
             {/* Right Column - Notification Detail */}
             <div className="lg:col-span-1">
               {selectedNotification ? (
-                <NotificationDetail 
+                <NotificationDetail
                   notification={selectedNotification}
                   onClose={() => {
                     setShowNotificationDetail(false);

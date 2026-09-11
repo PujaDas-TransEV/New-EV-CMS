@@ -1,4 +1,3 @@
-
 import React, {
   useState,
   useEffect,
@@ -258,8 +257,9 @@ const ChargersAndSessions = () => {
 
   const [activeTab, setActiveTab] =
     useState('chargers');
-  const [showEvents, setShowEvents] =
-    useState(false);
+  
+  // ===== Events Modal =====
+  const [showEventsModal, setShowEventsModal] = useState(false);
 
   const [chargers, setChargers] = useState([]);
 
@@ -279,6 +279,16 @@ const ChargersAndSessions = () => {
     useState([]);
   const [operationalLoading, setOperationalLoading] =
     useState(false);
+
+  // ===== Events pagination =====
+  const [eventsPagination, setEventsPagination] = useState({
+    before: null,
+    before_id: null,
+    limit: 50,
+    has_more: false,
+    total: 0
+  });
+  const [eventsLoadingMore, setEventsLoadingMore] = useState(false);
 
   const [selectedConnector, setSelectedConnector] =
     useState(null);
@@ -321,45 +331,61 @@ const ChargersAndSessions = () => {
     }
   };
 
-  const fetchOperationalData = async () => {
+  // ===== FETCH OPERATIONAL DATA (FLEET + EVENTS) with pagination support =====
+  const fetchOperationalData = useCallback(async (before = null, beforeId = null) => {
     setOperationalLoading(true);
-
     try {
-      const fleetResponse = await authenticatedRequest(
-        API_CONFIG.FLEET_OPERATIONS_API,
-        {
-          method: 'GET'
+      // Fleet summary (only once)
+      if (!before && !beforeId) {
+        const fleetResponse = await authenticatedRequest(
+          API_CONFIG.FLEET_OPERATIONS_API,
+          { method: 'GET' }
+        );
+        if (fleetResponse.ok) {
+          const data = await fleetResponse.json();
+          setFleetData(data);
         }
-      );
-
-      if (fleetResponse.ok) {
-        const data = await fleetResponse.json();
-        setFleetData(data);
       }
 
-      const eventsResponse = await authenticatedRequest(
-        `${API_CONFIG.OPERATIONAL_EVENTS_API}?limit=50`,
-        {
-          method: 'GET'
-        }
-      );
+      // Events with pagination
+      let url = `${API_CONFIG.OPERATIONAL_EVENTS_API}?limit=${eventsPagination.limit}`;
+      if (before) {
+        url += `&before=${encodeURIComponent(before)}`;
+      }
+      if (beforeId) {
+        url += `&before_id=${encodeURIComponent(beforeId)}`;
+      }
 
+      const eventsResponse = await authenticatedRequest(url, { method: 'GET' });
       if (eventsResponse.ok) {
         const data = await eventsResponse.json();
-
-        setOperationalEvents(
-          data.events ||
-          data.data ||
-          []
-        );
+        const eventsData = data.events || data.data || [];
+        setOperationalEvents(prev => before ? [...prev, ...eventsData] : eventsData);
+        setEventsPagination({
+          before: data.next_before || null,
+          before_id: data.next_before_id || null,
+          has_more: data.has_more || false,
+          limit: eventsPagination.limit,
+          total: data.total || (before ? eventsPagination.total + eventsData.length : eventsData.length)
+        });
       }
     } catch (err) {
       console.error('Operational data error:', err);
     } finally {
       setOperationalLoading(false);
+      setEventsLoadingMore(false);
+    }
+  }, [authenticatedRequest, eventsPagination.limit, eventsPagination.total]);
+
+  // Load more events
+  const loadMoreEvents = () => {
+    if (eventsPagination.has_more && !eventsLoadingMore && !operationalLoading) {
+      setEventsLoadingMore(true);
+      fetchOperationalData(eventsPagination.before, eventsPagination.before_id);
     }
   };
 
+  // ===== FETCH CHARGERS with pagination =====
   const fetchChargers = useCallback(
     async (before = null, beforeId = null) => {
       if (loadingMore) return;
@@ -1164,6 +1190,93 @@ const ChargersAndSessions = () => {
     );
   };
 
+  // ============================================================================
+  // EVENTS MODAL
+  // ============================================================================
+  const EventsModal = () => {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[80vh] flex flex-col">
+          <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+              <RadioTower className="w-5 h-5 text-blue-600" />
+              Operational Events ({eventsPagination.total || operationalEvents.length})
+            </h3>
+            <button
+              onClick={() => setShowEventsModal(false)}
+              className="p-2 hover:bg-gray-100 rounded-xl"
+            >
+              <X className="w-5 h-5 text-gray-500" />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4">
+            {operationalLoading && operationalEvents.length === 0 ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
+              </div>
+            ) : operationalEvents.length === 0 ? (
+              <div className="text-center py-12 text-gray-500">
+                No events available
+              </div>
+            ) : (
+              <>
+                <table className="w-full">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">ID</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Type</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Resource</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {operationalEvents.map((event, index) => (
+                      <tr key={event.id || index} className="border-b border-gray-100 hover:bg-gray-50">
+                        <td className="px-4 py-2 text-xs text-gray-400 font-mono">{event.id || 'N/A'}</td>
+                        <td className="px-4 py-2 text-xs text-gray-600">
+                          <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">{event.type || 'Unknown'}</span>
+                        </td>
+                        <td className="px-4 py-2 text-xs text-gray-700">
+                          {event.resource_type || 'N/A'}: {event.resource_id || 'N/A'}
+                        </td>
+                        <td className="px-4 py-2 text-xs text-gray-500">
+                          {event.occurred_at ? new Date(event.occurred_at).toLocaleString() : 'N/A'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {eventsPagination.has_more && (
+                  <div className="flex justify-center mt-4">
+                    <button
+                      onClick={loadMoreEvents}
+                      disabled={eventsLoadingMore || operationalLoading}
+                      className="flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {eventsLoadingMore ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Loading...
+                        </>
+                      ) : (
+                        <>
+                          <RefreshCw size={16} />
+                          Load More Events
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (isRefreshing && loading) {
     return (
       <div className="min-h-screen bg-white flex">
@@ -1183,6 +1296,30 @@ const ChargersAndSessions = () => {
 
   return (
     <div className="min-h-screen bg-white flex">
+      {/* Custom scrollbar styles for the table container */}
+      <style>
+        {`
+          .table-scrollbar::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+          }
+          .table-scrollbar::-webkit-scrollbar-track {
+            background: #f3f4f6;
+            border-radius: 10px;
+            margin: 4px 0;
+          }
+          .table-scrollbar::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, #94a3b8, #64748b);
+            border-radius: 10px;
+            box-shadow: inset 0 0 2px rgba(255,255,255,0.3);
+            transition: background 0.2s;
+          }
+          .table-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(180deg, #475569, #334155);
+          }
+        `}
+      </style>
+
       <Sidebar
         isDarkMode={isDarkMode}
         onThemeToggle={() =>
@@ -1223,7 +1360,8 @@ const ChargersAndSessions = () => {
             </div>
 
             <div className="flex items-center gap-2 relative">
-            
+              {/* Events Button - Placed next to Add Charger */}
+             
 
               <div className="relative">
                 <button
@@ -1259,28 +1397,38 @@ const ChargersAndSessions = () => {
           </div>
         </header>
 
-        <div className="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-blue-50/50 to-white">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-green-700">
-                Charger Management
-              </h1>
+       <div className="px-6 py-4 border-b border-gray-100 bg-gradient-to-r from-blue-50/50 to-white">
+  <div className="flex items-center justify-between">
+    <div>
+      <h1 className="text-2xl font-bold text-green-700">
+        Charger Management
+      </h1>
+      <p className="text-sm text-gray-500 mt-0.5">
+        Manage all EV charging stations and monitor live OCPP status
+      </p>
+    </div>
 
-              <p className="text-sm text-gray-500 mt-0.5">
-                Manage all EV charging stations and monitor live OCPP status
-              </p>
-            </div>
+    <div className="flex items-center gap-3">
+      <button
+        onClick={() => navigate('/add-charger')}
+        className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-700"
+      >
+        <Plus size={18} />
+        Add Charger
+      </button>
 
-            <button
-              onClick={() => navigate('/add-charger')}
-              className="flex items-center gap-2 px-5 py-2.5 bg-green-600 text-white rounded-xl hover:bg-green-700"
-            >
-              <Plus size={18} />
-              Add Charger
-            </button>
-          </div>
-        </div>
+      <button
+        onClick={() => setShowEventsModal(true)}
+        className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700"
+      >
+        <History size={18} />
+        Events
+      </button>
+    </div>
+  </div>
+</div>
 
+        {/* Removed the old events tab bar; only keep "Chargers" tab */}
         <div className="bg-white border-b border-gray-200 px-6">
           <div className="flex items-center gap-8">
             <button
@@ -1307,26 +1455,6 @@ const ChargersAndSessions = () => {
               <Activity size={18} />
               <span className="font-medium">
                 Sessions
-              </span>
-           
-            </button>
-
-            <button
-              onClick={() =>
-                setShowEvents(previous => !previous)
-              }
-              className={`py-3 px-1 border-b-2 flex items-center gap-2 ${
-                showEvents
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500'
-              }`}
-            >
-              <History size={18} />
-              <span className="font-medium">
-                Events
-              </span>
-              <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded-full">
-                {operationalEvents.length}
               </span>
             </button>
           </div>
@@ -1413,164 +1541,85 @@ const ChargersAndSessions = () => {
             </div>
           </div>
 
-          {showEvents && (
-            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm mb-6 overflow-hidden">
-              <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-white border-b border-gray-200 flex items-center justify-between">
-                <h3 className="font-semibold text-gray-800 flex items-center gap-2">
-                  <RadioTower size={18} className="text-blue-600" />
-                  Operational Events ({operationalEvents.length})
-                </h3>
+          {/* Filters and Search */}
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+            {/* Left Side - OCPP Connector Status Tabs with Icons & Colors */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                <Plug size={16} className="text-blue-500" />
+                OCPP Status:
+              </span>
 
-                <button
-                  onClick={() => setShowEvents(false)}
-                  className="p-1 hover:bg-gray-100 rounded-lg"
-                >
-                  <X size={16} className="text-gray-500" />
-                </button>
-              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {[
+                  { value: 'All', label: 'All', icon: null, color: 'blue' },
+                  { value: 'Available', label: 'Available', icon: <CheckCircle className="w-3 h-3" />, color: 'green' },
+                  { value: 'Preparing', label: 'Preparing', icon: <Clock className="w-3 h-3" />, color: 'yellow' },
+                  { value: 'Charging', label: 'Charging', icon: <Zap className="w-3 h-3" />, color: 'blue' },
+                  { value: 'Finishing', label: 'Finishing', icon: <CheckCircle className="w-3 h-3" />, color: 'purple' },
+                  { value: 'Faulted', label: 'Faulted', icon: <AlertCircle className="w-3 h-3" />, color: 'red' },
+                  { value: 'Unknown', label: 'Unknown', icon: <Circle className="w-3 h-3" />, color: 'gray' }
+                ].map(({ value, label, icon, color }) => {
+                  const isActive = ocppStatusFilter === value;
+                  const count = value === 'All' 
+                    ? chargers.reduce((acc, c) => acc + (c.connectors?.length || 0), 0)
+                    : connectorStatusCounts[value] || 0;
 
-              <div className="max-h-64 overflow-y-auto">
-                {operationalEvents.length === 0 ? (
-                  <div className="p-8 text-center text-gray-500 text-sm">
-                    No events available
-                  </div>
-                ) : (
-                  <table className="w-full">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">
-                          ID
-                        </th>
-                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">
-                          Type
-                        </th>
-                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">
-                          Resource
-                        </th>
-                        <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">
-                          Time
-                        </th>
-                      </tr>
-                    </thead>
+                  const colorClasses = {
+                    green: {
+                      active: 'bg-green-500 text-white border-green-500 shadow-green-200',
+                      inactive: 'text-green-700 border-green-200 hover:bg-green-50',
+                      badge: 'bg-green-100 text-green-700'
+                    },
+                    yellow: {
+                      active: 'bg-yellow-500 text-white border-yellow-500 shadow-yellow-200',
+                      inactive: 'text-yellow-700 border-yellow-200 hover:bg-yellow-50',
+                      badge: 'bg-yellow-100 text-yellow-700'
+                    },
+                    blue: {
+                      active: 'bg-blue-500 text-white border-blue-500 shadow-blue-200',
+                      inactive: 'text-blue-700 border-blue-200 hover:bg-blue-50',
+                      badge: 'bg-blue-100 text-blue-700'
+                    },
+                    purple: {
+                      active: 'bg-purple-500 text-white border-purple-500 shadow-purple-200',
+                      inactive: 'text-purple-700 border-purple-200 hover:bg-purple-50',
+                      badge: 'bg-purple-100 text-purple-700'
+                    },
+                    red: {
+                      active: 'bg-red-500 text-white border-red-500 shadow-red-200',
+                      inactive: 'text-red-700 border-red-200 hover:bg-red-50',
+                      badge: 'bg-red-100 text-red-700'
+                    },
+                    gray: {
+                      active: 'bg-gray-500 text-white border-gray-500 shadow-gray-200',
+                      inactive: 'text-gray-600 border-gray-300 hover:bg-gray-50',
+                      badge: 'bg-gray-100 text-gray-600'
+                    }
+                  };
 
-                    <tbody>
-                      {operationalEvents.map(
-                        (event, index) => (
-                          <tr
-                            key={event.id || index}
-                            className="border-b border-gray-100"
-                          >
-                            <td className="px-4 py-2 text-xs text-gray-400 font-mono">
-                              {event.id || 'N/A'}
-                            </td>
+                  const classes = isActive ? colorClasses[color].active : colorClasses[color].inactive;
 
-                            <td className="px-4 py-2 text-xs text-gray-600">
-                              <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-700">
-                                {event.type || 'Unknown'}
-                              </span>
-                            </td>
-
-                            <td className="px-4 py-2 text-xs text-gray-700">
-                              {event.resource_type || 'N/A'}:{' '}
-                              {event.resource_id || 'N/A'}
-                            </td>
-
-                            <td className="px-4 py-2 text-xs text-gray-500">
-                              {event.occurred_at
-                                ? new Date(
-                                    event.occurred_at
-                                  ).toLocaleString()
-                                : 'N/A'}
-                            </td>
-                          </tr>
-                        )
-                      )}
-                    </tbody>
-                  </table>
-                )}
+                  return (
+                    <button
+                      key={value}
+                      onClick={() => setOcppStatusFilter(value)}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-200 shadow-sm hover:shadow-md ${
+                        isActive ? 'ring-2 ring-offset-1 ring-' + color + '-400' : ''
+                      } ${classes}`}
+                    >
+                      {icon && <span className={isActive ? 'text-white' : ''}>{icon}</span>}
+                      {label}
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                        isActive ? 'bg-white/20 text-white' : colorClasses[color].badge
+                      }`}>
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
-          )}
-
-       
-            <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-  {/* Left Side - OCPP Connector Status Tabs with Icons & Colors */}
-  <div className="flex items-center gap-2 flex-wrap">
-    <span className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
-      <Plug size={16} className="text-blue-500" />
-      OCPP Status:
-    </span>
-
-    <div className="flex items-center gap-1.5 flex-wrap">
-      {[
-        { value: 'All', label: 'All', icon: null, color: 'blue' },
-        { value: 'Available', label: 'Available', icon: <CheckCircle className="w-3 h-3" />, color: 'green' },
-        { value: 'Preparing', label: 'Preparing', icon: <Clock className="w-3 h-3" />, color: 'yellow' },
-        { value: 'Charging', label: 'Charging', icon: <Zap className="w-3 h-3" />, color: 'blue' },
-        { value: 'Finishing', label: 'Finishing', icon: <CheckCircle className="w-3 h-3" />, color: 'purple' },
-        { value: 'Faulted', label: 'Faulted', icon: <AlertCircle className="w-3 h-3" />, color: 'red' },
-        { value: 'Unknown', label: 'Unknown', icon: <Circle className="w-3 h-3" />, color: 'gray' }
-      ].map(({ value, label, icon, color }) => {
-        const isActive = ocppStatusFilter === value;
-        const count = value === 'All' 
-          ? chargers.reduce((acc, c) => acc + (c.connectors?.length || 0), 0)
-          : connectorStatusCounts[value] || 0;
-
-        const colorClasses = {
-          green: {
-            active: 'bg-green-500 text-white border-green-500 shadow-green-200',
-            inactive: 'text-green-700 border-green-200 hover:bg-green-50',
-            badge: 'bg-green-100 text-green-700'
-          },
-          yellow: {
-            active: 'bg-yellow-500 text-white border-yellow-500 shadow-yellow-200',
-            inactive: 'text-yellow-700 border-yellow-200 hover:bg-yellow-50',
-            badge: 'bg-yellow-100 text-yellow-700'
-          },
-          blue: {
-            active: 'bg-blue-500 text-white border-blue-500 shadow-blue-200',
-            inactive: 'text-blue-700 border-blue-200 hover:bg-blue-50',
-            badge: 'bg-blue-100 text-blue-700'
-          },
-          purple: {
-            active: 'bg-purple-500 text-white border-purple-500 shadow-purple-200',
-            inactive: 'text-purple-700 border-purple-200 hover:bg-purple-50',
-            badge: 'bg-purple-100 text-purple-700'
-          },
-          red: {
-            active: 'bg-red-500 text-white border-red-500 shadow-red-200',
-            inactive: 'text-red-700 border-red-200 hover:bg-red-50',
-            badge: 'bg-red-100 text-red-700'
-          },
-          gray: {
-            active: 'bg-gray-500 text-white border-gray-500 shadow-gray-200',
-            inactive: 'text-gray-600 border-gray-300 hover:bg-gray-50',
-            badge: 'bg-gray-100 text-gray-600'
-          }
-        };
-
-        const classes = isActive ? colorClasses[color].active : colorClasses[color].inactive;
-
-        return (
-          <button
-            key={value}
-            onClick={() => setOcppStatusFilter(value)}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-200 shadow-sm hover:shadow-md ${
-              isActive ? 'ring-2 ring-offset-1 ring-' + color + '-400' : ''
-            } ${classes}`}
-          >
-            {icon && <span className={isActive ? 'text-white' : ''}>{icon}</span>}
-            {label}
-            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
-              isActive ? 'bg-white/20 text-white' : colorClasses[color].badge
-            }`}>
-              {count}
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  </div>
 
             <div className="flex items-center gap-3 flex-wrap">
               <span className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
@@ -1654,6 +1703,7 @@ const ChargersAndSessions = () => {
             </div>
           </div>
 
+          {/* Charger Table with Vertical Scroll */}
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             {loading && chargers.length === 0 ? (
               <div className="flex items-center justify-center py-16">
@@ -1696,10 +1746,11 @@ const ChargersAndSessions = () => {
               </div>
             ) : (
               <>
-                <div className="overflow-x-auto">
+                {/* Table container with vertical scroll - using the custom scrollbar class */}
+                <div className="max-h-[600px] overflow-y-auto table-scrollbar">
                   <table className="w-full">
-                    <thead>
-                      <tr className="bg-gradient-to-r from-blue-50/80 to-gray-50/80 border-b border-gray-200">
+                    <thead className="sticky top-0 z-10 bg-gradient-to-r from-blue-50/80 to-gray-50/80 border-b border-gray-200">
+                      <tr>
                         <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase">
                           SI
                         </th>
@@ -1852,12 +1903,9 @@ const ChargersAndSessions = () => {
                                 {charger.ocpp_version || charger.protocol || 'N/A'}
                               </td>
 
-                              {/* <td className="px-4 py-3 text-sm font-mono text-gray-500">
-                                {charger.protocol || 'N/A'}
-                              </td> */}
                               <td className="px-4 py-3 text-sm font-mono text-gray-500 whitespace-nowrap">
-  {charger.protocol || 'N/A'}
-</td>
+                                {charger.protocol || 'N/A'}
+                              </td>
 
                               <td className="px-4 py-3 text-sm text-gray-600">
                                 {charger.charger_host_name || 'N/A'}
@@ -2015,24 +2063,14 @@ const ChargersAndSessions = () => {
                                             Connector {connector.connector_number}
                                           </span>
 
-                                         
                                           <span
-  className={`inline-flex items-center justify-center gap-1 text-[10px] font-medium ${ocppDisplay.color}`}
->
-  {ocppDisplay.icon}
-  <span>
-    OCPP: {ocppDisplay.label}
-  </span>
-</span>
-
-{/* <span
-  className={`inline-flex items-center justify-center gap-1 text-[10px] font-medium ${availabilityDisplay.color}`}
->
-  {availabilityDisplay.icon}
-  <span>
-    Availability: {availabilityDisplay.label}
-  </span>
-</span> */}
+                                            className={`inline-flex items-center justify-center gap-1 text-[10px] font-medium ${ocppDisplay.color}`}
+                                          >
+                                            {ocppDisplay.icon}
+                                            <span>
+                                              OCPP: {ocppDisplay.label}
+                                            </span>
+                                          </span>
                                         </button>
                                       );
                                     })}
@@ -2040,24 +2078,24 @@ const ChargersAndSessions = () => {
                                 </div>
                               </td>
 
-                            <td className="px-4 py-3 text-sm">
-  <div className="flex items-center gap-2">
-    <button
-      onClick={() => handleViewCharger(chargerShortId)}
-      className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-xs flex items-center gap-1"
-    >
-      <Eye size={14} />
-      View
-    </button>
-    <button
-      onClick={() => navigate(`/charger-operations/${chargerShortId}`)}
-      className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-xs flex items-center gap-1"
-    >
-      <Settings size={14} />
-      Manage
-    </button>
-  </div>
-</td>
+                              <td className="px-4 py-3 text-sm">
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => handleViewCharger(chargerShortId)}
+                                    className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-xs flex items-center gap-1"
+                                  >
+                                    <Eye size={14} />
+                                    View
+                                  </button>
+                                  <button
+                                    onClick={() => navigate(`/charger-operations/${chargerShortId}`)}
+                                    className="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-xs flex items-center gap-1"
+                                  >
+                                    <Settings size={14} />
+                                    Manage
+                                  </button>
+                                </div>
+                              </td>
                             </tr>
                           );
                         }
@@ -2066,6 +2104,7 @@ const ChargersAndSessions = () => {
                   </table>
                 </div>
 
+                {/* Load More for Chargers */}
                 {pagination.has_more && (
                   <div className="px-4 py-4 border-t border-gray-200 flex justify-center">
                     <button
@@ -2088,6 +2127,7 @@ const ChargersAndSessions = () => {
                   </div>
                 )}
 
+                {/* Footer Info */}
                 <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 text-xs text-gray-500 flex flex-wrap items-center justify-between gap-3">
                   <span>
                     Showing {filteredChargers.length} of{' '}
@@ -2125,9 +2165,11 @@ const ChargersAndSessions = () => {
         </div>
       </div>
 
-      {showConnectorDetail && (
-        <ConnectorDetailModal />
-      )}
+      {/* Connector Detail Modal */}
+      {showConnectorDetail && <ConnectorDetailModal />}
+
+      {/* Events Modal */}
+      {showEventsModal && <EventsModal />}
     </div>
   );
 };

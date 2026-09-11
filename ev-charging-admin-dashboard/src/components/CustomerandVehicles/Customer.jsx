@@ -1,4 +1,4 @@
-// src/components/CustomerandVehicles/Customer.jsx
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../Authentication/AuthContext';
@@ -267,6 +267,14 @@ const Drivers = () => {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [statusUpdateError, setStatusUpdateError] = useState('');
   
+  // ✅ Total Wallet Recharge state (from wallet-transactions API of the selected customer)
+  const [customerRechargeData, setCustomerRechargeData] = useState({
+    total: 0,
+    count: 0,
+    currency: 'INR',
+    loading: false
+  });
+  
   // Wallet Transactions state
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [walletTransactions, setWalletTransactions] = useState([]);
@@ -387,8 +395,68 @@ const Drivers = () => {
     }
   };
 
+  const resetAndRefetch = () => {
+    setCustomers([]);
+    setPagination({
+      next_before: null,
+      next_before_id: null,
+      limit: 10,
+      has_more: false,
+      total: 0
+    });
+    setTimeout(() => fetchCustomers(), 0);
+  };
+
+  // ✅ Compute Total Wallet Recharge for a customer by calling the wallet-transactions API
+  const fetchCustomerRechargeData = useCallback(async (customerId) => {
+    if (!customerId) return;
+
+    setCustomerRechargeData({ total: 0, count: 0, currency: 'INR', loading: true });
+
+    try {
+      const url = `${API_CONFIG.CUSTOMERS_API}/${customerId}/wallet-transactions?limit=200`;
+      const response = await authenticatedRequest(url, { method: 'GET' });
+      const data = await response.json();
+
+      if (response.ok) {
+        const transactions = data.transactions || data.data || [];
+        let total = 0;
+        let count = 0;
+        let currency = 'INR';
+
+        transactions.forEach((tx) => {
+          if (!tx) return;
+          const type = String(tx.transaction_type || '').toUpperCase();
+          if (type !== 'CREDIT') return;
+          const amt = Number(tx.amount);
+          if (Number.isFinite(amt)) {
+            total += amt;
+            count += 1;
+            if (tx.currency) currency = tx.currency;
+          }
+        });
+
+        setCustomerRechargeData({
+          total,
+          count,
+          currency: currency || 'INR',
+          loading: false
+        });
+      } else {
+        setCustomerRechargeData({ total: 0, count: 0, currency: 'INR', loading: false });
+      }
+    } catch (error) {
+      console.error('Error fetching customer recharge data:', error);
+      setCustomerRechargeData({ total: 0, count: 0, currency: 'INR', loading: false });
+    }
+  }, [authenticatedRequest]);
+
   const fetchCustomerDetails = async (customerId) => {
     try {
+      // ✅ Reset recharge data immediately and start fetching
+      setCustomerRechargeData({ total: 0, count: 0, currency: 'INR', loading: true });
+      fetchCustomerRechargeData(customerId);
+
       const response = await authenticatedRequest(`${API_CONFIG.CUSTOMERS_API}/${customerId}`, {
         method: 'GET'
       });
@@ -419,13 +487,11 @@ const Drivers = () => {
         url += `&before_id=${before_id}`;
       }
 
-      console.log('Fetching wallet transactions:', url);
       const response = await authenticatedRequest(url, {
         method: 'GET'
       });
 
       const data = await response.json();
-      console.log('Wallet Transactions Response:', data);
 
       if (response.ok) {
         const transactions = data.transactions || data.data || [];
@@ -488,28 +554,17 @@ const Drivers = () => {
       const data = await response.json();
 
       if (response.ok) {
-        // Update the customer in the list
         setCustomers(prev => 
           prev.map(c => 
             c.id === customerId ? { ...c, status: newStatus } : c
           )
         );
         
-        // Update selected customer
         if (selectedCustomer && selectedCustomer.id === customerId) {
           setSelectedCustomer({ ...selectedCustomer, status: newStatus });
         }
         
-        // Refresh the list
-        setCustomers([]);
-        setPagination({
-          next_before: null,
-          next_before_id: null,
-          limit: 10,
-          has_more: false,
-          total: 0
-        });
-        fetchCustomers();
+        resetAndRefetch();
         
         setStatusUpdateError('');
         alert(`Customer status updated to ${newStatus} successfully!`);
@@ -620,16 +675,53 @@ const Drivers = () => {
   };
 
   const formatCurrency = (amount) => {
-    if (!amount && amount !== 0) return '₹ 0';
-    return `₹ ${Number(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    if (amount === null || amount === undefined || amount === '') return '₹ 0';
+    const num = Number(amount);
+    if (!Number.isFinite(num)) return '₹ 0';
+    if (Math.abs(num) >= 1e15) {
+      return `₹ ${num.toExponential(2)}`;
+    }
+    return `₹ ${num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const formatUsage = (usage) => {
-    if (!usage && usage !== 0) return '0 kWh';
-    return `${Number(usage).toLocaleString('en-IN', { maximumFractionDigits: 2 })} kWh`;
+    if (usage === null || usage === undefined || usage === '') return '0 kWh';
+    const num = Number(usage);
+    if (!Number.isFinite(num)) return '0 kWh';
+    if (Math.abs(num) >= 1e12) {
+      return `${num.toExponential(2)} kWh`;
+    }
+    return `${num.toLocaleString('en-IN', { maximumFractionDigits: 2 })} kWh`;
   };
 
-  // Filter customers based on status
+  const getSessionCount = (customer) => {
+    if (!customer) return 0;
+    const raw = customer.session_count ?? 0;
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : 0;
+  };
+
+  // Wallet usage from customer detail modal
+  const getWalletUsageAmount = (customer) => {
+    if (!customer || !Array.isArray(customer.usage_wallet_transactions)) return 0;
+    return customer.usage_wallet_transactions.reduce((sum, tx) => {
+      if (!tx) return sum;
+      const type = String(tx.transaction_type || '').toUpperCase();
+      if (type !== 'DEBIT') return sum;
+      const amt = Number(tx.amount);
+      return Number.isFinite(amt) ? sum + amt : sum;
+    }, 0);
+  };
+
+  const getCustomerCurrency = (customer) => {
+    if (!customer) return 'INR';
+    const txs = customer.usage_wallet_transactions;
+    if (Array.isArray(txs) && txs.length > 0 && txs[0]?.currency) {
+      return txs[0].currency;
+    }
+    return 'INR';
+  };
+
   const getFilteredCustomers = () => {
     let filtered = customers;
 
@@ -733,9 +825,8 @@ const Drivers = () => {
     if (!selectedCustomerForWallet) return null;
 
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-        <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full mx-auto my-8 max-h-[90vh] overflow-y-auto animate-fadeIn">
-          {/* Header */}
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto scrollbar-hide">
+        <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full mx-auto my-8 max-h-[90vh] overflow-y-auto scrollbar-hide animate-fadeIn">
           <div className="sticky top-0 bg-white z-10 flex justify-between items-center p-6 border-b border-gray-100 rounded-t-3xl">
             <div className="flex items-center gap-4">
               <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-2xl font-bold text-white shadow-lg shadow-green-500/25">
@@ -766,7 +857,6 @@ const Drivers = () => {
             </button>
           </div>
 
-          {/* Content */}
           <div className="p-6">
             {walletLoading && walletTransactions.length === 0 ? (
               <div className="flex items-center justify-center py-16">
@@ -785,7 +875,7 @@ const Drivers = () => {
               </div>
             ) : (
               <>
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto scrollbar-hide">
                   <table className="w-full">
                     <thead>
                       <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
@@ -795,7 +885,7 @@ const Drivers = () => {
                         <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Currency</th>
                         <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
                         <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Description</th>
-                        <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Date</th>
+                        <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Date</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -843,7 +933,7 @@ const Drivers = () => {
                             </span>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 whitespace-nowrap">
                               <CalendarIcon size={14} className="text-gray-400" />
                               <span className="text-xs text-gray-500">{formatDate(transaction.created_at)}</span>
                             </div>
@@ -854,7 +944,6 @@ const Drivers = () => {
                   </table>
                 </div>
 
-                {/* Load More */}
                 {walletPagination.has_more && (
                   <div className="px-4 py-4 border-t border-gray-200 flex items-center justify-center">
                     <button
@@ -877,7 +966,6 @@ const Drivers = () => {
                   </div>
                 )}
 
-                {/* Footer */}
                 <div className="px-4 py-3 border-t border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100 text-xs text-gray-500 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 rounded-b-2xl">
                   <span>Showing {walletTransactions.length} transactions</span>
                   <div className="flex flex-wrap items-center gap-4">
@@ -911,10 +999,15 @@ const Drivers = () => {
   const CustomerModal = () => {
     if (!selectedCustomer) return null;
 
+    const walletUsageAmount = getWalletUsageAmount(selectedCustomer);
+    const currency = customerRechargeData.currency || getCustomerCurrency(selectedCustomer);
+    const walletTransactionsCount = Array.isArray(selectedCustomer.usage_wallet_transactions)
+      ? selectedCustomer.usage_wallet_transactions.length
+      : 0;
+
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
-        <div className="bg-white rounded-3xl shadow-2xl max-w-3xl w-full mx-auto my-8 max-h-[90vh] overflow-y-auto animate-fadeIn">
-          {/* Header */}
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto scrollbar-hide">
+        <div className="bg-white rounded-3xl shadow-2xl max-w-5xl w-full mx-auto my-8 max-h-[92vh] overflow-y-auto scrollbar-hide animate-fadeIn">
           <div className="sticky top-0 bg-white z-10 flex justify-between items-center p-6 border-b border-gray-100 rounded-t-3xl">
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-2xl font-bold text-white shadow-lg shadow-blue-500/25">
@@ -937,6 +1030,7 @@ const Drivers = () => {
                 setShowCustomerModal(false);
                 setSelectedCustomer(null);
                 setStatusUpdateError('');
+                setCustomerRechargeData({ total: 0, count: 0, currency: 'INR', loading: false });
               }}
               className="p-2 hover:bg-gray-100 rounded-xl transition"
             >
@@ -944,7 +1038,6 @@ const Drivers = () => {
             </button>
           </div>
 
-          {/* Content */}
           <div className="p-6 space-y-6">
             {/* Personal Information */}
             <div>
@@ -952,7 +1045,7 @@ const Drivers = () => {
                 <UserRound size={16} className="text-gray-500" />
                 Personal Information
               </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
                   <div className="flex items-center gap-2 mb-1">
                     <MailIcon size={16} className="text-blue-600" />
@@ -999,28 +1092,157 @@ const Drivers = () => {
               </div>
             </div>
 
+            {/* Sessions Summary */}
+            <div className="border-t border-gray-200 pt-4">
+              <h4 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                <Activity size={16} className="text-gray-500" />
+                Session Summary
+              </h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-4 border border-purple-200">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Activity size={16} className="text-purple-600" />
+                    <p className="text-xs text-purple-600 font-medium">No of Sessions</p>
+                  </div>
+                  <p className="text-lg font-bold text-purple-700">
+                    {getSessionCount(selectedCustomer)}
+                  </p>
+                </div>
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-200">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Battery size={16} className="text-blue-600" />
+                    <p className="text-xs text-blue-600 font-medium">Total Usage</p>
+                  </div>
+                  <p className="text-lg font-bold text-blue-700 break-all">{formatUsage(selectedCustomer.total_usage_kwh)}</p>
+                </div>
+              </div>
+            </div>
+
             {/* Usage & Wallet */}
             <div className="border-t border-gray-200 pt-4">
               <h4 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
                 <TrendingUp size={16} className="text-gray-500" />
                 Usage & Wallet
               </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {/* Total Usage */}
                 <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-4 border border-blue-200">
                   <div className="flex items-center gap-2 mb-1">
                     <Battery size={16} className="text-blue-600" />
                     <p className="text-xs text-blue-600 font-medium">Total Usage</p>
                   </div>
-                  <p className="text-lg font-bold text-blue-700">{formatUsage(selectedCustomer.total_usage_kwh)}</p>
+                  <p className="text-lg font-bold text-blue-700 break-all">
+                    {formatUsage(selectedCustomer.total_usage_kwh)}
+                  </p>
                 </div>
+
+                {/* Wallet Usage (Spent) */}
+                <div className="bg-gradient-to-br from-red-50 to-rose-50 rounded-xl p-4 border border-red-200">
+                  <div className="flex items-center gap-2 mb-1">
+                    <TrendingUp size={16} className="text-red-600" />
+                    <p className="text-xs text-red-600 font-medium">Wallet Usage (Spent)</p>
+                  </div>
+                  <p className="text-lg font-bold text-red-700 break-all">
+                    {formatCurrency(walletUsageAmount)}
+                  </p>
+                  <p className="text-[11px] text-red-500 mt-1">
+                    From {walletTransactionsCount} wallet transaction{walletTransactionsCount === 1 ? '' : 's'}
+                  </p>
+                </div>
+
+                {/* Total Wallet Recharge */}
+                <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl p-4 border border-indigo-200">
+                  <div className="flex items-center gap-2 mb-1">
+                    <CreditCard size={16} className="text-indigo-600" />
+                    <p className="text-xs text-indigo-600 font-medium">Total Wallet Recharge</p>
+                  </div>
+                  {customerRechargeData.loading ? (
+                    <div className="flex items-center gap-2 py-1">
+                      <Loader2 size={16} className="text-indigo-500 animate-spin" />
+                      <span className="text-xs text-gray-500">Loading...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="text-lg font-bold text-indigo-700 break-all">
+                        {formatCurrency(customerRechargeData.total)}
+                      </p>
+                      <p className="text-[11px] text-indigo-500 mt-1">
+                        {customerRechargeData.count} recharge{customerRechargeData.count === 1 ? '' : 's'} · {currency}
+                      </p>
+                    </>
+                  )}
+                </div>
+
+                {/* Wallet Balance */}
                 <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-4 border border-green-200">
                   <div className="flex items-center gap-2 mb-1">
                     <Wallet size={16} className="text-green-600" />
                     <p className="text-xs text-green-600 font-medium">Wallet Balance</p>
                   </div>
-                  <p className="text-lg font-bold text-green-700">{formatCurrency(selectedCustomer.wallet_balance)}</p>
+                  <p className="text-lg font-bold text-green-700 break-all">
+                    {formatCurrency(selectedCustomer.wallet_balance)}
+                  </p>
                 </div>
               </div>
+
+              {/* Recent Wallet Transactions preview */}
+              {walletTransactionsCount > 0 && (
+                <div className="mt-4 bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  <div className="px-4 py-2.5 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                      Recent Wallet Transactions
+                    </span>
+                    <button
+                      onClick={() => {
+                        setShowCustomerModal(false);
+                        openWalletModal(selectedCustomer);
+                      }}
+                      className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                    >
+                      View All →
+                    </button>
+                  </div>
+                  <div className="overflow-x-auto scrollbar-hide">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="bg-gray-50 border-b border-gray-200">
+                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Type</th>
+                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Amount</th>
+                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                          <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wider whitespace-nowrap">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedCustomer.usage_wallet_transactions.slice(0, 3).map((tx) => (
+                          <tr key={tx.id} className="border-b border-gray-100 last:border-b-0">
+                            <td className="px-3 py-2">
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${getTransactionTypeColor(tx.transaction_type)}`}>
+                                {String(tx.transaction_type).toUpperCase() === 'CREDIT' ? (
+                                  <Plus size={10} />
+                                ) : (
+                                  <Minus size={10} />
+                                )}
+                                {tx.transaction_type || 'N/A'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-xs font-bold text-gray-800 break-all">
+                              {formatCurrency(tx.amount)}
+                            </td>
+                            <td className="px-3 py-2">
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium border ${getTransactionStatusColor(tx.status)}`}>
+                                {tx.status || 'N/A'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-[11px] text-gray-500 whitespace-nowrap">
+                              {formatDate(tx.created_at)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Group Assignment */}
@@ -1056,14 +1278,14 @@ const Drivers = () => {
                 <Activity size={16} className="text-gray-500" />
                 Activity & Timeline
               </h4>
-              <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-xl border border-gray-100">
                   <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
                     <UserPlus size={14} className="text-blue-600" />
                   </div>
                   <div>
                     <p className="text-sm font-medium text-gray-900">Account Created</p>
-                    <p className="text-xs text-gray-500">{formatDate(selectedCustomer.created_at)}</p>
+                    <p className="text-xs text-gray-500 whitespace-nowrap">{formatDate(selectedCustomer.created_at)}</p>
                   </div>
                 </div>
                 {selectedCustomer.last_login_at && (
@@ -1073,7 +1295,7 @@ const Drivers = () => {
                     </div>
                     <div>
                       <p className="text-sm font-medium text-gray-900">Last Login</p>
-                      <p className="text-xs text-gray-500">{formatDate(selectedCustomer.last_login_at)}</p>
+                      <p className="text-xs text-gray-500 whitespace-nowrap">{formatDate(selectedCustomer.last_login_at)}</p>
                     </div>
                   </div>
                 )}
@@ -1083,7 +1305,7 @@ const Drivers = () => {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-gray-900">Last Updated</p>
-                    <p className="text-xs text-gray-500">{formatDate(selectedCustomer.updated_at)}</p>
+                    <p className="text-xs text-gray-500 whitespace-nowrap">{formatDate(selectedCustomer.updated_at)}</p>
                   </div>
                 </div>
               </div>
@@ -1286,7 +1508,7 @@ const Drivers = () => {
         {/* Content - Drivers Tab */}
         {activeTab === 'drivers' && (
           <div className="p-6">
-            {/* Search and Filter Bar - Simplified with just customer count */}
+            {/* Search and Filter Bar */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-xl border border-gray-200 shadow-sm">
@@ -1307,15 +1529,7 @@ const Drivers = () => {
                     onChange={(e) => {
                       setSearchTerm(e.target.value);
                       if (e.target.value === '') {
-                        setCustomers([]);
-                        setPagination({
-                          next_before: null,
-                          next_before_id: null,
-                          limit: 10,
-                          has_more: false,
-                          total: 0
-                        });
-                        fetchCustomers();
+                        resetAndRefetch();
                       }
                     }}
                     onKeyPress={(e) => e.key === 'Enter' && fetchCustomers()}
@@ -1343,15 +1557,7 @@ const Drivers = () => {
                   onClick={() => {
                     setSearchTerm('');
                     setFilterStatus('all');
-                    setCustomers([]);
-                    setPagination({
-                      next_before: null,
-                      next_before_id: null,
-                      limit: 10,
-                      has_more: false,
-                      total: 0
-                    });
-                    fetchCustomers();
+                    resetAndRefetch();
                   }}
                   className="p-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-500/25"
                   title="Reset filters"
@@ -1382,126 +1588,137 @@ const Drivers = () => {
                 </div>
               ) : (
                 <>
-                  <div className="overflow-x-auto">
+                  <div className="overflow-x-auto scrollbar-hide">
                     <table className="w-full">
                       <thead>
                         <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
-                          <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">SI</th>
-                          <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Customer</th>
-                          <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Email</th>
-                          <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Phone</th>
-                          <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Status</th>
-                          <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Verified</th>
-                          <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Group</th>
-                          <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider"> Total Usage</th>
-                          <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Wallet</th>
-                          <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Joined</th>
-                          <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Action</th>
+                          {/* <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">SI</th> */}
+                          <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Customer</th>
+                          <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Email</th>
+                          <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Phone</th>
+                          <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Status</th>
+                          <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Verified</th>
+                          <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Group</th>
+                          <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">No of Sessions</th>
+                          <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Total Usage</th>
+                          <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Wallet</th>
+                          <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Joined</th>
+                          <th className="px-4 py-3.5 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Action</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredCustomers.map((customer, index) => (
-                          <tr key={customer.id} className="border-b border-gray-100 hover:bg-blue-50/30 transition">
-                            <td className="px-4 py-3">
-                              <span className="text-sm font-medium text-gray-400">
-                                {String(index + 1).padStart(2, '0')}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-sm font-bold text-white flex-shrink-0 shadow-lg shadow-blue-500/25">
-                                  {customer.full_name?.charAt(0) || 'D'}
+                        {filteredCustomers.map((customer, index) => {
+                          const sessionCount = getSessionCount(customer);
+                          return (
+                            <tr key={customer.id} className="border-b border-gray-100 hover:bg-blue-50/30 transition">
+                              {/* <td className="px-4 py-3">
+                                <span className="text-sm font-medium text-gray-400">
+                                  {String(index + 1).padStart(2, '0')}
+                                </span>
+                              </td> */}
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-sm font-bold text-white flex-shrink-0 shadow-lg shadow-blue-500/25">
+                                    {customer.full_name?.charAt(0) || 'D'}
+                                  </div>
+                                  <div>
+                                    <p className="font-semibold text-gray-900 text-sm truncate max-w-[120px]">
+                                      {customer.full_name || 'Unnamed'}
+                                    </p>
+                                    <p className="text-xs text-gray-400">ID: {customer.id?.slice(0, 8) || 'N/A'}</p>
+                                  </div>
                                 </div>
-                                <div>
-                                  <p className="font-semibold text-gray-900 text-sm truncate max-w-[120px]">
-                                    {customer.full_name || 'Unnamed'}
-                                  </p>
-                                  <p className="text-xs text-gray-400">ID: {customer.id?.slice(0, 8) || 'N/A'}</p>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-1.5">
+                                  <MailIcon size={14} className="text-gray-400 flex-shrink-0" />
+                                  <span className="text-sm text-gray-600 truncate max-w-[140px]">{customer.email || 'N/A'}</span>
                                 </div>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-1.5">
-                                <MailIcon size={14} className="text-gray-400" />
-                                <span className="text-sm text-gray-600 truncate max-w-[140px]">{customer.email || 'N/A'}</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-1.5">
-                                <PhoneIcon size={14} className="text-gray-400" />
-                                <span className="text-sm text-gray-600">{customer.phone || 'N/A'}</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(customer.status)}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${getStatusBadgeColor(customer.status)}`}></span>
-                                {customer.status || 'PENDING'}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3">
-                              {customer.is_verified ? (
-                                <span className="inline-flex items-center gap-1 text-green-600">
-                                  <CheckCircle size={14} />
-                                  <span className="text-xs font-medium">Verified</span>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-1.5">
+                                  <PhoneIcon size={14} className="text-gray-400 flex-shrink-0" />
+                                  <span className="text-sm text-gray-600 whitespace-nowrap">{customer.phone || 'N/A'}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap ${getStatusColor(customer.status)}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full ${getStatusBadgeColor(customer.status)}`}></span>
+                                  {customer.status || 'PENDING'}
                                 </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 text-red-600">
-                                  <XCircle size={14} />
-                                  <span className="text-xs font-medium">Not Verified</span>
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              {customer.usergroup_assigned ? (
-                                <span className="inline-flex items-center gap-1 text-blue-600">
-                                  <UserCheck size={14} />
-                                  <span className="text-xs font-medium">Assigned</span>
-                                </span>
-                              ) : (
-                                <span className="inline-flex items-center gap-1 text-gray-400">
-                                  <UserX size={14} />
-                                  <span className="text-xs font-medium">Not Assigned</span>
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-1.5">
-                                <Battery size={14} className="text-blue-500" />
-                                <span className="text-sm font-medium text-gray-700">{formatUsage(customer.total_usage_kwh)}</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-1.5">
-                                <Wallet size={14} className="text-green-500" />
-                                <span className="text-sm font-medium text-gray-700">{formatCurrency(customer.wallet_balance)}</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-1.5">
-                                <CalendarIcon size={14} className="text-gray-400" />
-                                <span className="text-xs text-gray-500">{formatDate(customer.created_at)}</span>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-1.5">
-                                <button
-                                  onClick={() => fetchCustomerDetails(customer.id)}
-                                  className="px-3 py-1.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 transition text-xs flex items-center gap-1 shadow-lg shadow-green-500/25"
-                                >
-                                  <Eye size={14} />
-                                  View
-                                </button>
-                                <button
-                                  onClick={() => openWalletModal(customer)}
-                                  className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition text-xs flex items-center gap-1 shadow-lg shadow-blue-500/25"
-                                >
-                                  <Wallet size={14} />
-                                  Wallet
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
+                              </td>
+                              <td className="px-4 py-3">
+                                {customer.is_verified ? (
+                                  <span className="inline-flex items-center gap-1 text-green-600 whitespace-nowrap">
+                                    <CheckCircle size={14} />
+                                    <span className="text-xs font-medium">Verified</span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-red-600 whitespace-nowrap">
+                                    <XCircle size={14} />
+                                    <span className="text-xs font-medium">Not Verified</span>
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                {customer.usergroup_assigned ? (
+                                  <span className="inline-flex items-center gap-1 text-blue-600 whitespace-nowrap">
+                                    <UserCheck size={14} />
+                                    <span className="text-xs font-medium">Assigned</span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-gray-400 whitespace-nowrap">
+                                    <UserX size={14} />
+                                    <span className="text-xs font-medium">Not Assigned</span>
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-purple-50 border border-purple-200 whitespace-nowrap">
+                                  <Activity size={14} className="text-purple-600" />
+                                  <span className="text-sm font-bold text-purple-700">{sessionCount}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-1.5">
+                                  <Battery size={14} className="text-blue-500 flex-shrink-0" />
+                                  <span className="text-sm font-medium text-gray-700 whitespace-nowrap">{formatUsage(customer.total_usage_kwh)}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-1.5">
+                                  <Wallet size={14} className="text-green-500 flex-shrink-0" />
+                                  <span className="text-sm font-medium text-gray-700 whitespace-nowrap">{formatCurrency(customer.wallet_balance)}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                  <CalendarIcon size={14} className="text-gray-400 flex-shrink-0" />
+                                  <span className="text-xs text-gray-500 whitespace-nowrap">{formatDate(customer.created_at)}</span>
+                                </div>
+                              </td>
+                              {/* ✅ Action column: View + Wallet buttons */}
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-1.5 whitespace-nowrap">
+                                  <button
+                                    onClick={() => fetchCustomerDetails(customer.id)}
+                                    className="px-3 py-1.5 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-lg hover:from-green-700 hover:to-emerald-700 transition text-xs flex items-center gap-1 shadow-lg shadow-green-500/25"
+                                  >
+                                    <Eye size={14} />
+                                    View
+                                  </button>
+                                  <button
+                                    onClick={() => openWalletModal(customer)}
+                                    className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 transition text-xs flex items-center gap-1 shadow-lg shadow-blue-500/25"
+                                  >
+                                    <Wallet size={14} />
+                                    Wallet
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -1573,6 +1790,9 @@ const Drivers = () => {
         .animate-fadeIn {
           animation: fadeIn 0.2s ease-out forwards;
         }
+        /* ✅ Hide scrollbars */
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
     </div>
   );
