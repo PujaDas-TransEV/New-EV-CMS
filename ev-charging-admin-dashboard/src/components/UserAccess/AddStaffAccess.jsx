@@ -1,143 +1,32 @@
 // src/components/UserAccess/AddStaff.jsx
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../Authentication/AuthContext';
 import {
-  Settings,
-  Plus,
-  ChevronDown,
-  User,
-  Building,
-  LogOut,
-  Search,
-  Filter,
-  Activity,
-  Clock,
-  Calendar,
-  MapPin,
-  Globe,
-  Shield,
-  CheckCircle,
-  AlertCircle,
-  X,
-  ArrowLeft,
-  RefreshCw,
-  Download,
-  Zap,
-  Plug,
-  Wifi,
-  WifiOff,
-  Loader2,
-  ChevronLeft,
-  ChevronRight,
-  Eye,
-  MoreVertical,
-  FileText,
-  TrendingUp,
-  TrendingDown,
-  DollarSign,
-  Battery,
-  Smartphone,
-  Monitor,
-  Server,
-  Circle,
-  CircleDot,
-  CircleCheck,
-  CircleX,
-  Grid,
-  List,
-  Info,
-  Link,
-  ExternalLink,
-  Database,
-  IndianRupee,
-  CalendarDays,
-  Timer,
-  Layers,
-  Receipt,
-  BarChart,
-  PieChart,
-  User as UserIcon,
-  Award,
-  Star,
-  Crown,
-  Wallet,
-  CreditCard,
-  Cloud,
-  Cpu,
-  HardDrive,
-  Network,
-  Radio,
-  Bluetooth,
-  Thermometer,
-  Wind,
-  Droplet,
-  Sun,
-  Moon,
-  CloudRain,
-  CloudSnow,
-  CloudLightning,
-  CloudWind,
-  CloudFog,
-  CloudDrizzle,
-  CloudHail,
-  CloudSleet,
-  CloudThunder,
-  CloudTornado,
-  CloudHurricane,
-  CloudTyphoon,
-  CloudCyclone,
-  CloudStorm,
-  CloudRainbow,
-  CloudSun,
-  CloudMoon,
-  CloudStar,
-  CloudComet,
-  CloudAsteroid,
-  CloudMeteor,
-  CloudGalaxy,
-  CloudUniverse,
-  CloudMultiverse,
-  ToggleLeft,
-  ToggleRight,
-  Sliders,
-  Settings as SettingsIcon,
-  LineChart,
-  TrendingUp as TrendingUpIcon,
-  Award as AwardIcon,
-  Star as StarIcon,
-  Crown as CrownIcon,
-  RadioTower,
-  History,
-  Users,
-  UserPlus,
-  UserMinus,
-  UserCheck,
-  UserX,
-  Key,
-  Lock,
-  Unlock,
-  Trash2,
-  Edit,
-  Save,
-  Power,
-  PowerOff,
-  Check,
-  AlertTriangle as AlertTriangleIcon,
-  Mail,
-  Crown as CrownIcon2,
-  UserCog,
-  ShieldCheck,
-  HelpCircle,
-  ArrowLeft as ArrowLeftIcon,
-  UserRound,
-  BadgeCheck
+  Settings, Plus, ChevronDown, User, Building, LogOut, Search, Filter, Activity,
+  Clock, Calendar, MapPin, Globe, Shield, CheckCircle, AlertCircle, X, ArrowLeft,
+  RefreshCw, Download, Zap, Plug, Wifi, WifiOff, Loader2, ChevronLeft, ChevronRight,
+  Eye, MoreVertical, FileText, TrendingUp, TrendingDown, DollarSign, Battery,
+  Smartphone, Monitor, Server, Circle, CircleDot, CircleCheck, CircleX, Grid, List,
+  Info, Link, ExternalLink, Database, IndianRupee, CalendarDays, Timer, Layers,
+  Receipt, BarChart, PieChart, User as UserIcon, Award, Star, Crown, Wallet,
+  CreditCard, Cloud, Cpu, HardDrive, Network, Radio, Bluetooth, Thermometer, Wind,
+  Droplet, Sun, Moon, CloudRain, CloudSnow, CloudLightning, CloudWind, CloudFog,
+  CloudDrizzle, CloudHail, CloudSleet, CloudThunder, CloudTornado, CloudHurricane,
+  CloudTyphoon, CloudCyclone, CloudStorm, CloudRainbow, CloudSun, CloudMoon,
+  CloudStar, CloudComet, CloudAsteroid, CloudMeteor, CloudGalaxy, CloudUniverse,
+  CloudMultiverse, ToggleLeft, ToggleRight, Sliders, Settings as SettingsIcon,
+  LineChart, TrendingUp as TrendingUpIcon, Award as AwardIcon, Star as StarIcon,
+  Crown as CrownIcon, RadioTower, History, Users, UserPlus, UserMinus, UserCheck,
+  UserX, Key, Lock, Unlock, Trash2, Edit, Save, Power, PowerOff, Check,
+  AlertTriangle as AlertTriangleIcon, Mail, Crown as CrownIcon2, UserCog,
+  ShieldCheck, HelpCircle, ArrowLeft as ArrowLeftIcon, UserRound, BadgeCheck
 } from 'lucide-react';
 import Sidebar from '../Sidebar/Sidebar';
 
-// API Configuration
+// API Configuration — bearer + App-ID headers are attached centrally
+// by AuthContext.authenticatedRequest. No token handling here.
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://dev-evcmsnew.transev.site';
-const CPO_APP_ID = process.env.REACT_APP_CPO_APP_ID || 'cpo_dummy_5f75674f57829da5f3cae19ef4238d56';
 
 const API_CONFIG = {
   PERMISSIONS_CATALOG: `${API_BASE_URL}/api/v1/cpo/permissions/catalog`,
@@ -147,7 +36,6 @@ const API_CONFIG = {
   ACCESS_ME_API: `${API_BASE_URL}/api/v1/cpo/access/me`
 };
 
-// Get module color
 const getModuleColor = (module) => {
   const colors = {
     'organization': 'bg-blue-100 text-blue-700 border-blue-200',
@@ -174,41 +62,71 @@ const getModuleIcon = (module) => {
   }
 };
 
-// Role options
 const ROLE_OPTIONS = [
   { value: 'ADMIN', label: 'Admin', icon: <CrownIcon2 size={16} className="text-purple-600" />, color: 'bg-purple-100 text-purple-700 border-purple-200', description: 'Full access with permission management' },
   { value: 'OPERATOR', label: 'Operator', icon: <Activity size={16} className="text-blue-600" />, color: 'bg-blue-100 text-blue-700 border-blue-200', description: 'Operational access for daily tasks' },
   { value: 'VIEWER', label: 'Viewer', icon: <Eye size={16} className="text-gray-600" />, color: 'bg-gray-100 text-gray-700 border-gray-200', description: 'Read-only access' }
 ];
 
+/* ------------------------------------------------------------
+   Role → default permission set
+   ------------------------------------------------------------
+   VIEWER   : every ".view" / ".read" permission
+   OPERATOR : view/read + create/update/manage/write
+              (minus delete / revoke / staff.permissions.manage)
+   ADMIN    : every permission in the catalog
+
+   These are just BASELINES applied when the role button is
+   clicked. The user is free to add/remove individual
+   permissions afterwards — nothing re-applies the baseline
+   unless they switch to a *different* role.
+   ------------------------------------------------------------ */
+const getDefaultPermissionsForRole = (role, catalog) => {
+  if (!Array.isArray(catalog) || catalog.length === 0) return [];
+
+  const keys = catalog
+    .map((p) => (typeof p === 'string' ? p : p?.key))
+    .filter((k) => typeof k === 'string' && k.length > 0);
+
+  if (role === 'ADMIN') return keys;
+
+  const isView = (k) => k.endsWith('.view') || k.endsWith('.read');
+  const isWrite = (k) =>
+    k.endsWith('.create') ||
+    k.endsWith('.update') ||
+    k.endsWith('.manage') ||
+    k.endsWith('.write');
+  const isDangerous = (k) =>
+    k.endsWith('.delete') ||
+    k.endsWith('.revoke') ||
+    k === 'staff.permissions.manage';
+
+  if (role === 'OPERATOR') {
+    return keys.filter((k) => (isView(k) || isWrite(k)) && !isDangerous(k));
+  }
+
+  // VIEWER (default fallback) — only view/read
+  return keys.filter(isView);
+};
+
 const AddStaff = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { 
-    authenticatedRequest, 
-    logout, 
-    isRefreshing,
-    isAuthenticated,
-    user,
-    refreshToken
-  } = useAuth();
-  
+  const { authenticatedRequest, logout, isAuthenticated, user } = useAuth();
+
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [userData, setUserData] = useState(null);
   const [accessData, setAccessData] = useState(null);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [showToast, setShowToast] = useState({ visible: false, message: '', type: '' });
-  
-  // Permissions state
+
   const [permissionsCatalog, setPermissionsCatalog] = useState([]);
   const [selectedPermissions, setSelectedPermissions] = useState([]);
   const [permissionSearch, setPermissionSearch] = useState('');
-  
-  // Form state
+
   const [formData, setFormData] = useState({
     email: '',
     full_name: '',
@@ -218,11 +136,66 @@ const AddStaff = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [editId, setEditId] = useState(null);
 
-  // Permission check
+  // `userTouchedPermissions` guard: after the first auto-fill (or after
+  // any role change), the user's manual edits must never be overwritten
+  // by the bootstrap effect. Once this flag is true, we don't auto-fill.
+  const userTouchedPermissionsRef = React.useRef(false);
+
   const canManageStaff = accessData?.effective?.includes('staff.manage') || false;
   const canManagePermissions = accessData?.effective?.includes('staff.permissions.manage') || false;
 
-  // Check if editing from location state
+  const showToastMessage = useCallback((message, type = 'success') => {
+    setShowToast({ visible: true, message, type });
+    setTimeout(() => {
+      setShowToast({ visible: false, message: '', type: '' });
+    }, 4000);
+  }, []);
+
+  // ---- FETCHERS -------------------------------------------------------------
+
+  const fetchUserInfo = useCallback(async () => {
+    try {
+      const response = await authenticatedRequest(API_CONFIG.USER_INFO_API, { method: 'GET' });
+      if (response.ok) {
+        const data = await response.json();
+        setUserData(data);
+      }
+    } catch (error) {
+      console.error('Error fetching user info:', error);
+    }
+  }, [authenticatedRequest]);
+
+  const fetchAccessInfo = useCallback(async () => {
+    try {
+      const response = await authenticatedRequest(API_CONFIG.ACCESS_ME_API, { method: 'GET' });
+      if (response.ok) {
+        const data = await response.json();
+        setAccessData(data);
+      }
+    } catch (error) {
+      console.error('Error fetching access info:', error);
+    }
+  }, [authenticatedRequest]);
+
+  const fetchPermissionsCatalog = useCallback(async () => {
+    try {
+      const response = await authenticatedRequest(API_CONFIG.PERMISSIONS_CATALOG, { method: 'GET' });
+      if (response.ok) {
+        const data = await response.json();
+        let permissions = [];
+        if (Array.isArray(data)) permissions = data;
+        else if (data.permissions) permissions = data.permissions;
+        else if (data.data) permissions = data.data;
+        setPermissionsCatalog(permissions);
+      }
+    } catch (error) {
+      console.error('Error fetching permissions catalog:', error);
+    }
+  }, [authenticatedRequest]);
+
+  // ---- EFFECTS --------------------------------------------------------------
+
+  // Load the record being edited (if any).
   useEffect(() => {
     if (location.state?.editData) {
       const editData = location.state.editData;
@@ -234,166 +207,138 @@ const AddStaff = () => {
         role: editData.role || 'VIEWER'
       });
       if (editData.overrides && Array.isArray(editData.overrides)) {
-        const overrideKeys = editData.overrides.map(o => 
+        const overrideKeys = editData.overrides.map(o =>
           typeof o === 'string' ? o : o.permission || o.key || o
         );
         setSelectedPermissions(overrideKeys);
+        // Existing overrides count as "touched" — don't auto-fill.
+        userTouchedPermissionsRef.current = true;
       }
     }
   }, [location.state]);
 
-  // Fetch user info
-  const fetchUserInfo = async () => {
-    try {
-      const response = await authenticatedRequest(API_CONFIG.USER_INFO_API, {
-        method: 'GET'
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setUserData(data);
-      }
-    } catch (error) {
-      console.error('Error fetching user info:', error);
-    }
+  // Bootstrap once authenticated.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    fetchUserInfo();
+    fetchAccessInfo();
+    fetchPermissionsCatalog();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
+
+  /* On a *fresh* Add page, once the catalog arrives, auto-apply the
+     default role's baseline (VIEWER → all view/read). Runs at most
+     once; any manual edit or role change afterwards disables it.
+     This is what makes the initial VIEWER selection already show
+     its view permissions pre-checked. */
+  useEffect(() => {
+    if (isEditing) return;
+    if (userTouchedPermissionsRef.current) return;
+    if (!permissionsCatalog.length) return;
+
+    setSelectedPermissions((prev) => {
+      if (prev.length > 0) return prev; // safety net
+      userTouchedPermissionsRef.current = true;
+      return getDefaultPermissionsForRole(formData.role, permissionsCatalog);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [permissionsCatalog, isEditing]);
+
+  // ---- ROLE SELECTION -------------------------------------------------------
+
+  /* Clicking a *different* role replaces the selection with that role's
+     baseline. Clicking the currently-selected role is a no-op, so any
+     manual check/uncheck the user did is preserved.
+     After the role change, the user is once again free to add or remove
+     individual permissions. */
+  const handleRoleSelect = (roleValue) => {
+    if (formData.role === roleValue) return;
+
+    const defaults = getDefaultPermissionsForRole(roleValue, permissionsCatalog);
+
+    setFormData((prev) => ({ ...prev, role: roleValue }));
+    setSelectedPermissions(defaults);
+    userTouchedPermissionsRef.current = true;
   };
 
-  // Fetch access info
-  const fetchAccessInfo = async () => {
-    try {
-      const response = await authenticatedRequest(API_CONFIG.ACCESS_ME_API, {
-        method: 'GET'
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setAccessData(data);
-      }
-    } catch (error) {
-      console.error('Error fetching access info:', error);
-    }
-  };
+  // ---- SUBMIT ---------------------------------------------------------------
 
-  // Fetch permissions catalog
-  const fetchPermissionsCatalog = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(API_CONFIG.PERMISSIONS_CATALOG, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-CPO-App-ID': CPO_APP_ID,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        let permissions = [];
-        if (Array.isArray(data)) {
-          permissions = data;
-        } else if (data.permissions) {
-          permissions = data.permissions;
-        } else if (data.data) {
-          permissions = data.data;
-        }
-        setPermissionsCatalog(permissions);
-      }
-    } catch (error) {
-      console.error('Error fetching permissions catalog:', error);
-    }
-  };
-
-  // Toast message
-  const showToastMessage = (message, type = 'success') => {
-    setShowToast({ visible: true, message, type });
-    setTimeout(() => {
-      setShowToast({ visible: false, message: '', type: '' });
-    }, 4000);
-  };
-
-  // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (!formData.email.trim() || !formData.role.trim()) {
       setError('Please fill in all required fields');
       return;
     }
-    
+
     setIsSubmitting(true);
     setError('');
     setSuccess('');
-    
+
     try {
-      const token = localStorage.getItem('token');
-      
+      const overridesPayload = selectedPermissions.map(permission => ({
+        permission: permission,
+        effect: 'ALLOW'
+      }));
+
       const requestBody = {
         email: formData.email,
         full_name: formData.full_name || formData.email.split('@')[0],
         role: formData.role,
-        overrides: selectedPermissions.map(permission => ({
-          permission: permission,
-          effect: 'ALLOW'
-        }))
+        overrides: overridesPayload
       };
 
-      console.log('📤 Sending request:', requestBody);
-
       let response;
+
       if (isEditing && editId) {
-        const url = API_CONFIG.STAFF_UPDATE(editId);
-        response = await fetch(url, {
+        response = await authenticatedRequest(API_CONFIG.STAFF_UPDATE(editId), {
           method: 'PATCH',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'X-CPO-App-ID': CPO_APP_ID,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
           body: JSON.stringify({
             role: formData.role,
-            overrides: selectedPermissions.map(permission => ({
-              permission: permission,
-              effect: 'ALLOW'
-            }))
-          })
+            overrides: overridesPayload
+          }),
         });
       } else {
-        response = await fetch(API_CONFIG.STAFF_CREATE, {
+        response = await authenticatedRequest(API_CONFIG.STAFF_CREATE, {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'X-CPO-App-ID': CPO_APP_ID,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify(requestBody)
+          body: JSON.stringify(requestBody),
         });
       }
 
       if (response.ok) {
-        const data = await response.json();
-        console.log('✅ Staff saved:', data);
-        
-        navigate('/user-access', { 
-          state: { refresh: true, message: isEditing ? 'Staff member updated successfully!' : 'Staff member added successfully!' }
+        await response.json().catch(() => ({}));
+        navigate('/user-access', {
+          state: {
+            refresh: true,
+            message: isEditing ? 'Staff member updated successfully!' : 'Staff member added successfully!'
+          }
         });
       } else {
         const errorData = await response.json().catch(() => ({}));
-        setError(errorData.message || errorData.error?.message || `Failed to ${isEditing ? 'update' : 'create'} staff member`);
-        showToastMessage(errorData.message || `Failed to ${isEditing ? 'update' : 'create'} staff member`, 'error');
+        const msg = errorData.message || errorData.error?.message
+          || `Failed to ${isEditing ? 'update' : 'create'} staff member`;
+        setError(msg);
+        showToastMessage(msg, 'error');
       }
-    } catch (error) {
-      console.error('❌ Error saving staff:', error);
-      setError(`An error occurred while ${isEditing ? 'updating' : 'creating'} the staff member`);
-      showToastMessage(`An error occurred while ${isEditing ? 'updating' : 'creating'} the staff member`, 'error');
+    } catch (err) {
+      console.error('❌ Error saving staff:', err);
+      const msg = err?.status === 401
+        ? 'Session expired. Please sign in again.'
+        : `An error occurred while ${isEditing ? 'updating' : 'creating'} the staff member`;
+      setError(msg);
+      showToastMessage(msg, 'error');
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Handle permission toggle
+  // ---- PERMISSIONS ----------------------------------------------------------
+  // These handlers do NOT look at the selected role at all — the user is
+  // free to add ANY permission on top of the role's baseline, and free to
+  // remove ANY permission including the role's baseline entries.
+
   const handlePermissionToggle = (permissionKey) => {
+    userTouchedPermissionsRef.current = true;
     setSelectedPermissions(prev => {
       if (prev.includes(permissionKey)) {
         return prev.filter(p => p !== permissionKey);
@@ -403,8 +348,19 @@ const AddStaff = () => {
     });
   };
 
-  // Handle select all permissions
+  const filteredPermissions = useMemo(() => {
+    if (!permissionSearch) return permissionsCatalog;
+    const query = permissionSearch.toLowerCase();
+    return permissionsCatalog.filter(p =>
+      p.name?.toLowerCase().includes(query) ||
+      p.key?.toLowerCase().includes(query) ||
+      p.module?.toLowerCase().includes(query) ||
+      p.description?.toLowerCase().includes(query)
+    );
+  }, [permissionsCatalog, permissionSearch]);
+
   const handleSelectAllPermissions = () => {
+    userTouchedPermissionsRef.current = true;
     const allKeys = filteredPermissions.map(p => p.key);
     const allSelected = allKeys.every(key => selectedPermissions.includes(key));
     if (allSelected) {
@@ -414,50 +370,18 @@ const AddStaff = () => {
     }
   };
 
-  // Filter permissions based on search
-  const filteredPermissions = useMemo(() => {
-    if (!permissionSearch) return permissionsCatalog;
-    const query = permissionSearch.toLowerCase();
-    return permissionsCatalog.filter(p => 
-      p.name?.toLowerCase().includes(query) ||
-      p.key?.toLowerCase().includes(query) ||
-      p.module?.toLowerCase().includes(query) ||
-      p.description?.toLowerCase().includes(query)
-    );
-  }, [permissionsCatalog, permissionSearch]);
-
-  // Group permissions by module
   const groupedPermissions = useMemo(() => {
     const groups = {};
     filteredPermissions.forEach(p => {
       const module = p.module || 'other';
-      if (!groups[module]) {
-        groups[module] = [];
-      }
+      if (!groups[module]) groups[module] = [];
       groups[module].push(p);
     });
     return groups;
   }, [filteredPermissions]);
 
-  // Initial fetch
-  useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/signin');
-      return;
-    }
-    
-    fetchUserInfo();
-    fetchAccessInfo();
-    fetchPermissionsCatalog();
-  }, [isAuthenticated]);
+  // ---- MENUS / LOGOUT -------------------------------------------------------
 
-  // Get role display info
-  const getRoleDisplay = (role) => {
-    const found = ROLE_OPTIONS.find(r => r.value === role);
-    return found || ROLE_OPTIONS[2];
-  };
-
-  // Settings Dropdown Menu
   const SettingsMenu = () => (
     <div className="absolute top-full right-0 mt-2 bg-white rounded-2xl w-80 shadow-2xl border border-gray-100 z-50 overflow-hidden">
       <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-4">
@@ -480,7 +404,6 @@ const AddStaff = () => {
           </div>
         </div>
       </div>
-      
       <div className="p-2">
         <button onClick={() => { setShowSettingsMenu(false); navigate('/profile'); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-50 text-sm font-medium text-gray-700 hover:text-gray-900 flex items-center gap-3 transition">
           <User size={16} className="text-gray-400" /> <span>Profile</span>
@@ -514,34 +437,22 @@ const AddStaff = () => {
       await logout();
     } catch (error) {
       console.error('Logout error:', error);
-      localStorage.removeItem('token');
-      localStorage.removeItem('refresh_token');
-      localStorage.removeItem('userInfo');
-      localStorage.removeItem('token_expiry');
-      navigate('/signin');
     }
   };
 
   const handleThemeToggle = () => setIsDarkMode(!isDarkMode);
 
-  if (isRefreshing && loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex">
-        <Sidebar />
-        <div className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const getRoleDisplay = (role) => {
+    const found = ROLE_OPTIONS.find(r => r.value === role);
+    return found || ROLE_OPTIONS[2];
+  };
+
+  // ---- RENDER ---------------------------------------------------------------
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      <Sidebar 
-        isDarkMode={isDarkMode} 
+      <Sidebar
+        isDarkMode={isDarkMode}
         onThemeToggle={handleThemeToggle}
         userName={userData?.user?.full_name || user?.name || 'User'}
         userEmail={userData?.user?.email || user?.email || ''}
@@ -549,7 +460,6 @@ const AddStaff = () => {
       />
 
       <div className="flex-1 min-w-0">
-        {/* Toast */}
         {showToast.visible && (
           <div className={`fixed top-20 right-6 z-50 ${showToast.type === 'success' ? 'bg-green-500' : 'bg-red-500'} text-white px-6 py-3 rounded-xl shadow-lg flex items-center gap-2 animate-fadeIn`}>
             {showToast.type === 'success' ? <CheckCircle className="w-5 h-5" /> : <AlertCircle className="w-5 h-5" />}
@@ -572,7 +482,6 @@ const AddStaff = () => {
                 {isEditing ? 'Edit' : 'Add'} Staff Member
               </h1>
             </div>
-            
             <div className="flex items-center gap-2 relative">
               <div className="relative">
                 <button onClick={() => setShowSettingsMenu(!showSettingsMenu)} className="p-2 hover:bg-gray-100 rounded-xl transition flex items-center gap-1.5">
@@ -581,7 +490,6 @@ const AddStaff = () => {
                 </button>
                 {showSettingsMenu && <SettingsMenu />}
               </div>
-
               <div className="relative">
                 <button onClick={() => setShowAddMenu(!showAddMenu)} className="w-9 h-9 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 text-white flex items-center justify-center hover:from-blue-700 hover:to-indigo-700 transition shadow-lg shadow-blue-500/25">
                   <Plus size={18} />
@@ -592,10 +500,8 @@ const AddStaff = () => {
           </div>
         </header>
 
-        {/* Main Content */}
         <div className="p-6">
           <div className="max-w-6xl mx-auto">
-            {/* Page Title */}
             <div className="mb-6">
               <h2 className="text-xl font-semibold text-gray-800">
                 {isEditing ? 'Edit Staff Member' : 'Add New Staff Member'}
@@ -605,7 +511,6 @@ const AddStaff = () => {
               </p>
             </div>
 
-            {/* Success/Error Messages */}
             {success && (
               <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-xl text-green-700 flex items-center gap-2">
                 <CheckCircle size={20} />
@@ -619,11 +524,9 @@ const AddStaff = () => {
               </div>
             )}
 
-            {/* Form */}
             <form onSubmit={handleSubmit} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
               <div className="p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Left Column - Form Fields */}
                   <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -648,9 +551,7 @@ const AddStaff = () => {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1.5">
-                        Full Name
-                      </label>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">Full Name</label>
                       <div className="relative">
                         <UserRound size={18} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                         <input
@@ -674,7 +575,7 @@ const AddStaff = () => {
                             <button
                               key={role.value}
                               type="button"
-                              onClick={() => setFormData({ ...formData, role: role.value })}
+                              onClick={() => handleRoleSelect(role.value)}
                               className={`flex flex-col items-center gap-1 p-3 rounded-xl border-2 transition-all duration-200 ${isSelected ? 'border-blue-500 bg-blue-50 shadow-md shadow-blue-100/50' : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'}`}
                             >
                               <div className={`p-1.5 rounded-full ${isSelected ? 'bg-blue-100' : 'bg-gray-100'}`}>
@@ -691,6 +592,11 @@ const AddStaff = () => {
                       </div>
                       <p className="text-xs text-gray-400 mt-1">
                         Selected: <span className="font-medium text-gray-600">{getRoleDisplay(formData.role).label}</span>
+                        <span className="ml-1">
+                          — its default permissions are pre-checked below.
+                          You can still <span className="font-medium text-gray-500">add</span> or
+                          <span className="font-medium text-gray-500"> remove</span> any permission.
+                        </span>
                       </p>
                     </div>
 
@@ -709,12 +615,9 @@ const AddStaff = () => {
                     </div>
                   </div>
 
-                  {/* Right Column - Permissions */}
                   <div>
                     <div className="flex items-center justify-between mb-3">
-                      <label className="text-sm font-medium text-gray-700">
-                        Permissions
-                      </label>
+                      <label className="text-sm font-medium text-gray-700">Permissions</label>
                       <div className="flex items-center gap-2">
                         <div className="relative">
                           <Search size={14} className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -731,8 +634,8 @@ const AddStaff = () => {
                           onClick={handleSelectAllPermissions}
                           className="text-xs text-blue-600 hover:text-blue-800 font-medium"
                         >
-                          {filteredPermissions.length > 0 && 
-                            filteredPermissions.every(p => selectedPermissions.includes(p.key)) 
+                          {filteredPermissions.length > 0 &&
+                            filteredPermissions.every(p => selectedPermissions.includes(p.key))
                             ? 'Deselect All' : 'Select All'
                           }
                         </button>
@@ -752,9 +655,7 @@ const AddStaff = () => {
                                 {getModuleIcon(module)}
                                 {module.charAt(0).toUpperCase() + module.slice(1)}
                               </span>
-                              <span className="text-xs text-gray-400">
-                                ({perms.length} permissions)
-                              </span>
+                              <span className="text-xs text-gray-400">({perms.length} permissions)</span>
                             </div>
                             <div className="p-2 space-y-1">
                               {perms.map((perm) => (
@@ -827,9 +728,7 @@ const AddStaff = () => {
           from { opacity: 0; transform: translateY(-10px); }
           to { opacity: 1; transform: translateY(0); }
         }
-        .animate-fadeIn {
-          animation: fadeIn 0.3s ease-out forwards;
-        }
+        .animate-fadeIn { animation: fadeIn 0.3s ease-out forwards; }
       `}</style>
     </div>
   );

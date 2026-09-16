@@ -1,27 +1,56 @@
-// src/components/ProtectedRoute.jsx
-import React, { useEffect } from 'react';
-import { Navigate } from 'react-router-dom';
-import { useAuth } from '../components/Authentication/AuthContext'; // 
+import React from 'react';
+import { Navigate, useLocation } from 'react-router-dom';
+import { useAuth } from './Authentication/AuthContext';
 
-const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, loading, isRefreshing } = useAuth();
+/* ============================================================
+   ProtectedRoute
+   ============================================================
+   The single reason a signed-in user used to get thrown back to
+   the login page: routes rendered a redirect while the session
+   was still being restored. This component renders nothing but a
+   splash until the provider has finished bootstrapping.
+   ============================================================ */
 
-  console.log('🔒 ProtectedRoute Check:', { isAuthenticated, loading, isRefreshing });
+const Splash = () => (
+  <div className="flex min-h-screen items-center justify-center bg-slate-50">
+    <div className="flex flex-col items-center gap-3">
+      <div className="h-8 w-8 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
+      <p className="text-sm text-slate-500">Restoring your session</p>
+    </div>
+  </div>
+);
 
-  if (loading || isRefreshing) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-        <p className="text-gray-600">
-          {isRefreshing ? 'Refreshing session...' : 'Loading...'}
-        </p>
-      </div>
-    );
-  }
+export const ProtectedRoute = ({ children }) => {
+  const { isBootstrapping, isAuthenticated, mustChangePassword } = useAuth();
+  const location = useLocation();
+
+  if (isBootstrapping) return <Splash />;
 
   if (!isAuthenticated) {
-    console.log('🔒 Not authenticated, redirecting to signin...');
-    return <Navigate to="/signin" replace />;
+    return <Navigate to="/signin" replace state={{ from: location }} />;
+  }
+
+  if (mustChangePassword && location.pathname !== '/change-password') {
+    return <Navigate to="/change-password" replace />;
+  }
+
+  return children;
+};
+
+/* Wrap /signin and /forgot-password with this so a returning user
+   with a live session never sees the login form again. */
+export const PublicOnlyRoute = ({ children }) => {
+  const { isBootstrapping, isAuthenticated, mustChangePassword } = useAuth();
+  const location = useLocation();
+
+  if (isBootstrapping) return <Splash />;
+
+  if (isAuthenticated) {
+    const target = mustChangePassword
+      ? '/change-password'
+      : location.state?.from?.pathname || '/dashboard';
+
+    return <Navigate to={target} replace />;
   }
 
   return children;

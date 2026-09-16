@@ -135,9 +135,9 @@ import {
 } from 'lucide-react';
 import Sidebar from '../Sidebar/Sidebar';
 
-// API Configuration
+// API Configuration — bearer + App-ID headers are attached by
+// AuthContext.authenticatedRequest. No token handling here.
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://dev-evcmsnew.transev.site';
-const CPO_APP_ID = process.env.REACT_APP_CPO_APP_ID || 'cpo_dummy_5f75674f57829da5f3cae19ef4238d56';
 
 const API_CONFIG = {
   PERMISSIONS_CATALOG: `${API_BASE_URL}/api/v1/cpo/permissions/catalog`,
@@ -152,12 +152,10 @@ const API_CONFIG = {
   ACCESS_ME_API: `${API_BASE_URL}/api/v1/cpo/access/me`
 };
 
-// Permission check helper
 const can = (access, permission) => {
   return access?.effective?.includes(permission) || false;
 };
 
-// Status color mapping
 const getStatusColor = (status) => {
   const colors = {
     'ACTIVE': 'bg-green-100 text-green-700 border-green-200',
@@ -196,7 +194,6 @@ const getStatusDisplayName = (status) => {
   return statusMap[status] || status || 'Unknown';
 };
 
-// Role badge color
 const getRoleBadgeColor = (role) => {
   const colors = {
     'ADMIN': 'bg-purple-100 text-purple-700 border-purple-200',
@@ -210,15 +207,14 @@ const getRoleBadgeColor = (role) => {
 const UserAccess = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { 
-    authenticatedRequest, 
-    logout, 
+  const {
+    authenticatedRequest,
+    logout,
     isRefreshing,
     isAuthenticated,
     user,
-    refreshToken
   } = useAuth();
-  
+
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [userData, setUserData] = useState(null);
   const [accessData, setAccessData] = useState(null);
@@ -229,8 +225,7 @@ const UserAccess = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showToast, setShowToast] = useState({ visible: false, message: '', type: '' });
-  
-  // Staff state
+
   const [staffMembers, setStaffMembers] = useState([]);
   const [permissionsCatalog, setPermissionsCatalog] = useState([]);
   const [pagination, setPagination] = useState({
@@ -243,42 +238,38 @@ const UserAccess = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  
-  // Filter states
+
   const [statusFilter, setStatusFilter] = useState('All');
   const [roleFilter, setRoleFilter] = useState('All');
-  
-  // Modal states
+
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [actionReason, setActionReason] = useState('');
-  
-  // Action loading states
+
   const [actionLoading, setActionLoading] = useState(false);
   const [selectedActionId, setSelectedActionId] = useState(null);
   const [showReasonModal, setShowReasonModal] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
 
-  // Permissions
   const canReadStaff = can(accessData, 'staff.read');
   const canManageStaff = can(accessData, 'staff.manage');
   const canManagePermissions = can(accessData, 'staff.permissions.manage');
 
-  // Check if returning from add-staff page
-  useEffect(() => {
-    if (location.state?.refresh) {
-      fetchStaff();
-      navigate(location.pathname, { replace: true, state: {} });
-    }
-  }, [location]);
+  // ---- TOAST ---------------------------------------------------------------
 
-  // Fetch user info
-  const fetchUserInfo = async () => {
+  const showToastMessage = useCallback((message, type = 'success') => {
+    setShowToast({ visible: true, message, type });
+    setTimeout(() => {
+      setShowToast({ visible: false, message: '', type: '' });
+    }, 4000);
+  }, []);
+
+  // ---- FETCHERS -------------------------------------------------------------
+
+  const fetchUserInfo = useCallback(async () => {
     try {
-      const response = await authenticatedRequest(API_CONFIG.USER_INFO_API, {
-        method: 'GET'
-      });
+      const response = await authenticatedRequest(API_CONFIG.USER_INFO_API, { method: 'GET' });
       if (response.ok) {
         const data = await response.json();
         setUserData(data);
@@ -286,38 +277,23 @@ const UserAccess = () => {
     } catch (error) {
       console.error('Error fetching user info:', error);
     }
-  };
+  }, [authenticatedRequest]);
 
-  // Fetch access info
-  const fetchAccessInfo = async () => {
+  const fetchAccessInfo = useCallback(async () => {
     try {
-      const response = await authenticatedRequest(API_CONFIG.ACCESS_ME_API, {
-        method: 'GET'
-      });
+      const response = await authenticatedRequest(API_CONFIG.ACCESS_ME_API, { method: 'GET' });
       if (response.ok) {
         const data = await response.json();
         setAccessData(data);
-        console.log('✅ Access info loaded:', data);
       }
     } catch (error) {
       console.error('❌ Error fetching access info:', error);
     }
-  };
+  }, [authenticatedRequest]);
 
-  // Fetch permissions catalog
-  const fetchPermissionsCatalog = async () => {
+  const fetchPermissionsCatalog = useCallback(async () => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(API_CONFIG.PERMISSIONS_CATALOG, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-CPO-App-ID': CPO_APP_ID,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
-      });
-
+      const response = await authenticatedRequest(API_CONFIG.PERMISSIONS_CATALOG, { method: 'GET' });
       if (response.ok) {
         const data = await response.json();
         let permissions = [];
@@ -333,48 +309,36 @@ const UserAccess = () => {
     } catch (error) {
       console.error('Error fetching permissions catalog:', error);
     }
-  };
+  }, [authenticatedRequest]);
 
-  // Fetch staff members
   const fetchStaff = useCallback(async (before = null, beforeId = null, isLoadMore = false) => {
     if (isLoadMore && loadingMore) return;
-    
+
     if (!isLoadMore) {
       setLoading(true);
     } else {
       setLoadingMore(true);
     }
     setError('');
-    
+
     try {
-      const token = localStorage.getItem('token');
       let url = `${API_CONFIG.STAFF_LIST}?limit=${pagination.limit}`;
-      
       if (before) url += `&next_before=${encodeURIComponent(before)}`;
       if (beforeId) url += `&next_before_id=${encodeURIComponent(beforeId)}`;
-      
       if (statusFilter !== 'All') url += `&status=${statusFilter}`;
       if (roleFilter !== 'All') url += `&role=${roleFilter}`;
 
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-CPO-App-ID': CPO_APP_ID,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
-      });
+      const response = await authenticatedRequest(url, { method: 'GET' });
 
       if (response.ok) {
         const data = await response.json();
-        
+
         let staffArray = data;
         let hasMore = false;
         let nextBefore = null;
         let nextBeforeId = null;
-        let total = staffArray.length;
-        
+        let total = Array.isArray(staffArray) ? staffArray.length : 0;
+
         if (data && typeof data === 'object' && !Array.isArray(data)) {
           staffArray = data.staff || data.data || [];
           hasMore = data.has_more || false;
@@ -385,13 +349,13 @@ const UserAccess = () => {
           staffArray = data;
           hasMore = data.length >= pagination.limit;
         }
-        
+
         if (!Array.isArray(staffArray)) staffArray = [];
 
         const transformedStaff = staffArray.map((member) => {
           const userObj = member.user || {};
           const statusValue = member.membership_status || member.status || 'ACTIVE';
-          
+
           return {
             id: member.id || member.membership_id,
             membership_id: member.membership_id || member.id,
@@ -424,106 +388,71 @@ const UserAccess = () => {
           next_before_id: nextBeforeId,
           total: total
         });
-        
+
         setHasLoaded(true);
         setIsInitialLoad(false);
-      } else if (response.status === 401) {
-        const newToken = await refreshToken();
-        if (newToken) {
-          fetchStaff(before, beforeId, isLoadMore);
-          return;
-        }
       } else {
         const errorData = await response.json().catch(() => ({}));
         setError(errorData.message || 'Failed to fetch staff members');
       }
-    } catch (error) {
-      console.error('❌ Error fetching staff:', error);
-      setError('An error occurred while fetching staff members');
+    } catch (err) {
+      console.error('❌ Error fetching staff:', err);
+      setError(
+        err?.status === 401
+          ? 'Session expired. Please sign in again.'
+          : 'An error occurred while fetching staff members',
+      );
     } finally {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [pagination.limit, refreshToken, statusFilter, roleFilter]);
+  }, [authenticatedRequest, pagination.limit, statusFilter, roleFilter, loadingMore]);
 
-  // Fetch single staff member detail
   const fetchStaffDetail = useCallback(async (membershipId) => {
     if (!membershipId) return;
-    
+
     setLoadingDetail(true);
     setError('');
-    
+
     try {
-      const token = localStorage.getItem('token');
       const url = API_CONFIG.STAFF_DETAIL(membershipId);
-      
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-CPO-App-ID': CPO_APP_ID,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
-      });
+      const response = await authenticatedRequest(url, { method: 'GET' });
 
       if (response.ok) {
         const data = await response.json();
         const member = data.staff || data.data || data;
         setSelectedMember(member);
         setShowDetailModal(true);
-      } else if (response.status === 401) {
-        const newToken = await refreshToken();
-        if (newToken) {
-          const retryResponse = await fetch(url, {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${newToken}`,
-              'X-CPO-App-ID': CPO_APP_ID,
-              'Content-Type': 'application/json',
-              'Accept': 'application/json'
-            }
-          });
-          if (retryResponse.ok) {
-            const data = await retryResponse.json();
-            const member = data.staff || data.data || data;
-            setSelectedMember(member);
-            setShowDetailModal(true);
-          }
-        }
       } else {
         const errorData = await response.json().catch(() => ({}));
         setError(errorData.message || 'Failed to fetch staff details');
       }
-    } catch (error) {
-      console.error('❌ Error fetching staff detail:', error);
-      setError('An error occurred while fetching staff details');
+    } catch (err) {
+      console.error('❌ Error fetching staff detail:', err);
+      setError(
+        err?.status === 401
+          ? 'Session expired. Please sign in again.'
+          : 'An error occurred while fetching staff details',
+      );
     } finally {
       setLoadingDetail(false);
     }
-  }, [refreshToken]);
+  }, [authenticatedRequest]);
 
-  // Activate staff member
-  const activateStaff = async (membershipId, reason = '') => {
+  // ---- STAFF ACTIONS --------------------------------------------------------
+
+  const activateStaff = useCallback(async (membershipId, reason = '') => {
     if (!membershipId) return;
-    
+
     setActionLoading(true);
     setSelectedActionId(membershipId);
     setError('');
-    
+
     try {
-      const token = localStorage.getItem('token');
       const url = API_CONFIG.STAFF_ACTIVATE(membershipId);
-      
-      const response = await fetch(url, {
+      const response = await authenticatedRequest(url, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-CPO-App-ID': CPO_APP_ID,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({ reason: reason || 'Activated by admin' })
+        body: JSON.stringify({ reason: reason || 'Activated by admin' }),
       });
 
       if (response.ok) {
@@ -539,36 +468,31 @@ const UserAccess = () => {
         const errorData = await response.json().catch(() => ({}));
         setError(errorData.message || 'Failed to activate staff member');
       }
-    } catch (error) {
-      console.error('❌ Error activating staff:', error);
-      setError('An error occurred while activating the staff member');
+    } catch (err) {
+      console.error('❌ Error activating staff:', err);
+      setError(
+        err?.status === 401
+          ? 'Session expired. Please sign in again.'
+          : 'An error occurred while activating the staff member',
+      );
     } finally {
       setActionLoading(false);
       setSelectedActionId(null);
     }
-  };
+  }, [authenticatedRequest, fetchStaff, fetchStaffDetail, showDetailModal, showToastMessage]);
 
-  // Suspend staff member
-  const suspendStaff = async (membershipId, reason = '') => {
+  const suspendStaff = useCallback(async (membershipId, reason = '') => {
     if (!membershipId) return;
-    
+
     setActionLoading(true);
     setSelectedActionId(membershipId);
     setError('');
-    
+
     try {
-      const token = localStorage.getItem('token');
       const url = API_CONFIG.STAFF_SUSPEND(membershipId);
-      
-      const response = await fetch(url, {
+      const response = await authenticatedRequest(url, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-CPO-App-ID': CPO_APP_ID,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({ reason: reason || 'Suspended by admin' })
+        body: JSON.stringify({ reason: reason || 'Suspended by admin' }),
       });
 
       if (response.ok) {
@@ -584,40 +508,35 @@ const UserAccess = () => {
         const errorData = await response.json().catch(() => ({}));
         setError(errorData.message || 'Failed to suspend staff member');
       }
-    } catch (error) {
-      console.error('❌ Error suspending staff:', error);
-      setError('An error occurred while suspending the staff member');
+    } catch (err) {
+      console.error('❌ Error suspending staff:', err);
+      setError(
+        err?.status === 401
+          ? 'Session expired. Please sign in again.'
+          : 'An error occurred while suspending the staff member',
+      );
     } finally {
       setActionLoading(false);
       setSelectedActionId(null);
     }
-  };
+  }, [authenticatedRequest, fetchStaff, fetchStaffDetail, showDetailModal, showToastMessage]);
 
-  // Revoke staff member
-  const revokeStaff = async (membershipId, reason = '') => {
+  const revokeStaff = useCallback(async (membershipId, reason = '') => {
     if (!membershipId) return;
-    
+
     if (!window.confirm('Are you sure you want to revoke this staff member? This action cannot be undone.')) {
       return;
     }
-    
+
     setActionLoading(true);
     setSelectedActionId(membershipId);
     setError('');
-    
+
     try {
-      const token = localStorage.getItem('token');
       const url = API_CONFIG.STAFF_REVOKE(membershipId);
-      
-      const response = await fetch(url, {
+      const response = await authenticatedRequest(url, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-CPO-App-ID': CPO_APP_ID,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({ reason: reason || 'Revoked by admin' })
+        body: JSON.stringify({ reason: reason || 'Revoked by admin' }),
       });
 
       if (response.ok) {
@@ -634,37 +553,33 @@ const UserAccess = () => {
         const errorData = await response.json().catch(() => ({}));
         setError(errorData.message || 'Failed to revoke staff member');
       }
-    } catch (error) {
-      console.error('❌ Error revoking staff:', error);
-      setError('An error occurred while revoking the staff member');
+    } catch (err) {
+      console.error('❌ Error revoking staff:', err);
+      setError(
+        err?.status === 401
+          ? 'Session expired. Please sign in again.'
+          : 'An error occurred while revoking the staff member',
+      );
     } finally {
       setActionLoading(false);
       setSelectedActionId(null);
     }
-  };
+  }, [authenticatedRequest, fetchStaff, showDetailModal, showToastMessage]);
 
-  // Toast message
-  const showToastMessage = (message, type = 'success') => {
-    setShowToast({ visible: true, message, type });
-    setTimeout(() => {
-      setShowToast({ visible: false, message: '', type: '' });
-    }, 4000);
-  };
+  // ---- ACTIONS / UI HELPERS -------------------------------------------------
 
-  // Handle action with reason modal
   const handleActionWithReason = (action, membershipId) => {
     setPendingAction({ action, membershipId });
     setActionReason('');
     setShowReasonModal(true);
   };
 
-  // Confirm action with reason
   const confirmActionWithReason = () => {
     if (!pendingAction) return;
-    
+
     const { action, membershipId } = pendingAction;
     const reason = actionReason.trim() || `${action.charAt(0).toUpperCase() + action.slice(1)} by admin`;
-    
+
     if (action === 'activate') {
       activateStaff(membershipId, reason);
     } else if (action === 'suspend') {
@@ -696,25 +611,21 @@ const UserAccess = () => {
     if (canManagePermissions) {
       navigate('/add-staff', { state: { editData: member, returnTo: '/user-access' } });
     } else {
-      showToastMessage('You don\'t have permission to edit staff', 'error');
+      showToastMessage("You don't have permission to edit staff", 'error');
     }
   };
 
+  // AuthContext owns token cleanup; we simply await its logout.
   const handleLogout = async () => {
     try {
       await logout();
     } catch (error) {
       console.error('Logout error:', error);
-      localStorage.removeItem('token');
-      localStorage.removeItem('refresh_token');
-      localStorage.removeItem('userInfo');
-      localStorage.removeItem('token_expiry');
-      navigate('/signin');
     }
   };
 
   const handleThemeToggle = () => setIsDarkMode(!isDarkMode);
-  
+
   const handleRefresh = () => {
     if (!loading) {
       setStaffMembers([]);
@@ -735,13 +646,12 @@ const UserAccess = () => {
     });
   };
 
-  // Initial fetch
+  // ---- EFFECTS --------------------------------------------------------------
+
+  // Bootstrap once authenticated. ProtectedRoute handles the redirect.
   useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/signin');
-      return;
-    }
-    
+    if (!isAuthenticated) return;
+
     const bootstrap = async () => {
       await fetchUserInfo();
       await fetchAccessInfo();
@@ -749,9 +659,21 @@ const UserAccess = () => {
       await fetchStaff();
     };
     bootstrap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
-  // Filter staff based on search
+  // Refresh after returning from add-staff / edit-staff flow.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (location.state?.refresh) {
+      fetchStaff();
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state?.refresh]);
+
+  // ---- DERIVED --------------------------------------------------------------
+
   const filteredStaff = useMemo(() => {
     if (!searchQuery) return staffMembers;
     const query = searchQuery.toLowerCase();
@@ -760,7 +682,7 @@ const UserAccess = () => {
       const userNameStr = String(member.user_name || '');
       const userEmailStr = String(member.user_email || '');
       const roleStr = String(member.role || '');
-      
+
       return (
         idStr.toLowerCase().includes(query) ||
         userNameStr.toLowerCase().includes(query) ||
@@ -770,7 +692,6 @@ const UserAccess = () => {
     });
   }, [staffMembers, searchQuery]);
 
-  // Helper to truncate ID
   const truncateId = (id) => {
     if (!id) return 'N/A';
     const strId = String(id);
@@ -780,7 +701,8 @@ const UserAccess = () => {
     return strId;
   };
 
-  // Toast Component
+  // ---- TOAST / MENUS --------------------------------------------------------
+
   const Toast = () => {
     if (!showToast.visible) return null;
     const colors = {
@@ -798,7 +720,6 @@ const UserAccess = () => {
     );
   };
 
-  // Settings Dropdown Menu
   const SettingsMenu = () => (
     <div className="absolute top-full right-0 mt-2 bg-white rounded-2xl w-80 shadow-2xl border border-gray-100 z-50 overflow-hidden">
       <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-4">
@@ -821,7 +742,7 @@ const UserAccess = () => {
           </div>
         </div>
       </div>
-      
+
       <div className="p-2">
         <button onClick={() => { setShowSettingsMenu(false); navigate('/profile'); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-50 text-sm font-medium text-gray-700 hover:text-gray-900 flex items-center gap-3 transition">
           <User size={16} className="text-gray-400" /> <span>Profile</span>
@@ -855,7 +776,6 @@ const UserAccess = () => {
     </div>
   );
 
-  // Filter Popup
   const FilterPopup = () => (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl w-[500px] max-w-[90vw] shadow-2xl p-6 max-h-[80vh] overflow-y-auto animate-fadeIn">
@@ -926,7 +846,8 @@ const UserAccess = () => {
     </div>
   );
 
-  // Reason Modal
+  // ---- REASON MODAL ---------------------------------------------------------
+
   const ReasonModal = () => {
     const textareaRef = useRef(null);
 
@@ -1040,7 +961,8 @@ const UserAccess = () => {
     );
   };
 
-  // Staff Detail Modal
+  // ---- STAFF DETAIL MODAL ---------------------------------------------------
+
   const StaffDetailModal = () => {
     if (!selectedMember) return null;
 
@@ -1048,9 +970,9 @@ const UserAccess = () => {
     const isActive = statusValue === 'ACTIVE';
     const isSuspended = statusValue === 'SUSPENDED';
     const isPrimary = selectedMember.is_primary_admin || selectedMember.is_primary || false;
-    const user = selectedMember.user || {};
+    const memberUser = selectedMember.user || {};
     const overrides = selectedMember.overrides || [];
-    const createdAt = selectedMember.created_at || user.created_at;
+    const createdAt = selectedMember.created_at || memberUser.created_at;
 
     return (
       <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
@@ -1063,7 +985,7 @@ const UserAccess = () => {
               <div>
                 <h3 className="text-lg font-bold text-white">Staff Details</h3>
                 <p className="text-sm text-white/80">
-                  {user.full_name || user.name || selectedMember.user_name || 'N/A'}
+                  {memberUser.full_name || memberUser.name || selectedMember.user_name || 'N/A'}
                   {isActive && (
                     <span className="ml-2 text-green-300 inline-flex items-center gap-1">
                       <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
@@ -1109,8 +1031,8 @@ const UserAccess = () => {
                   </div>
                   <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-4 border border-purple-200">
                     <p className="text-xs text-gray-500 uppercase tracking-wider">Role</p>
-                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium mt-1 ${getRoleBadgeColor(selectedMember.role || user.role)}`}>
-                      {selectedMember.role || user.role || 'STAFF'}
+                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium mt-1 ${getRoleBadgeColor(selectedMember.role || memberUser.role)}`}>
+                      {selectedMember.role || memberUser.role || 'STAFF'}
                     </span>
                   </div>
                   <div className="bg-gradient-to-br from-emerald-50 to-green-50 rounded-2xl p-4 border border-emerald-200">
@@ -1132,15 +1054,15 @@ const UserAccess = () => {
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-500">Name</span>
-                        <span className="text-gray-900 font-medium">{user.full_name || user.name || selectedMember.user_name || 'N/A'}</span>
+                        <span className="text-gray-900 font-medium">{memberUser.full_name || memberUser.name || selectedMember.user_name || 'N/A'}</span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-500">Email</span>
-                        <span className="text-gray-900 font-medium">{user.email || selectedMember.user_email || 'N/A'}</span>
+                        <span className="text-gray-900 font-medium">{memberUser.email || selectedMember.user_email || 'N/A'}</span>
                       </div>
                       <div className="flex justify-between text-sm">
                         <span className="text-gray-500">User ID</span>
-                        <span className="font-mono text-gray-900 text-xs">{user.id || selectedMember.user_id || 'N/A'}</span>
+                        <span className="font-mono text-gray-900 text-xs">{memberUser.id || selectedMember.user_id || 'N/A'}</span>
                       </div>
                     </div>
                   </div>
@@ -1150,7 +1072,7 @@ const UserAccess = () => {
                     {overrides && overrides.length > 0 ? (
                       <div className="flex flex-wrap gap-1.5">
                         {overrides.map((override, idx) => {
-                          const displayName = typeof override === 'string' ? override : 
+                          const displayName = typeof override === 'string' ? override :
                             (override.name || override.key || override.permission || JSON.stringify(override));
                           return (
                             <span key={idx} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
@@ -1247,8 +1169,8 @@ const UserAccess = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      <Sidebar 
-        isDarkMode={isDarkMode} 
+      <Sidebar
+        isDarkMode={isDarkMode}
         onThemeToggle={handleThemeToggle}
         userName={userData?.user?.full_name || user?.name || 'User'}
         userEmail={userData?.user?.email || user?.email || ''}
@@ -1277,7 +1199,7 @@ const UserAccess = () => {
                 User Access
               </span>
             </div>
-            
+
             <div className="flex items-center gap-2 relative">
               <button
                 onClick={handleRefresh}
@@ -1305,9 +1227,7 @@ const UserAccess = () => {
           </div>
         </header>
 
-        {/* Main Content */}
         <div className="p-6">
-          {/* Stats Card */}
           <div className="mb-6">
             <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm hover:shadow-md transition group inline-flex items-center gap-4">
               <div className="w-12 h-12 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition">
@@ -1334,7 +1254,6 @@ const UserAccess = () => {
             </div>
           </div>
 
-          {/* Search and Filters */}
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
             <div className="flex items-center gap-2">
               {(statusFilter !== 'All' || roleFilter !== 'All') && (
@@ -1384,7 +1303,6 @@ const UserAccess = () => {
             </div>
           </div>
 
-          {/* Staff Table */}
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -1444,10 +1362,10 @@ const UserAccess = () => {
                       const isSuspended = statusValue === 'SUSPENDED';
                       const isPrimary = member.is_primary_admin || member.is_primary || false;
                       const overrideCount = member.overrides?.length || 0;
-                      
+
                       return (
-                        <tr 
-                          key={member.id || member.membership_id || index} 
+                        <tr
+                          key={member.id || member.membership_id || index}
                           className={`border-b border-gray-100 hover:bg-gray-50/50 transition cursor-pointer ${isActive ? 'bg-green-50/10' : ''}`}
                           onClick={() => handleMemberClick(member.id || member.membership_id)}
                         >
@@ -1567,7 +1485,6 @@ const UserAccess = () => {
               </table>
             </div>
 
-            {/* Pagination - Load More */}
             {pagination.has_more && filteredStaff.length > 0 && (
               <div className="px-4 py-4 border-t border-gray-200 flex items-center justify-center">
                 <button
@@ -1590,10 +1507,9 @@ const UserAccess = () => {
               </div>
             )}
 
-            {/* Footer */}
             <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 text-xs text-gray-500 flex justify-between items-center">
               <span>
-                {filteredStaff.length === 0 
+                {filteredStaff.length === 0
                   ? 'No staff members available'
                   : `Showing ${filteredStaff.length} of ${staffMembers.length} staff members`
                 }
@@ -1612,7 +1528,6 @@ const UserAccess = () => {
         </div>
       </div>
 
-      {/* Modals */}
       <ReasonModal />
       {showDetailModal && <StaffDetailModal />}
 
