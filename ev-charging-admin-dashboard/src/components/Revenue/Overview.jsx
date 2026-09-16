@@ -16,85 +16,19 @@ import {
   ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon2, FileSpreadsheet
 } from 'lucide-react';
 import Sidebar from '../Sidebar/Sidebar';
+import { useAuth } from '../Authentication/AuthContext';
 
-// API Configuration
+// API Configuration — bearer + App-ID headers are attached centrally
+// by AuthContext.authenticatedRequest. No token handling lives here.
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://dev-evcmsnew.transev.site';
-const CPO_APP_ID = process.env.REACT_APP_CPO_APP_ID || 'cpo_dummy_5f75674f57829da5f3cae19ef4238d56';
 
 const API_CONFIG = {
   TRANSACTIONS_API: `${API_BASE_URL}/api/v1/cpo/charger-transactions`,
   WALLET_TRANSACTIONS_API: `${API_BASE_URL}/api/v1/cpo/wallet-transactions`,
   ANALYTICS_API: `${API_BASE_URL}/api/v1/cpo/analytics`,
   HUBS_API: `${API_BASE_URL}/api/v1/cpo/hubs`,
-  LOGOUT_API: `${API_BASE_URL}/api/v1/auth/logout`,
-  REFRESH_TOKEN_API: `${API_BASE_URL}/api/v1/auth/refresh`,
   USER_INFO_API: `${API_BASE_URL}/api/v1/auth/me`,
   SESSION_INVOICE_API: (sessionId) => `${API_BASE_URL}/api/v1/cpo/charging-sessions/${sessionId}/invoice`,
-};
-
-// Token Refresh Functions
-const refreshAccessToken = async () => {
-  const refreshToken = localStorage.getItem('refresh_token');
-  if (!refreshToken) return { success: false, error: 'No refresh token available' };
-  try {
-    const response = await fetch(API_CONFIG.REFRESH_TOKEN_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-CPO-App-ID': CPO_APP_ID },
-      body: JSON.stringify({ refresh_token: refreshToken })
-    });
-    const data = await response.json();
-    if (response.ok && data.access_token) {
-      localStorage.setItem('token', data.access_token);
-      if (data.expires_in) localStorage.setItem('token_expiry', Date.now() + (data.expires_in * 1000));
-      if (data.refresh_token) localStorage.setItem('refresh_token', data.refresh_token);
-      return { success: true, token: data.access_token };
-    }
-    return { success: false, error: data.message || 'Failed to refresh token' };
-  } catch (error) {
-    return { success: false, error: error.message };
-  }
-};
-
-const fetchWithTokenRefresh = async (url, options = {}, retryCount = 2) => {
-  const token = localStorage.getItem('token');
-  if (!token) throw new Error('No token found');
-  try {
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        ...options.headers,
-        'Authorization': `Bearer ${token}`,
-        'X-CPO-App-ID': CPO_APP_ID,
-        'Content-Type': 'application/json',
-      }
-    });
-    if (response.status === 401 && retryCount > 0) {
-      const refreshResult = await refreshAccessToken();
-      if (refreshResult.success) {
-        const newToken = localStorage.getItem('token');
-        const retryResponse = await fetch(url, {
-          ...options,
-          headers: {
-            ...options.headers,
-            'Authorization': `Bearer ${newToken}`,
-            'X-CPO-App-ID': CPO_APP_ID,
-            'Content-Type': 'application/json',
-          }
-        });
-        if (retryResponse.ok) return retryResponse;
-        if (retryResponse.status === 401 && retryCount > 1) return fetchWithTokenRefresh(url, options, retryCount - 1);
-      } else {
-        localStorage.removeItem('token');
-        localStorage.removeItem('refresh_token');
-        localStorage.removeItem('token_expiry');
-        localStorage.removeItem('userInfo');
-        throw new Error('Session expired. Please login again.');
-      }
-    }
-    return response;
-  } catch (error) {
-    throw error;
-  }
 };
 
 // ============================================================
@@ -206,6 +140,8 @@ const InvoiceRow = ({ invoice, sessionId, fallbackData, onDownload, downloading 
 
 const RevenueManagement = () => {
   const navigate = useNavigate();
+  const { authenticatedRequest, logout, isAuthenticated, user } = useAuth();
+
   const [loading, setLoading] = useState(true);
   const [userData, setUserData] = useState(null);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
@@ -336,7 +272,7 @@ const RevenueManagement = () => {
 
     try {
       const url = API_CONFIG.SESSION_INVOICE_API(sessionId);
-      const response = await fetchWithTokenRefresh(url, { method: 'GET' });
+      const response = await authenticatedRequest(url, { method: 'GET' });
 
       if (response.ok) {
         const contentType = response.headers.get('content-type') || '';
@@ -356,27 +292,25 @@ const RevenueManagement = () => {
         setInvoiceErrors(prev => ({ ...prev, [sessionId]: errMsg }));
       }
     } catch (err) {
-      setInvoiceErrors(prev => ({ ...prev, [sessionId]: err.message || 'Error loading invoice' }));
+      setInvoiceErrors(prev => ({
+        ...prev,
+        [sessionId]: err?.status === 401
+          ? 'Session expired. Please sign in again.'
+          : (err.message || 'Error loading invoice'),
+      }));
     } finally {
       setLoadingInvoice(prev => ({ ...prev, [sessionId]: false }));
     }
-  }, []);
+  }, [authenticatedRequest]);
 
   const downloadInvoice = useCallback(async (sessionId, fallbackFilename) => {
     if (!sessionId) return;
     setDownloadingInvoice(prev => ({ ...prev, [sessionId]: true }));
 
     try {
-      const token = localStorage.getItem('token');
       const url = API_CONFIG.SESSION_INVOICE_API(sessionId);
-
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-CPO-App-ID': CPO_APP_ID,
-        }
-      });
+      // authenticatedRequest attaches bearer + X-CPO-App-ID centrally.
+      const response = await authenticatedRequest(url, { method: 'GET' });
 
       if (!response.ok) {
         throw new Error(`Failed to download invoice (${response.status})`);
@@ -405,12 +339,15 @@ const RevenueManagement = () => {
       showToast('Invoice downloaded successfully', 'success');
     } catch (err) {
       console.error('Invoice download failed:', err);
-      setInvoiceErrors(prev => ({ ...prev, [sessionId]: err.message || 'Download failed' }));
-      showToast(err.message || 'Failed to download invoice', 'error');
+      const msg = err?.status === 401
+        ? 'Session expired. Please sign in again.'
+        : (err.message || 'Download failed');
+      setInvoiceErrors(prev => ({ ...prev, [sessionId]: msg }));
+      showToast(msg, 'error');
     } finally {
       setDownloadingInvoice(prev => ({ ...prev, [sessionId]: false }));
     }
-  }, []);
+  }, [authenticatedRequest]);
 
   const toggleInvoice = useCallback((sessionId) => {
     if (!sessionId) return;
@@ -424,55 +361,33 @@ const RevenueManagement = () => {
     });
   }, [invoiceData, loadingInvoice, fetchInvoice]);
 
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (!token) { navigate('/signin'); return; }
-    fetchUserInfo();
-    fetchAnalytics();
-    fetchTransactions();
-    fetchWalletTransactions();
-    fetchHubs();
-  }, []);
+  // ---- FETCHERS -------------------------------------------------------------
 
-  useEffect(() => {
-    if (selectedDate || selectedPeriod) fetchAnalytics();
-  }, [selectedDate, selectedPeriod]);
-
-  useEffect(() => {
-    if (startDate && endDate) {
-      fetchTransactions();
-      fetchWalletTransactions();
-    }
-  }, [startDate, endDate]);
-
-  const fetchUserInfo = async () => {
+  const fetchUserInfo = useCallback(async () => {
     try {
-      const response = await fetchWithTokenRefresh(API_CONFIG.USER_INFO_API, { method: 'GET' });
+      const response = await authenticatedRequest(API_CONFIG.USER_INFO_API, { method: 'GET' });
       if (response.ok) {
         const data = await response.json();
         setUserData(data);
-        localStorage.setItem('userInfo', JSON.stringify({
-          name: data.user?.full_name || data.user?.name || 'User',
-          email: data.user?.email || '',
-          role: data.role || '',
-          ...data
-        }));
       }
-    } catch (error) { console.error('Error fetching user info:', error); }
-    finally { setLoading(false); }
-  };
+    } catch (err) {
+      console.error('Error fetching user info:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [authenticatedRequest]);
 
   const fetchHubs = useCallback(async () => {
     setLoadingHubs(true);
     try {
-      const response = await fetchWithTokenRefresh(API_CONFIG.HUBS_API, { method: 'GET' });
+      const response = await authenticatedRequest(API_CONFIG.HUBS_API, { method: 'GET' });
       if (response.ok) {
         const data = await response.json();
         setHubs(data.hubs || data.data || data || []);
       } else { setHubs([]); }
     } catch { setHubs([]); }
     finally { setLoadingHubs(false); }
-  }, []);
+  }, [authenticatedRequest]);
 
   const fetchAnalytics = useCallback(async () => {
     setLoadingAnalytics(true);
@@ -484,7 +399,7 @@ const RevenueManagement = () => {
       if (selectedDate) params.append('date', selectedDate);
       if (params.toString()) url += `?${params.toString()}`;
 
-      const response = await fetchWithTokenRefresh(url, { method: 'GET' });
+      const response = await authenticatedRequest(url, { method: 'GET' });
       if (response.ok) {
         const data = await response.json();
         const analytics = data.data || data || {};
@@ -500,15 +415,19 @@ const RevenueManagement = () => {
           toDate: analytics.to_date || analytics.toDate || null
         });
       } else {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         setAnalyticsError(errorData.message || errorData.error?.message || 'Failed to fetch analytics data');
         setAnalyticsData({ totalRevenue: 0, totalSessions: 0, totalUsage: 0, onlinePercentage: 0, avgSessionDuration: 0, totalCustomers: 0, period: selectedPeriod, fromDate: null, toDate: null });
       }
-    } catch (error) {
-      setAnalyticsError(error.message || 'An error occurred while fetching analytics');
+    } catch (err) {
+      setAnalyticsError(
+        err?.status === 401
+          ? 'Session expired. Please sign in again.'
+          : (err.message || 'An error occurred while fetching analytics'),
+      );
       setAnalyticsData({ totalRevenue: 0, totalSessions: 0, totalUsage: 0, onlinePercentage: 0, avgSessionDuration: 0, totalCustomers: 0, period: selectedPeriod, fromDate: null, toDate: null });
     } finally { setLoadingAnalytics(false); }
-  }, [selectedDate, selectedPeriod]);
+  }, [authenticatedRequest, selectedDate, selectedPeriod]);
 
   const fetchTransactions = useCallback(async (before = null, before_id = null) => {
     setLoadingTransactions(true);
@@ -520,7 +439,7 @@ const RevenueManagement = () => {
       if (before) url += `&before=${encodeURIComponent(new Date(before).toISOString())}`;
       if (before_id) url += `&before_id=${encodeURIComponent(before_id)}`;
 
-      const response = await fetchWithTokenRefresh(url, { method: 'GET' });
+      const response = await authenticatedRequest(url, { method: 'GET' });
       if (response.ok) {
         const data = await response.json();
         const transactionsData = data.transactions || data.data || data || [];
@@ -532,15 +451,19 @@ const RevenueManagement = () => {
           limit: pagination.limit
         });
       } else {
-        const errorData = await response.json();
+        const errorData = await response.json().catch(() => ({}));
         setError(errorData.error?.message || 'Failed to fetch transactions');
         setTransactions([]);
       }
-    } catch (error) {
-      setError(error.message || 'An error occurred while fetching transactions');
+    } catch (err) {
+      setError(
+        err?.status === 401
+          ? 'Session expired. Please sign in again.'
+          : (err.message || 'An error occurred while fetching transactions'),
+      );
       setTransactions([]);
     } finally { setLoadingTransactions(false); setLoadingMore(false); }
-  }, [startDate, endDate, pagination.limit]);
+  }, [authenticatedRequest, startDate, endDate, pagination.limit]);
 
   const fetchWalletTransactions = useCallback(async (before = null, before_id = null) => {
     setLoadingWallet(true);
@@ -551,7 +474,7 @@ const RevenueManagement = () => {
       if (before) url += `&before=${encodeURIComponent(new Date(before).toISOString())}`;
       if (before_id) url += `&before_id=${encodeURIComponent(before_id)}`;
 
-      const response = await fetchWithTokenRefresh(url, { method: 'GET' });
+      const response = await authenticatedRequest(url, { method: 'GET' });
       if (response.ok) {
         const data = await response.json();
         const walletData = data.transactions || data.data || data || [];
@@ -565,7 +488,39 @@ const RevenueManagement = () => {
       } else { setWalletTransactions([]); }
     } catch { setWalletTransactions([]); }
     finally { setLoadingWallet(false); setLoadingMoreWallet(false); }
-  }, [startDate, endDate, walletPagination.limit]);
+  }, [authenticatedRequest, startDate, endDate, walletPagination.limit]);
+
+  // ---- EFFECTS --------------------------------------------------------------
+
+  // Bootstrap data only once the context confirms we're authenticated.
+  // The AuthContext also redirects unauthenticated users via ProtectedRoute,
+  // so no local "no token → /signin" check is needed here.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    fetchUserInfo();
+    fetchAnalytics();
+    fetchTransactions();
+    fetchWalletTransactions();
+    fetchHubs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (selectedDate || selectedPeriod) fetchAnalytics();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDate, selectedPeriod]);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    if (startDate && endDate) {
+      fetchTransactions();
+      fetchWalletTransactions();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate, endDate]);
+
+  // ---- PAGINATION -----------------------------------------------------------
 
   const loadMoreTransactions = () => {
     if (pagination.has_more && !loadingMore) {
@@ -581,28 +536,24 @@ const RevenueManagement = () => {
     }
   };
 
+  // ---- LOGOUT ---------------------------------------------------------------
+  // AuthContext owns token cleanup, and the backend call is already made
+  // inside logout(). We just wait for it and let it clear state.
   const handleLogout = async () => {
-    const token = localStorage.getItem('token');
     setLoggingOut(true);
     try {
-      if (token) {
-        await fetch(API_CONFIG.LOGOUT_API, {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}`, 'X-CPO-App-ID': CPO_APP_ID, 'Content-Type': 'application/json' }
-        });
-      }
-    } catch (error) { console.error('Logout error:', error); }
-    finally {
-      localStorage.removeItem('token');
-      localStorage.removeItem('refresh_token');
-      localStorage.removeItem('userInfo');
-      localStorage.removeItem('token_expiry');
+      await logout();
+    } catch (err) {
+      console.error('Logout error:', err);
+    } finally {
       setLoggingOut(false);
       navigate('/signin');
     }
   };
 
   const handleThemeToggle = () => setIsDarkMode(!isDarkMode);
+
+  // ---- FORMATTERS -----------------------------------------------------------
 
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
@@ -625,6 +576,8 @@ const RevenueManagement = () => {
     const options = { 'all': 'All Time', 'day': 'Today', 'week': 'This Week', 'month': 'This Month', 'year': 'This Year' };
     return options[period] || period;
   };
+
+  // ---- HUB OPTIONS ----------------------------------------------------------
 
   const getUniqueHubsFromTransactions = () => {
     const hubNames = transactions.map(t => t.hub).filter(hub => hub && hub !== '');
@@ -656,16 +609,22 @@ const RevenueManagement = () => {
       customerName.toLowerCase().includes(searchTerm.toLowerCase());
   });
 
+  // ---- MENUS ---------------------------------------------------------------
+
   const SettingsMenu = () => (
     <div className="absolute top-full right-0 mt-2 bg-black rounded-2xl w-80 shadow-2xl border border-gray-800 z-50 overflow-hidden">
       <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-5 py-4">
         <div className="flex items-center gap-3">
           <div className="w-14 h-14 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-2xl font-bold text-white border-2 border-white/30 flex-shrink-0">
-            {userData?.user?.full_name?.charAt(0) || 'U'}
+            {userData?.user?.full_name?.charAt(0) || user?.name?.charAt(0) || 'U'}
           </div>
           <div className="flex-1 min-w-0">
-            <h4 className="text-base font-semibold text-white truncate">{userData?.user?.full_name || 'User'}</h4>
-            <p className="text-sm text-gray-400 truncate">{userData?.user?.email || 'user@transev.com'}</p>
+            <h4 className="text-base font-semibold text-white truncate">
+              {userData?.user?.full_name || user?.name || 'User'}
+            </h4>
+            <p className="text-sm text-gray-400 truncate">
+              {userData?.user?.email || user?.email || 'user@transev.com'}
+            </p>
             {userData?.role && (
               <span className="inline-block mt-1 px-2 py-0.5 bg-white/10 rounded-full text-xs text-gray-300 border border-gray-600">
                 {userData.role}
@@ -721,7 +680,6 @@ const RevenueManagement = () => {
       );
     }
 
-    // 13 columns (SI removed)
     const TOTAL_COLUMNS = 13;
 
     return (
@@ -761,7 +719,6 @@ const RevenueManagement = () => {
               return (
                 <React.Fragment key={transactionId}>
                   <tr className={`hover:bg-gray-50 transition ${isExpanded ? 'bg-green-50/40' : ''}`}>
-                    {/* TRANSACTION ID column with toggle button right next to it */}
                     <td className="px-3 py-3 text-sm max-w-[220px]">
                       <div className="flex items-center gap-2">
                         <button
@@ -951,8 +908,8 @@ const RevenueManagement = () => {
       <Sidebar
         isDarkMode={isDarkMode}
         onThemeToggle={handleThemeToggle}
-        userName={userData?.user?.full_name || 'User'}
-        userEmail={userData?.user?.email || ''}
+        userName={userData?.user?.full_name || user?.name || 'User'}
+        userEmail={userData?.user?.email || user?.email || ''}
         onLogout={handleLogout}
       />
 
@@ -1087,10 +1044,10 @@ const RevenueManagement = () => {
             <div className="border-b border-gray-200 px-4">
               <div className="flex gap-0">
                 <button onClick={() => setTransactionTab('transactions')} className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-all ${transactionTab === 'transactions' ? 'border-green-600 text-green-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                  Charger Transactions 
+                  Charger Transactions
                 </button>
                 <button onClick={() => setTransactionTab('wallet')} className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-all ${transactionTab === 'wallet' ? 'border-green-600 text-green-700' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
-                  Wallet Transactions 
+                  Wallet Transactions
                 </button>
               </div>
             </div>

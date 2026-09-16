@@ -123,10 +123,10 @@ import {
 import Sidebar from '../Sidebar/Sidebar';
 
 // ============================================================================
-// API Configuration
+// API Configuration — bearer + App-ID headers are attached by
+// AuthContext.authenticatedRequest. No token handling here.
 // ============================================================================
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://dev-evcmsnew.transev.site';
-const CPO_APP_ID = process.env.REACT_APP_CPO_APP_ID || 'cpo_dummy_5f75674f57829da5f3cae19ef4238d56';
 
 const API_CONFIG = {
   SUPPORT_TICKETS_API: `${API_BASE_URL}/api/v1/cpo/support`,
@@ -210,32 +210,31 @@ const can = (access, permission) => {
 };
 
 // ============================================================================
-// Ticket Detail Modal - Separate Component with React.memo
+// Ticket Detail Modal
 // ============================================================================
-const TicketDetailModal = React.memo(({ 
-  showDetailModal, 
-  selectedTicket, 
-  loadingDetail, 
-  error, 
-  replyText, 
-  setReplyText, 
-  submittingReply, 
-  replyToTicket, 
-  closeDetailModal, 
-  fetchTicketDetail, 
-  canReply, 
-  truncateId, 
-  formatDate, 
-  getTicketStatusColor, 
-  getTicketStatusIcon, 
-  getTicketStatusDisplayName 
+const TicketDetailModal = React.memo(({
+  showDetailModal,
+  selectedTicket,
+  loadingDetail,
+  error,
+  replyText,
+  setReplyText,
+  submittingReply,
+  replyToTicket,
+  closeDetailModal,
+  fetchTicketDetail,
+  canReply,
+  truncateId,
+  formatDate,
+  getTicketStatusColor,
+  getTicketStatusIcon,
+  getTicketStatusDisplayName
 }) => {
   const replyTextareaRef = useRef(null);
   const [localError, setLocalError] = useState('');
 
   const isOpen = selectedTicket?.status === 'OPEN' || selectedTicket?.status === 'IN_PROGRESS' || selectedTicket?.status === 'PENDING';
 
-  // Auto-focus only when modal first opens
   useEffect(() => {
     if (showDetailModal && isOpen && canReply && replyTextareaRef.current) {
       const timer = setTimeout(() => {
@@ -254,7 +253,6 @@ const TicketDetailModal = React.memo(({
 
   const messages = selectedTicket.messages || [];
 
-  // Handle reply with local error handling
   const handleReply = async () => {
     if (!replyText.trim()) {
       setLocalError('Please enter a reply');
@@ -319,7 +317,6 @@ const TicketDetailModal = React.memo(({
             </div>
           ) : (
             <>
-              {/* Ticket Info */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                 <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-4 border border-blue-200">
                   <p className="text-xs text-gray-500 uppercase tracking-wider">Status</p>
@@ -342,10 +339,9 @@ const TicketDetailModal = React.memo(({
                 </div>
               </div>
 
-              {/* Subject & Messages */}
               <div className="bg-gray-50 rounded-2xl p-4 border border-gray-200 mb-6">
                 <h4 className="text-sm font-semibold text-gray-700 mb-3">{selectedTicket.subject}</h4>
-                
+
                 {messages.length === 0 ? (
                   <p className="text-sm text-gray-400 text-center py-4">No messages yet</p>
                 ) : (
@@ -366,7 +362,6 @@ const TicketDetailModal = React.memo(({
                 )}
               </div>
 
-              {/* Reply Input - FIXED: Completely stable textarea */}
               {isOpen && canReply ? (
                 <div className="border-t border-gray-200 pt-4">
                   <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
@@ -391,7 +386,7 @@ const TicketDetailModal = React.memo(({
                       rows={3}
                       maxLength={10000}
                       className="flex-1 px-4 py-2 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm transition resize-none"
-                      style={{ 
+                      style={{
                         willChange: 'transform, opacity',
                         transform: 'translateZ(0)',
                         backfaceVisibility: 'hidden',
@@ -441,15 +436,14 @@ const TicketDetailModal = React.memo(({
 // ============================================================================
 const Support = () => {
   const navigate = useNavigate();
-  const { 
-    authenticatedRequest, 
-    logout, 
+  const {
+    authenticatedRequest,
+    logout,
     isRefreshing,
     isAuthenticated,
     user,
-    refreshToken
   } = useAuth();
-  
+
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [userData, setUserData] = useState(null);
   const [accessData, setAccessData] = useState(null);
@@ -460,8 +454,7 @@ const Support = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [showToast, setShowToast] = useState({ visible: false, message: '', type: '' });
-  
-  // Tickets state
+
   const [tickets, setTickets] = useState([]);
   const [pagination, setPagination] = useState({
     limit: 20,
@@ -473,20 +466,17 @@ const Support = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasLoaded, setHasLoaded] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
-  
-  // Filter states
+
   const [statusFilter, setStatusFilter] = useState('All');
   const [priorityFilter, setPriorityFilter] = useState('All');
-  
-  // Modal state
+
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState(null);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [submittingReply, setSubmittingReply] = useState(false);
   const [idempotencyKey, setIdempotencyKey] = useState('');
-  
-  // Create ticket modal
+
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creatingTicket, setCreatingTicket] = useState(false);
   const [newTicket, setNewTicket] = useState({
@@ -495,14 +485,11 @@ const Support = () => {
     priority: 'MEDIUM'
   });
 
-  // ============================================================================
-  // Fetch User Info & Access
-  // ============================================================================
-  const fetchUserInfo = async () => {
+  // ---- FETCHERS -------------------------------------------------------------
+
+  const fetchUserInfo = useCallback(async () => {
     try {
-      const response = await authenticatedRequest(API_CONFIG.USER_INFO_API, {
-        method: 'GET'
-      });
+      const response = await authenticatedRequest(API_CONFIG.USER_INFO_API, { method: 'GET' });
       if (response.ok) {
         const data = await response.json();
         setUserData(data);
@@ -510,70 +497,47 @@ const Support = () => {
     } catch (error) {
       console.error('Error fetching user info:', error);
     }
-  };
+  }, [authenticatedRequest]);
 
-  const fetchAccessInfo = async () => {
+  const fetchAccessInfo = useCallback(async () => {
     try {
-      const response = await authenticatedRequest(API_CONFIG.ACCESS_ME_API, {
-        method: 'GET'
-      });
+      const response = await authenticatedRequest(API_CONFIG.ACCESS_ME_API, { method: 'GET' });
       if (response.ok) {
         const data = await response.json();
         setAccessData(data);
-        console.log('✅ Access info loaded:', data);
       } else {
         console.error('❌ Failed to fetch access info');
       }
     } catch (error) {
       console.error('❌ Error fetching access info:', error);
     }
-  };
+  }, [authenticatedRequest]);
 
-  // ============================================================================
-  // Fetch Tickets with Pagination
-  // ============================================================================
   const fetchTickets = useCallback(async (before = null, beforeId = null, isLoadMore = false) => {
     if (isLoadMore && loadingMore) return;
-    
+
     if (!isLoadMore) {
       setLoading(true);
     } else {
       setLoadingMore(true);
     }
     setError('');
-    
+
     try {
-      const token = localStorage.getItem('token');
       let url = `${API_CONFIG.SUPPORT_TICKETS_API}?limit=${pagination.limit}`;
-      
-      // Add pagination parameters if provided
       if (before) url += `&before=${encodeURIComponent(before)}`;
       if (beforeId) url += `&before_id=${encodeURIComponent(beforeId)}`;
-      
-      // Add filters
       if (statusFilter !== 'All') url += `&status=${statusFilter}`;
       if (searchQuery) url += `&q=${encodeURIComponent(searchQuery)}`;
 
-      console.log('📤 Fetching support tickets:', url);
-      
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-CPO-App-ID': CPO_APP_ID,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
-      });
+      const response = await authenticatedRequest(url, { method: 'GET' });
 
       if (response.ok) {
         const data = await response.json();
-        console.log('📥 Support tickets response:', data);
-        
-        // Handle response format
+
         let ticketsArray = data.tickets || data.data || [];
         if (!Array.isArray(ticketsArray)) ticketsArray = [];
-        
+
         const hasMore = data.has_more || false;
         const nextBefore = data.next_before || null;
         const nextBeforeId = data.next_before_id || null;
@@ -596,8 +560,6 @@ const Support = () => {
           ...ticket
         }));
 
-        console.log('📊 Transformed tickets:', transformedTickets.length);
-
         if (isLoadMore) {
           setTickets(prev => [...prev, ...transformedTickets]);
         } else {
@@ -611,85 +573,43 @@ const Support = () => {
           next_before_id: nextBeforeId,
           total: total
         });
-        
+
         setHasLoaded(true);
         setIsInitialLoad(false);
-      } else if (response.status === 401) {
-        console.error('❌ 401 Unauthorized - Token expired');
-        setError('Session expired. Please refresh.');
-        const newToken = await refreshToken();
-        if (newToken) {
-          fetchTickets(before, beforeId, isLoadMore);
-          return;
-        }
       } else {
         const errorData = await response.json().catch(() => ({}));
-        console.error('❌ Failed to fetch tickets:', response.status, errorData);
         setError(errorData.error?.message || 'Failed to fetch tickets');
       }
-    } catch (error) {
-      console.error('❌ Error fetching tickets:', error);
-      setError('An error occurred while fetching tickets');
+    } catch (err) {
+      console.error('❌ Error fetching tickets:', err);
+      setError(
+        err?.status === 401
+          ? 'Session expired. Please sign in again.'
+          : 'An error occurred while fetching tickets',
+      );
     } finally {
       setLoading(false);
       setLoadingMore(false);
     }
-  }, [pagination.limit, refreshToken, statusFilter, searchQuery]);
+  }, [authenticatedRequest, pagination.limit, statusFilter, searchQuery, loadingMore]);
 
-  // ============================================================================
-  // Fetch Ticket Detail
-  // ============================================================================
   const fetchTicketDetail = useCallback(async (ticketId) => {
     if (!ticketId) return;
-    
+
     setLoadingDetail(true);
     setError('');
-    
+
     try {
-      const token = localStorage.getItem('token');
       const url = API_CONFIG.SUPPORT_TICKET_DETAIL_API(ticketId);
-      
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-CPO-App-ID': CPO_APP_ID,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
-      });
+      const response = await authenticatedRequest(url, { method: 'GET' });
 
       if (response.ok) {
         const data = await response.json();
-        // The API returns the ticket directly or nested
         const ticket = data.ticket || data.data || data;
         setSelectedTicket(ticket);
         setShowDetailModal(true);
         setReplyText('');
-        // Generate a new idempotency key for the reply
         setIdempotencyKey(`reply_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`);
-      } else if (response.status === 401) {
-        setError('Session expired. Please refresh.');
-        const newToken = await refreshToken();
-        if (newToken) {
-          const retryResponse = await fetch(url, {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${newToken}`,
-              'X-CPO-App-ID': CPO_APP_ID,
-              'Content-Type': 'application/json',
-              'Accept': 'application/json'
-            }
-          });
-          if (retryResponse.ok) {
-            const data = await retryResponse.json();
-            const ticket = data.ticket || data.data || data;
-            setSelectedTicket(ticket);
-            setShowDetailModal(true);
-            setReplyText('');
-            setIdempotencyKey(`reply_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`);
-          }
-        }
       } else if (response.status === 404) {
         setError('Ticket not found');
         showToastMessage('Ticket not found', 'error');
@@ -697,64 +617,53 @@ const Support = () => {
         const errorData = await response.json().catch(() => ({}));
         setError(errorData.error?.message || 'Failed to fetch ticket details');
       }
-    } catch (error) {
-      console.error('❌ Error fetching ticket detail:', error);
-      setError('An error occurred while fetching ticket details');
+    } catch (err) {
+      console.error('❌ Error fetching ticket detail:', err);
+      setError(
+        err?.status === 401
+          ? 'Session expired. Please sign in again.'
+          : 'An error occurred while fetching ticket details',
+      );
     } finally {
       setLoadingDetail(false);
     }
-  }, [refreshToken]);
+  }, [authenticatedRequest]);
 
-  // ============================================================================
-  // Reply to Ticket
-  // ============================================================================
-  const replyToTicket = async () => {
+  const replyToTicket = useCallback(async () => {
     if (!replyText.trim()) {
       setError('Please enter a reply');
       return;
     }
-    
+    if (!selectedTicket) return;
+
     setSubmittingReply(true);
     setError('');
-    
+
     try {
-      const token = localStorage.getItem('token');
       const ticketId = selectedTicket.id || selectedTicket.ticket_id;
       const url = API_CONFIG.SUPPORT_TICKET_REPLY_API(ticketId);
-      
+
       const payload = {
         body: replyText.trim(),
         idempotency_key: idempotencyKey || `reply_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`
       };
-      
-      const response = await fetch(url, {
+
+      const response = await authenticatedRequest(url, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-CPO-App-ID': CPO_APP_ID,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
 
       if (response.ok) {
         const data = await response.json();
-        console.log('✅ Reply sent:', data);
         setReplyText('');
-        // Generate new idempotency key for next reply
         setIdempotencyKey(`reply_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`);
-        
-        // Refresh ticket detail - the response should contain the full ticket
+
         const updatedTicket = data.ticket || data.data || data;
         setSelectedTicket(updatedTicket);
-        
-        // Refresh tickets list
+
         fetchTickets();
-        
         showToastMessage('Reply sent successfully!', 'success');
       } else if (response.status === 409) {
-        // Idempotency conflict - reply already exists
         const errorData = await response.json().catch(() => ({}));
         setError(errorData.error?.message || 'This reply was already sent');
         showToastMessage('Reply already sent', 'info');
@@ -763,87 +672,68 @@ const Support = () => {
         setError(errorData.error?.message || 'Failed to send reply');
         showToastMessage(errorData.error?.message || 'Failed to send reply', 'error');
       }
-    } catch (error) {
-      console.error('❌ Error replying to ticket:', error);
-      setError('An error occurred while sending the reply');
+    } catch (err) {
+      console.error('❌ Error replying to ticket:', err);
+      setError(
+        err?.status === 401
+          ? 'Session expired. Please sign in again.'
+          : 'An error occurred while sending the reply',
+      );
     } finally {
       setSubmittingReply(false);
     }
-  };
+  }, [authenticatedRequest, replyText, selectedTicket, idempotencyKey, fetchTickets]);
 
-  // ============================================================================
-  // Create Ticket
-  // ============================================================================
-  const createTicket = async () => {
-    if (!newTicket.subject.trim() || !newTicket.body.trim()) {
-      setError('Please fill in all required fields');
-      return;
-    }
-    
+  const createTicket = useCallback(async (subject, body) => {
     setCreatingTicket(true);
     setError('');
-    
+
     try {
-      const token = localStorage.getItem('token');
-      
-      const payload = {
-        subject: newTicket.subject.trim(),
-        body: newTicket.body.trim()
-      };
-      
-      const response = await fetch(API_CONFIG.SUPPORT_TICKETS_API, {
+      const response = await authenticatedRequest(API_CONFIG.SUPPORT_TICKETS_API, {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'X-CPO-App-ID': CPO_APP_ID,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          subject: subject.trim(),
+          body: body.trim(),
+        }),
       });
 
       if (response.ok) {
-        const data = await response.json();
-        console.log('✅ Ticket created:', data);
+        await response.json();
         setShowCreateModal(false);
         setNewTicket({ subject: '', body: '', priority: 'MEDIUM' });
         fetchTickets();
         showToastMessage('Support ticket created successfully!', 'success');
-      } else {
-        const errorData = await response.json().catch(() => ({}));
-        setError(errorData.error?.message || 'Failed to create ticket');
-        showToastMessage(errorData.error?.message || 'Failed to create ticket', 'error');
+        return { ok: true };
       }
-    } catch (error) {
-      console.error('❌ Error creating ticket:', error);
-      setError('An error occurred while creating the ticket');
+      const errorData = await response.json().catch(() => ({}));
+      return { ok: false, message: errorData.error?.message || 'Failed to create ticket' };
+    } catch (err) {
+      return {
+        ok: false,
+        message: err?.status === 401
+          ? 'Session expired. Please sign in again.'
+          : 'An error occurred while creating the ticket',
+      };
     } finally {
       setCreatingTicket(false);
     }
-  };
+  }, [authenticatedRequest, fetchTickets]);
 
-  // ============================================================================
-  // Toast Message Helper
-  // ============================================================================
-  const showToastMessage = (message, type = 'success') => {
+  // ---- UI HELPERS -----------------------------------------------------------
+
+  const showToastMessage = useCallback((message, type = 'success') => {
     setShowToast({ visible: true, message, type });
     setTimeout(() => {
       setShowToast({ visible: false, message: '', type: '' });
     }, 4000);
-  };
+  }, []);
 
-  // ============================================================================
-  // Load More Tickets
-  // ============================================================================
   const loadMoreTickets = () => {
     if (pagination.has_more && !loadingMore && !loading) {
       fetchTickets(pagination.next_before, pagination.next_before_id, true);
     }
   };
 
-  // ============================================================================
-  // Handlers
-  // ============================================================================
   const handleTicketClick = (ticketId) => {
     if (ticketId) {
       fetchTicketDetail(ticketId);
@@ -863,21 +753,17 @@ const Support = () => {
     setError('');
   };
 
+  // AuthContext owns token cleanup; we simply await its logout.
   const handleLogout = async () => {
     try {
       await logout();
     } catch (error) {
       console.error('Logout error:', error);
-      localStorage.removeItem('token');
-      localStorage.removeItem('refresh_token');
-      localStorage.removeItem('userInfo');
-      localStorage.removeItem('token_expiry');
-      navigate('/signin');
     }
   };
 
   const handleThemeToggle = () => setIsDarkMode(!isDarkMode);
-  
+
   const handleRefresh = () => {
     if (!loading) {
       setTickets([]);
@@ -898,30 +784,25 @@ const Support = () => {
     });
   };
 
-  // ============================================================================
-  // Effects
-  // ============================================================================
+  // ---- EFFECTS --------------------------------------------------------------
+
   useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/signin');
-      return;
-    }
-    
+    if (!isAuthenticated) return;
+
     const bootstrap = async () => {
       await fetchUserInfo();
       await fetchAccessInfo();
       await fetchTickets();
     };
     bootstrap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated]);
 
-  // ============================================================================
-  // Filtered Tickets
-  // ============================================================================
+  // ---- DERIVED --------------------------------------------------------------
+
   const filteredTickets = useMemo(() => {
     let result = tickets;
-    
-    // Apply search filter
+
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       result = result.filter(ticket => {
@@ -935,20 +816,14 @@ const Support = () => {
         );
       });
     }
-    
+
     return result;
   }, [tickets, searchQuery]);
 
-  // ============================================================================
-  // Check permissions
-  // ============================================================================
   const canRead = can(accessData, 'support.read');
   const canCreate = can(accessData, 'support.create');
   const canReply = can(accessData, 'support.reply');
 
-  // ============================================================================
-  // Helper to truncate ID
-  // ============================================================================
   const truncateId = (id) => {
     if (!id) return 'N/A';
     const strId = String(id);
@@ -958,9 +833,8 @@ const Support = () => {
     return strId;
   };
 
-  // ============================================================================
-  // Toast Component
-  // ============================================================================
+  // ---- TOAST ---------------------------------------------------------------
+
   const Toast = () => {
     if (!showToast.visible) return null;
     const colors = {
@@ -978,9 +852,8 @@ const Support = () => {
     );
   };
 
-  // ============================================================================
-  // Settings Menu
-  // ============================================================================
+  // ---- MENUS ---------------------------------------------------------------
+
   const SettingsMenu = () => (
     <div className="absolute top-full right-0 mt-2 bg-white rounded-2xl w-80 shadow-2xl border border-gray-100 z-50 overflow-hidden">
       <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-4">
@@ -1003,7 +876,7 @@ const Support = () => {
           </div>
         </div>
       </div>
-      
+
       <div className="p-2">
         <button onClick={() => { setShowSettingsMenu(false); navigate('/profile'); }} className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-50 text-sm font-medium text-gray-700 hover:text-gray-900 flex items-center gap-3 transition">
           <User size={16} className="text-gray-400" /> <span>Profile</span>
@@ -1019,9 +892,6 @@ const Support = () => {
     </div>
   );
 
-  // ============================================================================
-  // Add Menu
-  // ============================================================================
   const AddMenu = () => (
     <div className="absolute top-full right-0 mt-2 bg-white rounded-2xl w-64 shadow-2xl border border-gray-100 z-50">
       <div className="p-3">
@@ -1040,9 +910,6 @@ const Support = () => {
     </div>
   );
 
-  // ============================================================================
-  // Filter Popup
-  // ============================================================================
   const FilterPopup = () => (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl w-[500px] max-w-[90vw] shadow-2xl p-6 max-h-[80vh] overflow-y-auto animate-fadeIn">
@@ -1102,9 +969,8 @@ const Support = () => {
     </div>
   );
 
-  // ============================================================================
-  // Create Ticket Modal
-  // ============================================================================
+  // ---- CREATE MODAL ---------------------------------------------------------
+
   const CreateTicketModal = () => {
     const [localSubject, setLocalSubject] = useState('');
     const [localBody, setLocalBody] = useState('');
@@ -1116,51 +982,20 @@ const Support = () => {
         setLocalBody(newTicket.body || '');
         setLocalError('');
       }
-    }, [showCreateModal]);
+    }, []);
 
     const handleCreateTicket = async () => {
       if (!localSubject.trim() || !localBody.trim()) {
         setLocalError('Please fill in all required fields');
         return;
       }
-      
-      setCreatingTicket(true);
       setLocalError('');
-      
-      try {
-        const token = localStorage.getItem('token');
-        const response = await fetch(API_CONFIG.SUPPORT_TICKETS_API, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'X-CPO-App-ID': CPO_APP_ID,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify({
-            subject: localSubject.trim(),
-            body: localBody.trim()
-          })
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          console.log('✅ Ticket created:', data);
-          setShowCreateModal(false);
-          setNewTicket({ subject: '', body: '', priority: 'MEDIUM' });
-          setLocalSubject('');
-          setLocalBody('');
-          fetchTickets();
-          showToastMessage('Support ticket created successfully!', 'success');
-        } else {
-          const errorData = await response.json().catch(() => ({}));
-          setLocalError(errorData.error?.message || 'Failed to create ticket');
-        }
-      } catch (error) {
-        console.error('❌ Error creating ticket:', error);
-        setLocalError('An error occurred while creating the ticket');
-      } finally {
-        setCreatingTicket(false);
+      const result = await createTicket(localSubject, localBody);
+      if (!result.ok) {
+        setLocalError(result.message);
+      } else {
+        setLocalSubject('');
+        setLocalBody('');
       }
     };
 
@@ -1265,9 +1100,6 @@ const Support = () => {
     );
   };
 
-  // ============================================================================
-  // Loading State
-  // ============================================================================
   if (isRefreshing && loading && isInitialLoad) {
     return (
       <div className="min-h-screen bg-gray-50 flex">
@@ -1282,13 +1114,10 @@ const Support = () => {
     );
   }
 
-  // ============================================================================
-  // Main Render
-  // ============================================================================
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      <Sidebar 
-        isDarkMode={isDarkMode} 
+      <Sidebar
+        isDarkMode={isDarkMode}
         onThemeToggle={handleThemeToggle}
         userName={userData?.user?.full_name || user?.name || 'User'}
         userEmail={userData?.user?.email || user?.email || ''}
@@ -1298,7 +1127,6 @@ const Support = () => {
       <div className="flex-1 min-w-0">
         <Toast />
 
-        {/* Header */}
         <header className="bg-white border-b-2 border-gray-200 px-6 py-5 sticky top-0 z-30 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1 text-sm text-gray-500">
@@ -1318,7 +1146,7 @@ const Support = () => {
                 Support
               </span>
             </div>
-            
+
             <div className="flex items-center gap-2 relative">
               <button
                 onClick={handleRefresh}
@@ -1346,9 +1174,7 @@ const Support = () => {
           </div>
         </header>
 
-        {/* Main Content */}
         <div className="p-6">
-          {/* Stats Card */}
           <div className="mb-6">
             <div className="bg-white rounded-2xl border border-gray-200 p-4 shadow-sm hover:shadow-md transition group inline-flex items-center gap-4">
               <div className="w-12 h-12 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl flex items-center justify-center group-hover:scale-110 transition">
@@ -1372,7 +1198,6 @@ const Support = () => {
             </div>
           </div>
 
-          {/* Search and Filters */}
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
             <div className="flex items-center gap-2">
               {(statusFilter !== 'All') && (
@@ -1434,7 +1259,6 @@ const Support = () => {
             </div>
           </div>
 
-          {/* Tickets Table */}
           <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -1492,8 +1316,8 @@ const Support = () => {
                       const isOpen = ticket.status === 'OPEN' || ticket.status === 'IN_PROGRESS';
                       const messageCount = ticket.message_count || ticket.messages?.length || 0;
                       return (
-                        <tr 
-                          key={ticket.id || ticket.ticket_id || index} 
+                        <tr
+                          key={ticket.id || ticket.ticket_id || index}
                           className={`border-b border-gray-100 hover:bg-gray-50/50 transition cursor-pointer ${isOpen ? 'bg-blue-50/20' : ''}`}
                           onClick={() => handleTicketClick(ticket.id || ticket.ticket_id)}
                         >
@@ -1541,7 +1365,6 @@ const Support = () => {
               </table>
             </div>
 
-            {/* Pagination - Load More */}
             {pagination.has_more && filteredTickets.length > 0 && !loading && (
               <div className="px-4 py-4 border-t border-gray-200 flex items-center justify-center">
                 <button
@@ -1564,10 +1387,9 @@ const Support = () => {
               </div>
             )}
 
-            {/* Footer */}
             <div className="px-4 py-3 border-t border-gray-200 bg-gray-50 text-xs text-gray-500 flex justify-between items-center">
               <span>
-                {filteredTickets.length === 0 
+                {filteredTickets.length === 0
                   ? 'No tickets available'
                   : `Showing ${filteredTickets.length} of ${tickets.length} tickets`
                 }
@@ -1586,10 +1408,9 @@ const Support = () => {
         </div>
       </div>
 
-      {/* Modals */}
       {showCreateModal && <CreateTicketModal />}
       {showDetailModal && (
-        <TicketDetailModal 
+        <TicketDetailModal
           showDetailModal={showDetailModal}
           selectedTicket={selectedTicket}
           loadingDetail={loadingDetail}

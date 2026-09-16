@@ -1,5 +1,5 @@
 // src/components/Organization/Organization.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../Authentication/AuthContext';
 import {
@@ -50,12 +50,9 @@ import {
 } from 'lucide-react';
 import Sidebar from '../Sidebar/Sidebar';
 
-// API Configuration
+// API Configuration — bearer + App-ID headers are attached centrally
+// by AuthContext.authenticatedRequest. No token handling here.
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://dev-evcmsnew.transev.site';
-const CPO_APP_ID = process.env.REACT_APP_CPO_APP_ID || 'cpo_dummy_5f75674f57829da5f3cae19ef4238d56';
-
-console.log('API Base URL:', API_BASE_URL);
-console.log('CPO App ID:', CPO_APP_ID);
 
 const API_CONFIG = {
   ORGANIZATION_API: `${API_BASE_URL}/api/v1/cpo/organization`,
@@ -65,14 +62,13 @@ const API_CONFIG = {
 
 const Organization = () => {
   const navigate = useNavigate();
-  const { 
-    authenticatedRequest, 
-    logout, 
-    isRefreshing: authIsRefreshing,
+  const {
+    authenticatedRequest,
+    logout,
     isAuthenticated,
-    user 
+    user,
   } = useAuth();
-  
+
   const [loading, setLoading] = useState(true);
   const [userData, setUserData] = useState(null);
   const [showSettingsMenu, setShowSettingsMenu] = useState(false);
@@ -80,28 +76,79 @@ const Organization = () => {
   const [loggingOut, setLoggingOut] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  
-  // Organization state
+
   const [orgData, setOrgData] = useState(null);
   const [orgLoading, setOrgLoading] = useState(false);
   const [orgError, setOrgError] = useState('');
-  
-  // Subscription state
+
   const [subscriptionData, setSubscriptionData] = useState(null);
   const [subLoading, setSubLoading] = useState(false);
   const [subError, setSubError] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Check authentication on mount
-  useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/signin');
-      return;
-    }
-    loadData();
-  }, [isAuthenticated, navigate]);
+  // ---- FETCHERS -------------------------------------------------------------
 
-  const loadData = async () => {
+  const fetchUserInfo = useCallback(async () => {
+    try {
+      const response = await authenticatedRequest(API_CONFIG.USER_INFO_API, { method: 'GET' });
+      if (response.ok) {
+        const data = await response.json();
+        setUserData(data);
+      }
+    } catch (error) {
+      console.error('Error fetching user info:', error);
+    }
+  }, [authenticatedRequest]);
+
+  const fetchOrganizationData = useCallback(async () => {
+    setOrgLoading(true);
+    setOrgError('');
+    try {
+      const response = await authenticatedRequest(API_CONFIG.ORGANIZATION_API, { method: 'GET' });
+      const data = await response.json().catch(() => ({}));
+
+      if (response.ok) {
+        setOrgData(data);
+      } else {
+        setOrgError(data.message || data.error?.message || 'Failed to fetch organization data');
+      }
+    } catch (error) {
+      console.error('Error fetching organization:', error);
+      setOrgError(
+        error?.status === 401
+          ? 'Session expired. Please sign in again.'
+          : (error.message || 'An error occurred while fetching organization data'),
+      );
+    } finally {
+      setOrgLoading(false);
+    }
+  }, [authenticatedRequest]);
+
+  const fetchSubscriptionData = useCallback(async () => {
+    setSubLoading(true);
+    setSubError('');
+    try {
+      const response = await authenticatedRequest(API_CONFIG.SUBSCRIPTION_API, { method: 'GET' });
+      const data = await response.json().catch(() => ({}));
+
+      if (response.ok) {
+        setSubscriptionData(data);
+      } else {
+        setSubError(data.message || data.error?.message || 'Failed to fetch subscription data');
+      }
+    } catch (error) {
+      console.error('Error fetching subscription:', error);
+      setSubError(
+        error?.status === 401
+          ? 'Session expired. Please sign in again.'
+          : (error.message || 'An error occurred while fetching subscription data'),
+      );
+    } finally {
+      setSubLoading(false);
+    }
+  }, [authenticatedRequest]);
+
+  const loadData = useCallback(async () => {
     try {
       await fetchUserInfo();
       await fetchOrganizationData();
@@ -111,79 +158,20 @@ const Organization = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [fetchUserInfo, fetchOrganizationData, fetchSubscriptionData]);
 
-  const fetchUserInfo = async () => {
-    try {
-      const response = await authenticatedRequest(API_CONFIG.USER_INFO_API, {
-        method: 'GET'
-      });
+  // ---- EFFECTS --------------------------------------------------------------
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log('User info:', data);
-        setUserData(data);
-        
-        const userInfo = {
-          name: data.user?.full_name || data.user?.name || 'User',
-          email: data.user?.email || '',
-          role: data.role || '',
-          ...data
-        };
-        localStorage.setItem('userInfo', JSON.stringify(userInfo));
-      }
-    } catch (error) {
-      console.error('Error fetching user info:', error);
-    }
-  };
+  // Bootstrap once the context confirms we're authenticated.
+  // ProtectedRoute is the redirect authority for unauthenticated users,
+  // so we don't navigate('/signin') here.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated]);
 
-  const fetchOrganizationData = async () => {
-    setOrgLoading(true);
-    setOrgError('');
-    try {
-      const response = await authenticatedRequest(API_CONFIG.ORGANIZATION_API, {
-        method: 'GET'
-      });
-
-      const data = await response.json();
-      console.log('Organization data:', data);
-
-      if (response.ok) {
-        setOrgData(data);
-      } else {
-        setOrgError(data.message || data.error?.message || 'Failed to fetch organization data');
-      }
-    } catch (error) {
-      console.error('Error fetching organization:', error);
-      setOrgError(error.message || 'An error occurred while fetching organization data');
-    } finally {
-      setOrgLoading(false);
-    }
-  };
-
-  const fetchSubscriptionData = async () => {
-    setSubLoading(true);
-    setSubError('');
-    try {
-      const response = await authenticatedRequest(API_CONFIG.SUBSCRIPTION_API, {
-        method: 'GET'
-      });
-
-      const data = await response.json();
-      console.log('Subscription data:', data);
-
-      if (response.ok) {
-        setSubscriptionData(data);
-      } else {
-        setSubError(data.message || data.error?.message || 'Failed to fetch subscription data');
-      }
-    } catch (error) {
-      console.error('Error fetching subscription:', error);
-      setSubError(error.message || 'An error occurred while fetching subscription data');
-    } finally {
-      setSubLoading(false);
-    }
-  };
+  // ---- ACTIONS --------------------------------------------------------------
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
@@ -199,17 +187,13 @@ const Organization = () => {
     }
   };
 
+  // AuthContext owns token cleanup; we simply await its logout.
   const handleLogout = async () => {
     setLoggingOut(true);
     try {
       await logout();
     } catch (error) {
       console.error('Logout error:', error);
-      localStorage.removeItem('token');
-      localStorage.removeItem('refresh_token');
-      localStorage.removeItem('userInfo');
-      localStorage.removeItem('token_expiry');
-      navigate('/signin');
     } finally {
       setLoggingOut(false);
     }
@@ -217,10 +201,12 @@ const Organization = () => {
 
   const handleThemeToggle = () => setIsDarkMode(!isDarkMode);
 
-  // Format date
+  // ---- FORMATTERS -----------------------------------------------------------
+
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'N/A';
     return date.toLocaleString('en-US', {
       day: '2-digit',
       month: 'short',
@@ -230,10 +216,10 @@ const Organization = () => {
     });
   };
 
-  // Format date for subscription display
   const formatDateShort = (dateString) => {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
+    if (isNaN(date.getTime())) return 'N/A';
     return date.toLocaleDateString('en-US', {
       day: 'numeric',
       month: 'short',
@@ -241,7 +227,6 @@ const Organization = () => {
     });
   };
 
-  // Get status color
   const getStatusColor = (status) => {
     const colors = {
       'ACTIVE': 'bg-green-100 text-green-800 border-green-200',
@@ -256,7 +241,6 @@ const Organization = () => {
     return colors[status] || 'bg-gray-100 text-gray-800 border-gray-200';
   };
 
-  // Get status icon
   const getStatusIcon = (status) => {
     switch(status?.toUpperCase()) {
       case 'ACTIVE':
@@ -276,7 +260,8 @@ const Organization = () => {
     }
   };
 
-  // Settings Dropdown Menu
+  // ---- MENUS ---------------------------------------------------------------
+
   const SettingsMenu = () => (
     <div className="absolute top-full right-0 mt-2 bg-black rounded-2xl w-80 shadow-2xl border border-gray-800 z-50 overflow-hidden">
       <div className="bg-gradient-to-r from-gray-800 to-gray-900 px-5 py-4">
@@ -299,48 +284,47 @@ const Organization = () => {
           </div>
         </div>
       </div>
-      
+
       <div className="p-2">
-        <button 
+        <button
           onClick={() => {
             setShowSettingsMenu(false);
             navigate('/profile');
           }}
           className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition"
         >
-          <User size={16} className="text-gray-500" /> 
+          <User size={16} className="text-gray-500" />
           <span>Profile</span>
         </button>
-        <button 
+        <button
           onClick={() => {
             setShowSettingsMenu(false);
             navigate('/organization');
           }}
           className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition"
         >
-          <Building size={16} className="text-gray-500" /> 
+          <Building size={16} className="text-gray-500" />
           <span>Organization</span>
         </button>
         <div className="border-t border-gray-700 my-1"></div>
-        <button 
+        <button
           onClick={() => {
             setShowSettingsMenu(false);
             handleLogout();
           }}
           className="w-full text-left px-4 py-2.5 rounded-xl hover:bg-red-900/30 text-sm font-medium text-red-400 hover:text-red-300 flex items-center gap-3 transition"
         >
-          <LogOut size={16} className="text-red-500" /> 
+          <LogOut size={16} className="text-red-500" />
           <span>Sign Out</span>
         </button>
       </div>
     </div>
   );
 
-  // Add Dropdown Menu
   const AddMenu = () => (
     <div className="absolute top-full right-0 mt-2 bg-black rounded-2xl w-64 shadow-2xl border border-gray-800 z-50">
       <div className="p-3">
-        <button 
+        <button
           onClick={() => {
             setShowAddMenu(false);
             navigate("/add-hub");
@@ -349,7 +333,7 @@ const Organization = () => {
         >
           <Plus size={18} className="text-gray-500" /> Add Hub
         </button>
-        <button 
+        <button
           onClick={() => {
             setShowAddMenu(false);
             navigate("/add-charger");
@@ -362,17 +346,17 @@ const Organization = () => {
     </div>
   );
 
-  // Show loading if refreshing
-  if (authIsRefreshing || loading) {
+  // Show loading while the initial data fetch is running.
+  // AuthContext's BOOTSTRAPPING state is handled by ProtectedRoute's splash;
+  // this local guard is only for the organization-page fetch cycle.
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex">
         <Sidebar isDarkMode={isDarkMode} onThemeToggle={handleThemeToggle} />
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="w-12 h-12 border-4 border-green-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
-            <p className="mt-4 text-gray-600">
-              {authIsRefreshing ? 'Refreshing session...' : 'Loading...'}
-            </p>
+            <p className="mt-4 text-gray-600">Loading...</p>
           </div>
         </div>
       </div>
@@ -381,8 +365,8 @@ const Organization = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
-      <Sidebar 
-        isDarkMode={isDarkMode} 
+      <Sidebar
+        isDarkMode={isDarkMode}
         onThemeToggle={handleThemeToggle}
         userName={userData?.user?.full_name || user?.name || 'User'}
         userEmail={userData?.user?.email || user?.email || ''}
@@ -390,7 +374,6 @@ const Organization = () => {
       />
 
       <div className="flex-1 min-w-0">
-        {/* HEADER */}
         <header className="bg-white border-b-2 border-gray-200 px-6 py-6 sticky top-0 z-30 shadow-sm">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
@@ -406,7 +389,7 @@ const Organization = () => {
                 </div>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-2 relative">
               <div className="relative">
                 <button
@@ -432,7 +415,6 @@ const Organization = () => {
           </div>
         </header>
 
-        {/* Tabs */}
         <div className="border-b border-gray-200 bg-white px-6">
           <div className="flex gap-0">
             <button
@@ -452,10 +434,8 @@ const Organization = () => {
           </div>
         </div>
 
-        {/* Content */}
         <div className="p-6">
           <div className="max-w-7xl mx-auto space-y-6">
-            {/* Session Expired Banner */}
             {(orgError?.includes('Session expired') || subError?.includes('Session expired')) && (
               <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -482,7 +462,6 @@ const Organization = () => {
               </div>
             )}
 
-            {/* Organization Details Card */}
             {orgLoading ? (
               <div className="flex items-center justify-center h-64">
                 <div className="flex flex-col items-center gap-3">
@@ -592,7 +571,6 @@ const Organization = () => {
               </div>
             )}
 
-            {/* Subscription Details Card */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="p-6 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50">
                 <div className="flex items-center gap-4">
@@ -622,7 +600,6 @@ const Organization = () => {
                 </div>
               ) : subscriptionData ? (
                 <div className="p-6">
-                  {/* Plan Header */}
                   <div className="bg-gradient-to-r from-blue-600 to-indigo-600 rounded-2xl p-6 mb-6 text-white">
                     <div className="flex items-center justify-between flex-wrap gap-4">
                       <div>
@@ -654,7 +631,6 @@ const Organization = () => {
                     </div>
                   </div>
 
-                  {/* Plan Details Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                     <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
                       <div className="flex items-center gap-2 mb-1">
@@ -709,7 +685,6 @@ const Organization = () => {
                     </div>
                   </div>
 
-                  {/* Additional Info */}
                   <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div>
@@ -727,7 +702,6 @@ const Organization = () => {
                     </div>
                   </div>
 
-                  {/* Features */}
                   {subscriptionData.plan?.features && subscriptionData.plan.features.length > 0 && (
                     <div className="mt-4 pt-4 border-t border-gray-200">
                       <p className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
@@ -754,7 +728,6 @@ const Organization = () => {
               )}
             </div>
 
-            {/* Additional Info */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
               <div className="flex items-center justify-between flex-wrap gap-2">
                 <div className="flex items-center gap-4">
