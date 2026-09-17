@@ -1,0 +1,103 @@
+name: Deploy EV CPO Portal Production
+
+on:
+  push:
+    branches:
+      - production
+
+permissions: {}
+
+jobs:
+  trigger-deployment:
+    name: Trigger VPS deployment
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - name: Prepare restricted SSH identity
+        shell: bash
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.EVCPO_TRIGGER_SSH_KEY }}
+        run: |
+          set -Eeuo pipefail
+
+          install -d -m 0700 "$HOME/.ssh"
+
+          printf '%s\n' "$SSH_PRIVATE_KEY" \
+            > "$HOME/.ssh/evcpoportalnew_trigger"
+
+          chmod 0600 "$HOME/.ssh/evcpoportalnew_trigger"
+
+          cat > "$HOME/.ssh/known_hosts" <<'EOF'
+          ssh2.transev.site ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHZrpSFvSqL49A1U70P5rMCtXtpuOxy47aMQGnuqHIZ6
+          EOF
+
+          chmod 0600 "$HOME/.ssh/known_hosts"
+
+          ssh-keygen \
+            -E sha256 \
+            -lf "$HOME/.ssh/known_hosts"
+
+      - name: Submit production push to VPS
+        shell: bash
+        env:
+          PUSH_SHA: ${{ github.sha }}
+          PUSH_ACTOR: ${{ github.actor }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -Eeuo pipefail
+
+          if [[ ! "$PUSH_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid GitHub commit SHA: $PUSH_SHA" >&2
+            exit 1
+          fi
+
+          PAYLOAD="$(
+            python3 <<'PY'
+          import json
+          import os
+
+          print(
+              json.dumps(
+                  {
+                      "event": "push",
+                      "sha": os.environ["PUSH_SHA"],
+                      "branch": "production",
+                      "actor": os.environ["PUSH_ACTOR"],
+                      "source_id": (
+                          "github-"
+                          + os.environ["RUN_ID"]
+                          + "-"
+                          + os.environ["RUN_ATTEMPT"]
+                      ),
+                  },
+                  separators=(",", ":"),
+              )
+          )
+          PY
+          )"
+
+          OUTPUT="$(
+            printf '%s\n' "$PAYLOAD" |
+              ssh \
+                -T \
+                -i "$HOME/.ssh/evcpoportalnew_trigger" \
+                -o IdentitiesOnly=yes \
+                -o BatchMode=yes \
+                -o StrictHostKeyChecking=yes \
+                -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+                -o ConnectTimeout=10 \
+                -o ServerAliveInterval=5 \
+                -o ServerAliveCountMax=2 \
+                evcpo-trigger@ssh2.transev.site
+          )"
+
+          printf '%s\n' "$OUTPUT"
+
+          if ! grep -q '^REQUEST_ACCEPTED ' <<<"$OUTPUT"; then
+            echo "VPS did not acknowledge the deployment request" >&2
+            exit 1
+          fi
+
+          echo "Deployment request durably accepted by VPS."
