@@ -139,6 +139,33 @@ const API_CONFIG = {
   USER_INFO_API: `${API_BASE_URL}/api/v1/auth/me`
 };
 
+// ---------------------------------------------------------------
+// Helper: resolve a notification's ID from any common field name.
+// ---------------------------------------------------------------
+const getNotificationId = (notification) => {
+  if (!notification) return null;
+  return (
+    notification.id ||
+    notification.notification_id ||
+    notification._id ||
+    notification.uuid ||
+    null
+  );
+};
+
+// ---------------------------------------------------------------
+// Helper: determine whether a notification is READ.
+// The API returns `read_at` (a timestamp) when read, or `is_read`
+// in some environments. Treat any truthy value as "read".
+// ---------------------------------------------------------------
+const isNotificationRead = (notification) => {
+  if (!notification) return false;
+  if (notification.is_read === true) return true;
+  if (notification.read_at) return true;
+  if (notification.readAt) return true;
+  return false;
+};
+
 const Alerts = () => {
   const navigate = useNavigate();
   const { authenticatedRequest, logout, isRefreshing, isAuthenticated, user } = useAuth();
@@ -226,6 +253,10 @@ const Alerts = () => {
         const data = await response.json();
         const items = data.notifications || data.data || data || [];
 
+        if (items.length > 0) {
+          console.log('Sample notification object:', items[0]);
+        }
+
         if (loadMore) {
           setNotifications(prev => [...prev, ...items]);
         } else {
@@ -260,16 +291,36 @@ const Alerts = () => {
 
   // Handle notification click
   const handleNotificationClick = (notification) => {
+    console.log('Notification object received:', notification);
+    console.log('Read state:', {
+      is_read: notification.is_read,
+      read_at: notification.read_at,
+      computed: isNotificationRead(notification),
+    });
     setSelectedNotification(notification);
     setShowNotificationDetail(true);
   };
 
   // Mark a single notification as read – uses POST /api/v1/cpo/notifications/{id}/read
-  const markAsRead = useCallback(async (notificationId) => {
-    if (!notificationId) return;
+  // Accepts EITHER a notification object OR a raw ID string.
+  // Falls back to PATCH if POST returns 404/405.
+  const markAsRead = useCallback(async (notificationOrId) => {
+    const notificationId =
+      notificationOrId && typeof notificationOrId === 'object'
+        ? getNotificationId(notificationOrId)
+        : notificationOrId;
+
+    if (!notificationId) {
+      setError('Cannot mark as read: notification ID is missing');
+      setTimeout(() => setError(''), 3000);
+      return;
+    }
+
+    const url = API_CONFIG.NOTIFICATION_READ_API(encodeURIComponent(notificationId));
+    console.log('Marking as read →', url);
 
     try {
-      const response = await authenticatedRequest(API_CONFIG.NOTIFICATION_READ_API(notificationId), {
+      let response = await authenticatedRequest(url, {
         method: 'POST',
         headers: {
           'X-CPO-App-ID': CPO_APP_ID,
@@ -277,38 +328,58 @@ const Alerts = () => {
         }
       });
 
+      // Fallback: some backends expose this as PATCH instead of POST
+      if (response.status === 404 || response.status === 405) {
+        console.warn(`POST failed (${response.status}), retrying with PATCH...`);
+        response = await authenticatedRequest(url, {
+          method: 'PATCH',
+          headers: {
+            'X-CPO-App-ID': CPO_APP_ID,
+            'Content-Type': 'application/json',
+          }
+        });
+      }
+
       if (response.ok) {
+        // Set BOTH is_read and read_at so the UI updates regardless
+        // of which field this app relies on later.
+        const nowIso = new Date().toISOString();
+
         setNotifications(prev =>
           prev.map(n =>
-            n.id === notificationId ? { ...n, is_read: true } : n
+            getNotificationId(n) === notificationId
+              ? { ...n, is_read: true, read_at: n.read_at || nowIso }
+              : n
           )
         );
-        if (selectedNotification?.id === notificationId) {
-          setSelectedNotification(prev => ({ ...prev, is_read: true }));
-        }
+        setSelectedNotification(prev =>
+          prev && getNotificationId(prev) === notificationId
+            ? { ...prev, is_read: true, read_at: prev.read_at || nowIso }
+            : prev
+        );
         setSuccess('Notification marked as read');
         setTimeout(() => setSuccess(''), 3000);
       } else if (response.status === 404) {
-        setError('Notification not found');
-        setTimeout(() => setError(''), 3000);
+        setError('Notification not found on server. Check the ID field in console.');
+        setTimeout(() => setError(''), 5000);
       } else if (response.status === 403) {
         setError('You do not have permission to mark this notification as read');
         setTimeout(() => setError(''), 3000);
       } else {
         const errorData = await response.json().catch(() => ({}));
-        setError(errorData.message || 'Failed to mark notification as read');
+        setError(errorData.message || `Failed (HTTP ${response.status})`);
         setTimeout(() => setError(''), 3000);
       }
     } catch (error) {
       console.error('Error marking notification as read:', error);
-      setError('An error occurred while marking notification as read');
+      setError('Network error while marking notification as read');
       setTimeout(() => setError(''), 3000);
     }
-  }, [authenticatedRequest, selectedNotification]);
+  }, [authenticatedRequest]);
 
   // Mark all as read – loops over unread notifications and calls the same CPO endpoint
   const markAllAsRead = useCallback(async () => {
-    const unreadNotifications = notifications.filter(n => !n.is_read);
+    const unreadNotifications = notifications.filter(n => !isNotificationRead(n));
     if (unreadNotifications.length === 0) {
       setSuccess('All notifications are already read');
       setTimeout(() => setSuccess(''), 3000);
@@ -316,8 +387,18 @@ const Alerts = () => {
     }
 
     try {
+      const resolvedIds = [];
+      const nowIso = new Date().toISOString();
+
       for (const notification of unreadNotifications) {
-        const response = await authenticatedRequest(API_CONFIG.NOTIFICATION_READ_API(notification.id), {
+        const nid = getNotificationId(notification);
+        if (!nid) {
+          console.warn('Skipping notification with no resolvable ID:', notification);
+          continue;
+        }
+
+        const url = API_CONFIG.NOTIFICATION_READ_API(encodeURIComponent(nid));
+        let response = await authenticatedRequest(url, {
           method: 'POST',
           headers: {
             'X-CPO-App-ID': CPO_APP_ID,
@@ -325,17 +406,37 @@ const Alerts = () => {
           }
         });
 
-        if (!response.ok) {
-          console.error(`Failed to mark notification ${notification.id} as read`);
+        if (response.status === 404 || response.status === 405) {
+          response = await authenticatedRequest(url, {
+            method: 'PATCH',
+            headers: {
+              'X-CPO-App-ID': CPO_APP_ID,
+              'Content-Type': 'application/json',
+            }
+          });
+        }
+
+        if (response.ok) {
+          resolvedIds.push(nid);
+        } else {
+          console.error(`Failed to mark notification ${nid} as read (HTTP ${response.status})`);
         }
       }
 
       setNotifications(prev =>
-        prev.map(n => ({ ...n, is_read: true }))
+        prev.map(n =>
+          resolvedIds.includes(getNotificationId(n))
+            ? { ...n, is_read: true, read_at: n.read_at || nowIso }
+            : n
+        )
       );
-      if (selectedNotification) {
-        setSelectedNotification(prev => ({ ...prev, is_read: true }));
-      }
+
+      setSelectedNotification(prev =>
+        prev && resolvedIds.includes(getNotificationId(prev))
+          ? { ...prev, is_read: true, read_at: prev.read_at || nowIso }
+          : prev
+      );
+
       setSuccess('All notifications marked as read');
       setTimeout(() => setSuccess(''), 3000);
     } catch (error) {
@@ -343,7 +444,7 @@ const Alerts = () => {
       setError('An error occurred while marking all as read');
       setTimeout(() => setError(''), 3000);
     }
-  }, [authenticatedRequest, notifications, selectedNotification]);
+  }, [authenticatedRequest, notifications]);
 
   // Format date
   const formatDate = (dateString) => {
@@ -453,6 +554,8 @@ const Alerts = () => {
   const NotificationDetail = ({ notification, onClose, onMarkRead }) => {
     if (!notification) return null;
 
+    const read = isNotificationRead(notification);
+
     return (
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden sticky top-24">
         <div className="p-4 border-b border-gray-200 bg-gradient-to-r from-blue-50 to-indigo-50 flex items-center justify-between">
@@ -461,9 +564,9 @@ const Alerts = () => {
             <h3 className="font-semibold text-gray-900">Notification Details</h3>
           </div>
           <div className="flex items-center gap-2">
-            {!notification.is_read && (
+            {!read && (
               <button
-                onClick={() => onMarkRead(notification.id)}
+                onClick={() => onMarkRead(notification)}
                 className="p-1.5 text-gray-500 hover:text-green-600 hover:bg-green-50 rounded-lg transition"
                 title="Mark as Read"
               >
@@ -482,12 +585,16 @@ const Alerts = () => {
         <div className="p-5 space-y-4">
           <div>
             <p className="text-xs text-gray-500 uppercase tracking-wider">Title</p>
-            <p className="text-sm font-semibold text-gray-900">{notification.title || 'N/A'}</p>
+            <p className={`text-sm font-semibold ${read ? 'text-gray-700' : 'text-gray-900'}`}>
+              {notification.title || 'N/A'}
+            </p>
           </div>
 
           <div>
             <p className="text-xs text-gray-500 uppercase tracking-wider">Message</p>
-            <p className="text-sm text-gray-700 leading-relaxed">{notification.message || 'No message'}</p>
+            <p className={`text-sm leading-relaxed ${read ? 'text-gray-500' : 'text-gray-700'}`}>
+              {notification.body || notification.message || 'No message'}
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -500,8 +607,8 @@ const Alerts = () => {
             </div>
             <div>
               <p className="text-xs text-gray-500 uppercase tracking-wider">Status</p>
-              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${notification.is_read ? 'bg-gray-100 text-gray-700' : 'bg-blue-100 text-blue-700'}`}>
-                {notification.is_read ? 'Read' : 'Unread'}
+              <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium ${read ? 'bg-gray-100 text-gray-700' : 'bg-blue-100 text-blue-700'}`}>
+                {read ? 'Read' : 'Unread'}
               </span>
             </div>
           </div>
@@ -519,11 +626,11 @@ const Alerts = () => {
                 })}
               </p>
             </div>
-            {notification.updated_at && notification.updated_at !== notification.created_at && (
+            {notification.read_at && (
               <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wider">Updated</p>
-                <p className="text-sm font-medium text-gray-900">
-                  {new Date(notification.updated_at).toLocaleString('en-US', {
+                <p className="text-xs text-gray-500 uppercase tracking-wider">Read At</p>
+                <p className="text-sm font-medium text-green-700">
+                  {new Date(notification.read_at).toLocaleString('en-US', {
                     day: '2-digit',
                     month: 'short',
                     year: 'numeric',
@@ -536,9 +643,9 @@ const Alerts = () => {
           </div>
 
           <div className="flex items-center gap-3 pt-2 border-t border-gray-200">
-            {!notification.is_read && (
+            {!read && (
               <button
-                onClick={() => onMarkRead(notification.id)}
+                onClick={() => onMarkRead(notification)}
                 className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition text-sm flex items-center justify-center gap-2"
               >
                 <Check size={16} />
@@ -582,7 +689,8 @@ const Alerts = () => {
     );
   }
 
-  const unreadCount = notifications.filter(n => !n.is_read).length;
+  const unreadCount = notifications.filter(n => !isNotificationRead(n)).length;
+  const readCount = notifications.filter(n => isNotificationRead(n)).length;
 
   return (
     <div className="min-h-screen bg-gray-50 flex">
@@ -659,7 +767,7 @@ const Alerts = () => {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-500">Read</p>
-                  <p className="text-2xl font-bold text-green-600">{notifications.filter(n => n.is_read).length}</p>
+                  <p className="text-2xl font-bold text-green-600">{readCount}</p>
                 </div>
                 <div className="w-12 h-12 bg-green-50 rounded-xl flex items-center justify-center">
                   <CheckCircle size={24} className="text-green-600" />
@@ -784,46 +892,55 @@ const Alerts = () => {
                     {notifications
                       .filter(n =>
                         n.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        n.message?.toLowerCase().includes(searchQuery.toLowerCase())
+                        (n.body || n.message || '')?.toLowerCase().includes(searchQuery.toLowerCase())
                       )
-                      .map((notification) => (
-                        <div
-                          key={notification.id}
-                          onClick={() => handleNotificationClick(notification)}
-                          className={`p-4 hover:bg-gray-50 transition cursor-pointer ${
-                            !notification.is_read ? 'bg-blue-50/50 hover:bg-blue-50' : ''
-                          }`}
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className="flex-shrink-0 mt-0.5">
-                              <div className={`p-2 rounded-lg ${!notification.is_read ? 'bg-blue-100' : 'bg-gray-100'}`}>
-                                {getNotificationIcon(notification.type)}
-                              </div>
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-start justify-between">
-                                <div>
-                                  <p className={`text-sm font-medium ${!notification.is_read ? 'text-gray-900' : 'text-gray-700'}`}>
-                                    {notification.title || 'Notification'}
-                                  </p>
-                                  <p className="text-sm text-gray-500 line-clamp-2 mt-0.5">
-                                    {notification.message}
-                                  </p>
+                      .map((notification) => {
+                        const nid = getNotificationId(notification);
+                        const read = isNotificationRead(notification);
+                        return (
+                          <div
+                            key={nid || `${notification.title}-${notification.created_at}`}
+                            onClick={() => handleNotificationClick(notification)}
+                            className={`p-4 hover:bg-gray-50 transition cursor-pointer ${
+                              !read ? 'bg-blue-50/50 hover:bg-blue-50' : ''
+                            }`}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className="flex-shrink-0 mt-0.5">
+                                <div className={`p-2 rounded-lg ${!read ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                                  {getNotificationIcon(notification.type)}
                                 </div>
-                                {!notification.is_read && (
-                                  <span className="flex-shrink-0 w-2 h-2 bg-blue-600 rounded-full mt-1.5"></span>
-                                )}
                               </div>
-                              <div className="flex items-center gap-3 mt-2">
-                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${getNotificationTypeColor(notification.type)}`}>
-                                  {notification.type || 'Info'}
-                                </span>
-                                <span className="text-xs text-gray-400">{formatDate(notification.created_at)}</span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-start justify-between">
+                                  <div>
+                                    <p className={`text-sm font-medium ${!read ? 'text-gray-900' : 'text-gray-500'}`}>
+                                      {notification.title || 'Notification'}
+                                    </p>
+                                    <p className={`text-sm line-clamp-2 mt-0.5 ${!read ? 'text-gray-600' : 'text-gray-400'}`}>
+                                      {notification.body || notification.message}
+                                    </p>
+                                  </div>
+                                  {!read && (
+                                    <span className="flex-shrink-0 w-2 h-2 bg-blue-600 rounded-full mt-1.5"></span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-3 mt-2">
+                                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${getNotificationTypeColor(notification.type)}`}>
+                                    {notification.type || 'Info'}
+                                  </span>
+                                  <span className="text-xs text-gray-400">{formatDate(notification.created_at)}</span>
+                                  {read && (
+                                    <span className="inline-flex items-center gap-1 text-xs text-green-600">
+                                      <Check size={12} /> Read
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                   </div>
                 )}
 
@@ -869,7 +986,7 @@ const Alerts = () => {
                   <p className="text-sm text-gray-400 mt-1">Click on a notification to view details</p>
                   <div className="mt-4 flex items-center justify-center gap-2 text-xs text-gray-400">
                     <CheckCircle size={14} className="text-green-500" />
-                    <span>{notifications.filter(n => n.is_read).length} read</span>
+                    <span>{readCount} read</span>
                     <span className="w-px h-4 bg-gray-300"></span>
                     <BellDot size={14} className="text-red-500" />
                     <span>{unreadCount} unread</span>
