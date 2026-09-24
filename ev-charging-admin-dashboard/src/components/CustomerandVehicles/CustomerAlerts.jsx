@@ -26,220 +26,106 @@ import {
   Bell,
   BellRing,
   Activity,
-  MapPin,
-  Zap,
   Clock,
   Mail,
   Phone,
   ShieldAlert,
   CheckCheck,
-  Car
+  Send,
+  MessageSquare,
+  Lock
 } from 'lucide-react';
 import Sidebar from '../Sidebar/Sidebar';
 
+// ---------------------------------------------------------------------------
 // API Configuration
+// ---------------------------------------------------------------------------
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'https://dev-evcmsnew.transev.site';
-const CPO_APP_ID = process.env.REACT_APP_CPO_APP_ID || 'cpo_dummy_5f75674f57829da5f3cae19ef4238d56';
 
 const API_CONFIG = {
   USER_INFO_API: `${API_BASE_URL}/api/v1/auth/me`,
-  CUSTOMER_ALERTS_API: `${API_BASE_URL}/api/v1/cpo/customer-alerts`
+  TICKETS_LIST_API: `${API_BASE_URL}/api/v1/cpo/customer-support/tickets`,
+  TICKET_DETAIL_API: (ticketId) =>
+    `${API_BASE_URL}/api/v1/cpo/customer-support/tickets/${ticketId}`,
+  TICKET_REPLY_API: (ticketId) =>
+    `${API_BASE_URL}/api/v1/cpo/customer-support/tickets/${ticketId}/replies`,
+  TICKET_STATUS_API: (ticketId) =>
+    `${API_BASE_URL}/api/v1/cpo/customer-support/tickets/${ticketId}/status`
 };
 
 // ---------------------------------------------------------------------------
-// DUMMY DATA (fallback / demo). Backend response pele eita replace hoye jabe.
+// CONFIG — status / priority visual styling
 // ---------------------------------------------------------------------------
-const DUMMY_ALERTS = [
-  {
-    id: 'ALT-1001',
-    type: 'charger_offline',
-    severity: 'critical',
-    status: 'active',
-    title: 'Charger Offline',
-    message:
-      'Charger CHG-0142 has been unreachable for more than 30 minutes. Customer was unable to start a charging session.',
-    customer: {
-      id: 'CUST-2031',
-      name: 'Rahul Sharma',
-      email: 'rahul.sharma@example.com',
-      phone: '+91 98765 43210'
-    },
-    vehicle: { id: 'VEH-8821', name: 'Tata Nexon EV', plate: 'MH 02 AB 1234' },
-    hub: 'Andheri East Hub',
-    charger: 'CHG-0142',
-    created_at: '2026-02-14T09:12:00Z'
-  },
-  {
-    id: 'ALT-1002',
-    type: 'payment_failed',
-    severity: 'critical',
-    status: 'active',
-    title: 'Payment Failed',
-    message:
-      'Auto-debit of ₹640 failed for the last charging session. Wallet balance is below the minimum threshold.',
-    customer: {
-      id: 'CUST-2104',
-      name: 'Priya Nair',
-      email: 'priya.nair@example.com',
-      phone: '+91 91234 56780'
-    },
-    vehicle: { id: 'VEH-9012', name: 'MG ZS EV', plate: 'KA 05 CD 7788' },
-    hub: 'Koramangala Hub',
-    charger: 'CHG-0088',
-    created_at: '2026-02-14T08:40:00Z'
-  },
-  {
-    id: 'ALT-1003',
-    type: 'session_error',
-    severity: 'warning',
-    status: 'acknowledged',
-    title: 'Charging Session Aborted',
-    message:
-      'Session terminated unexpectedly at 62% SOC. Connector lock release was reported by the charger.',
-    customer: {
-      id: 'CUST-1988',
-      name: 'Arjun Mehta',
-      email: 'arjun.mehta@example.com',
-      phone: '+91 99887 76655'
-    },
-    vehicle: { id: 'VEH-7745', name: 'Hyundai Ioniq 5', plate: 'DL 8C AA 0099' },
-    hub: 'Cyber Hub, Gurugram',
-    charger: 'CHG-0231',
-    created_at: '2026-02-14T07:15:00Z'
-  },
-  {
-    id: 'ALT-1004',
-    type: 'low_balance',
-    severity: 'warning',
-    status: 'active',
-    title: 'Low Wallet Balance',
-    message:
-      'Customer wallet balance is ₹45, which is below the ₹100 threshold. Upcoming auto-debit may fail.',
-    customer: {
-      id: 'CUST-2233',
-      name: 'Sneha Kulkarni',
-      email: 'sneha.k@example.com',
-      phone: '+91 90123 45678'
-    },
-    vehicle: { id: 'VEH-6650', name: 'Tata Tiago EV', plate: 'MH 12 GH 4521' },
-    hub: 'Hinjewadi Phase 1',
-    charger: 'CHG-0399',
-    created_at: '2026-02-13T19:05:00Z'
-  },
-  {
-    id: 'ALT-1005',
-    type: 'rfid_issue',
-    severity: 'warning',
-    status: 'resolved',
-    title: 'RFID Card Not Recognised',
-    message:
-      'Customer RFID card was rejected 3 times at the charger. Card has been re-synced from the CMS.',
-    customer: {
-      id: 'CUST-2044',
-      name: 'Imran Khan',
-      email: 'imran.khan@example.com',
-      phone: '+91 88997 66554'
-    },
-    vehicle: { id: 'VEH-5590', name: 'BYD Atto 3', plate: 'TS 09 EF 3311' },
-    hub: 'Hitech City Hub',
-    charger: 'CHG-0117',
-    created_at: '2026-02-13T16:22:00Z',
-    resolved_at: '2026-02-13T17:02:00Z'
-  },
-  {
-    id: 'ALT-1006',
-    type: 'connector_fault',
-    severity: 'critical',
-    status: 'active',
-    title: 'Connector Fault Detected',
-    message:
-      'Ground fault detected on Connector B. Charger has been locked out automatically for safety.',
-    customer: {
-      id: 'CUST-2311',
-      name: 'Deepa Iyer',
-      email: 'deepa.iyer@example.com',
-      phone: '+91 97654 32109'
-    },
-    vehicle: { id: 'VEH-4412', name: 'Kia EV6', plate: 'TN 10 KL 8899' },
-    hub: 'Guindy Hub, Chennai',
-    charger: 'CHG-0056',
-    created_at: '2026-02-13T14:48:00Z'
-  },
-  {
-    id: 'ALT-1007',
-    type: 'idle_charger',
-    severity: 'info',
-    status: 'acknowledged',
-    title: 'Idle Fee Applied',
-    message:
-      'Vehicle remained connected for 45 minutes after charging completed. Idle fee of ₹90 has been applied.',
-    customer: {
-      id: 'CUST-1876',
-      name: 'Vikram Singh',
-      email: 'vikram.singh@example.com',
-      phone: '+91 96543 21098'
-    },
-    vehicle: { id: 'VEH-3320', name: 'Mahindra XUV400', plate: 'UP 16 XY 2244' },
-    hub: 'Sector 62, Noida',
-    charger: 'CHG-0455',
-    created_at: '2026-02-13T11:30:00Z'
-  },
-  {
-    id: 'ALT-1008',
-    type: 'session_error',
-    severity: 'info',
-    status: 'resolved',
-    title: 'Session Started After Retry',
-    message:
-      'Initial handshake failed but the session started successfully on retry. No revenue impact.',
-    customer: {
-      id: 'CUST-2199',
-      name: 'Ananya Bose',
-      email: 'ananya.bose@example.com',
-      phone: '+91 95432 10987'
-    },
-    vehicle: { id: 'VEH-2210', name: 'Tata Punch EV', plate: 'WB 20 PQ 6611' },
-    hub: 'Salt Lake, Kolkata',
-    charger: 'CHG-0290',
-    created_at: '2026-02-12T18:10:00Z',
-    resolved_at: '2026-02-12T18:12:00Z'
-  }
-];
-
-// ---------------------------------------------------------------------------
-// CONFIG
-// ---------------------------------------------------------------------------
-const SEVERITY_CONFIG = {
-  critical: {
-    label: 'Critical',
+const PRIORITY_CONFIG = {
+  urgent: {
+    label: 'Urgent',
     icon: AlertTriangle,
     badge: 'bg-red-100 text-red-700 border-red-200',
     iconBox: 'bg-red-50 text-red-600',
     leftBorder: 'border-l-red-500'
   },
-  warning: {
-    label: 'Warning',
+  high: {
+    label: 'High',
     icon: AlertCircle,
     badge: 'bg-amber-100 text-amber-700 border-amber-200',
     iconBox: 'bg-amber-50 text-amber-600',
     leftBorder: 'border-l-amber-500'
   },
-  info: {
-    label: 'Info',
+  medium: {
+    label: 'Medium',
     icon: Info,
     badge: 'bg-blue-100 text-blue-700 border-blue-200',
     iconBox: 'bg-blue-50 text-blue-600',
     leftBorder: 'border-l-blue-500'
+  },
+  low: {
+    label: 'Low',
+    icon: Info,
+    badge: 'bg-gray-100 text-gray-600 border-gray-200',
+    iconBox: 'bg-gray-50 text-gray-500',
+    leftBorder: 'border-l-gray-300'
   }
 };
 
 const STATUS_CONFIG = {
-  active: { label: 'Active', badge: 'bg-red-50 text-red-600 border-red-200' },
-  acknowledged: { label: 'Acknowledged', badge: 'bg-blue-50 text-blue-600 border-blue-200' },
-  resolved: { label: 'Resolved', badge: 'bg-green-50 text-green-600 border-green-200' }
+  open: { label: 'Open', badge: 'bg-red-50 text-red-600 border-red-200', next: 'in_progress' },
+  in_progress: {
+    label: 'In Progress',
+    badge: 'bg-blue-50 text-blue-600 border-blue-200',
+    next: 'resolved'
+  },
+  resolved: {
+    label: 'Resolved',
+    badge: 'bg-green-50 text-green-600 border-green-200',
+    next: 'closed'
+  },
+  closed: { label: 'Closed', badge: 'bg-gray-100 text-gray-500 border-gray-200', next: null }
 };
 
-const ALERTS_PER_PAGE = 6;
+const STATUS_ORDER = ['open', 'in_progress', 'resolved', 'closed'];
+const TICKETS_PER_PAGE = 6;
+
+// ---------------------------------------------------------------------------
+// Helpers to normalise whatever shape the backend returns
+// ---------------------------------------------------------------------------
+const mapTicket = (raw) => ({
+  id: raw.ticket_id || raw.id || raw._id || 'N/A',
+  subject: raw.subject || raw.title || 'Support Ticket',
+  description: raw.description || raw.message || raw.body || '',
+  status: (raw.status || 'open').toLowerCase(),
+  priority: (raw.priority || raw.severity || 'medium').toLowerCase(),
+  customer: {
+    id: raw.customer?.id || raw.customer_id || 'N/A',
+    name: raw.customer?.name || raw.customer_name || 'Unknown Customer',
+    email: raw.customer?.email || raw.customer_email || '',
+    phone: raw.customer?.phone || raw.customer_phone || ''
+  },
+  created_at: raw.created_at || raw.createdAt || null,
+  updated_at: raw.updated_at || raw.updatedAt || null,
+  reply_count: raw.reply_count ?? raw.replies?.length ?? 0,
+  replies: raw.replies || [],
+  raw
+});
 
 const CustomerAlerts = () => {
   const navigate = useNavigate();
@@ -251,17 +137,21 @@ const CustomerAlerts = () => {
   const [showAddMenu, setShowAddMenu] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [severityFilter, setSeverityFilter] = useState('all');
+  const [priorityFilter, setPriorityFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
   const [currentPage, setCurrentPage] = useState(1);
 
-  const [alerts, setAlerts] = useState([]);
+  const [tickets, setTickets] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [selectedAlert, setSelectedAlert] = useState(null);
-  const [isUpdating, setIsUpdating] = useState(false);
 
-  // Tabs configuration
+  const [selectedTicket, setSelectedTicket] = useState(null);
+  const [ticketDetailLoading, setTicketDetailLoading] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [replyText, setReplyText] = useState('');
+  const [isSendingReply, setIsSendingReply] = useState(false);
+  const [replyError, setReplyError] = useState('');
+
   const tabs = [
     { id: 'customers', label: 'Customers', icon: UsersIcon, path: '/customers' },
     { id: 'alerts', label: 'Customer Alerts', icon: AlertCircle, path: '/customer-alerts' },
@@ -278,7 +168,8 @@ const CustomerAlerts = () => {
       return;
     }
     fetchUserInfo();
-    fetchCustomerAlerts();
+    fetchTickets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, navigate]);
 
   const fetchUserInfo = async () => {
@@ -293,83 +184,128 @@ const CustomerAlerts = () => {
     }
   };
 
-  const fetchCustomerAlerts = useCallback(async () => {
+  const fetchTickets = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const response = await authenticatedRequest(API_CONFIG.CUSTOMER_ALERTS_API, {
+      const response = await authenticatedRequest(API_CONFIG.TICKETS_LIST_API, {
         method: 'GET'
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        const list = data.alerts || data.customer_alerts || data.data || data || [];
-        setAlerts(Array.isArray(list) && list.length > 0 ? list : DUMMY_ALERTS);
-      } else {
-        // Backend e endpoint na thakle dummy data diye demo cholbe
-        setAlerts(DUMMY_ALERTS);
+      if (!response.ok) {
+        let msg = `Failed to load tickets (${response.status})`;
+        try {
+          const errBody = await response.json();
+          msg = errBody.message || errBody.detail || msg;
+        } catch (_) {
+          /* ignore parse error */
+        }
+        setError(msg);
+        setTickets([]);
+        return;
       }
+
+      const data = await response.json();
+      const rawList = data.tickets || data.data || data.results || (Array.isArray(data) ? data : []);
+      setTickets(Array.isArray(rawList) ? rawList.map(mapTicket) : []);
     } catch (err) {
-      console.warn('Falling back to demo alerts:', err);
-      setAlerts(DUMMY_ALERTS);
+      console.error('Error fetching customer support tickets:', err);
+      setError('Could not reach the server. Please try again.');
+      setTickets([]);
     } finally {
       setLoading(false);
     }
   }, [authenticatedRequest]);
 
+  const fetchTicketDetail = useCallback(
+    async (ticketId) => {
+      setTicketDetailLoading(true);
+      try {
+        const response = await authenticatedRequest(API_CONFIG.TICKET_DETAIL_API(ticketId), {
+          method: 'GET'
+        });
+        if (response.ok) {
+          const data = await response.json();
+          const detail = mapTicket(data.ticket || data.data || data);
+          setSelectedTicket(detail);
+          // keep list row in sync (e.g. reply_count, replies)
+          setTickets((prev) => prev.map((t) => (t.id === ticketId ? detail : t)));
+        }
+      } catch (err) {
+        console.error('Error fetching ticket detail:', err);
+      } finally {
+        setTicketDetailLoading(false);
+      }
+    },
+    [authenticatedRequest]
+  );
+
   // -------------------------------------------------------------------------
   // ACTIONS
   // -------------------------------------------------------------------------
-  const handleAcknowledge = async (alertId) => {
-    setIsUpdating(true);
+  const openTicket = (ticket) => {
+    setSelectedTicket(ticket);
+    setReplyText('');
+    setReplyError('');
+    fetchTicketDetail(ticket.id);
+  };
+
+  const handleStatusChange = async (ticketId, newStatus) => {
+    setIsUpdatingStatus(true);
     try {
-      const response = await authenticatedRequest(
-        `${API_CONFIG.CUSTOMER_ALERTS_API}/${alertId}/acknowledge`,
-        { method: 'PATCH' }
-      );
-      // Backend fail korleo UI update kore dei (demo mode)
+      const response = await authenticatedRequest(API_CONFIG.TICKET_STATUS_API(ticketId), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+
       if (!response.ok) {
-        console.warn('Acknowledge API failed, updating UI locally');
+        console.warn('Status update failed on server, not updating UI');
+        return;
       }
+
+      setTickets((prev) =>
+        prev.map((t) => (t.id === ticketId ? { ...t, status: newStatus } : t))
+      );
+      setSelectedTicket((prev) => (prev && prev.id === ticketId ? { ...prev, status: newStatus } : prev));
     } catch (err) {
-      console.warn('Acknowledge error, updating UI locally:', err);
+      console.error('Error updating ticket status:', err);
     } finally {
-      setAlerts(prev =>
-        prev.map(a => (a.id === alertId ? { ...a, status: 'acknowledged' } : a))
-      );
-      setSelectedAlert(prev =>
-        prev && prev.id === alertId ? { ...prev, status: 'acknowledged' } : prev
-      );
-      setIsUpdating(false);
+      setIsUpdatingStatus(false);
     }
   };
 
-  const handleResolve = async (alertId) => {
-    setIsUpdating(true);
+  const handleSendReply = async (ticketId) => {
+    if (!replyText.trim()) return;
+    setIsSendingReply(true);
+    setReplyError('');
     try {
-      const response = await authenticatedRequest(
-        `${API_CONFIG.CUSTOMER_ALERTS_API}/${alertId}/resolve`,
-        { method: 'PATCH' }
-      );
+      const response = await authenticatedRequest(API_CONFIG.TICKET_REPLY_API(ticketId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: replyText.trim() })
+      });
+
       if (!response.ok) {
-        console.warn('Resolve API failed, updating UI locally');
+        let msg = 'Failed to send reply.';
+        try {
+          const errBody = await response.json();
+          msg = errBody.message || errBody.detail || msg;
+        } catch (_) {
+          /* ignore */
+        }
+        setReplyError(msg);
+        return;
       }
+
+      setReplyText('');
+      // Refresh the ticket detail so the new reply shows up
+      await fetchTicketDetail(ticketId);
     } catch (err) {
-      console.warn('Resolve error, updating UI locally:', err);
+      console.error('Error sending reply:', err);
+      setReplyError('Could not reach the server. Please try again.');
     } finally {
-      setAlerts(prev =>
-        prev.map(a =>
-          a.id === alertId
-            ? { ...a, status: 'resolved', resolved_at: new Date().toISOString() }
-            : a
-        )
-      );
-      setSelectedAlert(prev =>
-        prev && prev.id === alertId
-          ? { ...prev, status: 'resolved', resolved_at: new Date().toISOString() }
-          : prev
-      );
-      setIsUpdating(false);
+      setIsSendingReply(false);
     }
   };
 
@@ -395,6 +331,7 @@ const CustomerAlerts = () => {
   const formatDateTime = (dateString) => {
     if (!dateString) return 'N/A';
     const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return 'N/A';
     return date.toLocaleString('en-US', {
       day: '2-digit',
       month: 'short',
@@ -407,6 +344,7 @@ const CustomerAlerts = () => {
   const timeAgo = (dateString) => {
     if (!dateString) return '';
     const diff = Math.floor((Date.now() - new Date(dateString).getTime()) / 1000);
+    if (Number.isNaN(diff)) return '';
     if (diff < 60) return `${diff}s ago`;
     if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
     if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
@@ -416,54 +354,51 @@ const CustomerAlerts = () => {
   // -------------------------------------------------------------------------
   // FILTER + PAGINATION
   // -------------------------------------------------------------------------
-  const filteredAlerts = useMemo(() => {
-    return alerts.filter((alert) => {
+  const filteredTickets = useMemo(() => {
+    return tickets.filter((ticket) => {
       const q = searchQuery.toLowerCase();
       const matchesSearch =
         !searchQuery ||
-        alert.title?.toLowerCase().includes(q) ||
-        alert.message?.toLowerCase().includes(q) ||
-        alert.id?.toLowerCase().includes(q) ||
-        alert.customer?.name?.toLowerCase().includes(q) ||
-        alert.charger?.toLowerCase().includes(q) ||
-        alert.hub?.toLowerCase().includes(q);
+        ticket.subject?.toLowerCase().includes(q) ||
+        ticket.description?.toLowerCase().includes(q) ||
+        ticket.id?.toString().toLowerCase().includes(q) ||
+        ticket.customer?.name?.toLowerCase().includes(q);
 
-      const matchesSeverity = severityFilter === 'all' || alert.severity === severityFilter;
-      const matchesStatus = statusFilter === 'all' || alert.status === statusFilter;
+      const matchesPriority = priorityFilter === 'all' || ticket.priority === priorityFilter;
+      const matchesStatus = statusFilter === 'all' || ticket.status === statusFilter;
 
-      return matchesSearch && matchesSeverity && matchesStatus;
+      return matchesSearch && matchesPriority && matchesStatus;
     });
-  }, [alerts, searchQuery, severityFilter, statusFilter]);
+  }, [tickets, searchQuery, priorityFilter, statusFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredAlerts.length / ALERTS_PER_PAGE));
-  const paginatedAlerts = filteredAlerts.slice(
-    (currentPage - 1) * ALERTS_PER_PAGE,
-    currentPage * ALERTS_PER_PAGE
+  const totalPages = Math.max(1, Math.ceil(filteredTickets.length / TICKETS_PER_PAGE));
+  const paginatedTickets = filteredTickets.slice(
+    (currentPage - 1) * TICKETS_PER_PAGE,
+    currentPage * TICKETS_PER_PAGE
   );
 
-  // Reset page on filter change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, severityFilter, statusFilter]);
+  }, [searchQuery, priorityFilter, statusFilter]);
 
-  // Stats
   const stats = useMemo(() => {
     return {
-      total: alerts.length,
-      critical: alerts.filter(a => a.severity === 'critical' && a.status !== 'resolved').length,
-      warning: alerts.filter(a => a.severity === 'warning' && a.status !== 'resolved').length,
-      resolved: alerts.filter(a => a.status === 'resolved').length
+      total: tickets.length,
+      open: tickets.filter((t) => t.status === 'open').length,
+      inProgress: tickets.filter((t) => t.status === 'in_progress').length,
+      resolved: tickets.filter((t) => t.status === 'resolved' || t.status === 'closed').length
     };
-  }, [alerts]);
+  }, [tickets]);
 
-  const severityCounts = useMemo(() => {
+  const priorityCounts = useMemo(() => {
     return {
-      all: alerts.length,
-      critical: alerts.filter(a => a.severity === 'critical').length,
-      warning: alerts.filter(a => a.severity === 'warning').length,
-      info: alerts.filter(a => a.severity === 'info').length
+      all: tickets.length,
+      urgent: tickets.filter((t) => t.priority === 'urgent').length,
+      high: tickets.filter((t) => t.priority === 'high').length,
+      medium: tickets.filter((t) => t.priority === 'medium').length,
+      low: tickets.filter((t) => t.priority === 'low').length
     };
-  }, [alerts]);
+  }, [tickets]);
 
   // -------------------------------------------------------------------------
   // SUB-COMPONENTS
@@ -528,18 +463,19 @@ const CustomerAlerts = () => {
           onClick={() => { setShowAddMenu(false); navigate('/add-charger'); }}
           className="w-full text-left px-4 py-3 rounded-xl hover:bg-gray-800 text-sm font-medium text-gray-300 hover:text-white flex items-center gap-3 transition"
         >
-          <Zap size={18} className="text-gray-400" /> Add Charger
+          <Activity size={18} className="text-gray-400" /> Add Charger
         </button>
       </div>
     </div>
   );
 
-  // Alert Detail Modal
-  const AlertDetailModal = ({ alert, onClose, onAcknowledge, onResolve }) => {
-    if (!alert) return null;
-    const sev = SEVERITY_CONFIG[alert.severity] || SEVERITY_CONFIG.info;
-    const st = STATUS_CONFIG[alert.status] || STATUS_CONFIG.active;
-    const SevIcon = sev.icon;
+  // Ticket Detail Modal
+  const TicketDetailModal = ({ ticket, onClose }) => {
+    if (!ticket) return null;
+    const pr = PRIORITY_CONFIG[ticket.priority] || PRIORITY_CONFIG.medium;
+    const st = STATUS_CONFIG[ticket.status] || STATUS_CONFIG.open;
+    const PrIcon = pr.icon;
+    const isClosed = ticket.status === 'closed';
 
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -547,20 +483,20 @@ const CustomerAlerts = () => {
           {/* Modal header */}
           <div className="flex items-start justify-between p-6 border-b border-gray-100">
             <div className="flex items-start gap-4">
-              <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${sev.iconBox}`}>
-                <SevIcon className="w-6 h-6" />
+              <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${pr.iconBox}`}>
+                <PrIcon className="w-6 h-6" />
               </div>
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-xl font-bold text-gray-900">{alert.title}</h3>
-                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${sev.badge}`}>
-                    {sev.label}
+                  <h3 className="text-xl font-bold text-gray-900">{ticket.subject}</h3>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${pr.badge}`}>
+                    {pr.label}
                   </span>
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${st.badge}`}>
                     {st.label}
                   </span>
                 </div>
-                <p className="text-xs text-gray-400 mt-1 font-mono">{alert.id}</p>
+                <p className="text-xs text-gray-400 mt-1 font-mono">{ticket.id}</p>
               </div>
             </div>
             <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-xl transition">
@@ -570,109 +506,141 @@ const CustomerAlerts = () => {
 
           {/* Modal body */}
           <div className="p-6 space-y-5">
-            <div>
-              <p className="text-sm text-gray-500 mb-1">Description</p>
-              <p className="text-gray-800 leading-relaxed">{alert.message}</p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Customer */}
-              <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                  Customer
-                </p>
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white font-semibold flex-shrink-0">
-                    {alert.customer?.name?.charAt(0) || 'C'}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-gray-900 truncate">{alert.customer?.name}</p>
-                    <p className="text-xs text-gray-500 font-mono">{alert.customer?.id}</p>
-                  </div>
-                </div>
-                <div className="space-y-1.5 text-sm text-gray-600">
-                  <div className="flex items-center gap-2">
-                    <Mail size={14} className="text-gray-400 flex-shrink-0" />
-                    <span className="truncate">{alert.customer?.email || 'N/A'}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Phone size={14} className="text-gray-400 flex-shrink-0" />
-                    <span>{alert.customer?.phone || 'N/A'}</span>
-                  </div>
-                </div>
+            {ticketDetailLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="w-6 h-6 text-green-600 animate-spin" />
               </div>
+            ) : (
+              <>
+                <div>
+                  <p className="text-sm text-gray-500 mb-1">Description</p>
+                  <p className="text-gray-800 leading-relaxed whitespace-pre-wrap">
+                    {ticket.description || 'No description provided.'}
+                  </p>
+                </div>
 
-              {/* Vehicle */}
-              <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                  Vehicle
-                </p>
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-                    <Car className="w-5 h-5 text-white" />
+                {/* Customer */}
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                    Customer
+                  </p>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center text-white font-semibold flex-shrink-0">
+                      {ticket.customer?.name?.charAt(0) || 'C'}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-900 truncate">{ticket.customer?.name}</p>
+                      <p className="text-xs text-gray-500 font-mono">{ticket.customer?.id}</p>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-gray-900 truncate">
-                      {alert.vehicle?.name || 'Unknown Vehicle'}
+                  <div className="space-y-1.5 text-sm text-gray-600">
+                    <div className="flex items-center gap-2">
+                      <Mail size={14} className="text-gray-400 flex-shrink-0" />
+                      <span className="truncate">{ticket.customer?.email || 'N/A'}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Phone size={14} className="text-gray-400 flex-shrink-0" />
+                      <span>{ticket.customer?.phone || 'N/A'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Timeline */}
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+                    Timeline
+                  </p>
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3 text-sm">
+                      <Clock size={15} className="text-gray-400 flex-shrink-0" />
+                      <span className="text-gray-500 w-24">Created</span>
+                      <span className="text-gray-800 font-medium">{formatDateTime(ticket.created_at)}</span>
+                    </div>
+                    {ticket.updated_at && (
+                      <div className="flex items-center gap-3 text-sm">
+                        <CheckCheck size={15} className="text-green-500 flex-shrink-0" />
+                        <span className="text-gray-500 w-24">Last updated</span>
+                        <span className="text-gray-800 font-medium">{formatDateTime(ticket.updated_at)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Replies */}
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-2">
+                    <MessageSquare size={14} /> Replies ({ticket.replies?.length || 0})
+                  </p>
+                  <div className="space-y-3 max-h-56 overflow-y-auto pr-1">
+                    {(ticket.replies || []).length === 0 ? (
+                      <p className="text-sm text-gray-400">No replies yet.</p>
+                    ) : (
+                      ticket.replies.map((r, idx) => (
+                        <div key={r.id || idx} className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-xs font-semibold text-blue-700">
+                              {r.author_name || r.sender || 'CPO Support'}
+                            </span>
+                            <span className="text-[11px] text-gray-400">{formatDateTime(r.created_at)}</span>
+                          </div>
+                          <p className="text-sm text-gray-700 whitespace-pre-wrap">{r.message || r.body}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  {/* Reply composer */}
+                  {!isClosed ? (
+                    <div className="mt-3">
+                      <textarea
+                        value={replyText}
+                        onChange={(e) => setReplyText(e.target.value)}
+                        placeholder="Type a reply to the customer..."
+                        rows={3}
+                        className="w-full px-3 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm resize-none"
+                      />
+                      {replyError && (
+                        <p className="text-xs text-red-600 mt-1">{replyError}</p>
+                      )}
+                      <div className="flex justify-end mt-2">
+                        <button
+                          onClick={() => handleSendReply(ticket.id)}
+                          disabled={isSendingReply || !replyText.trim()}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition flex items-center gap-2 text-sm font-medium disabled:opacity-50"
+                        >
+                          {isSendingReply ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Send size={14} />
+                          )}
+                          Send Reply
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-xs text-gray-400 flex items-center gap-1.5">
+                      <Lock size={12} /> This ticket is closed and no longer accepts replies.
                     </p>
-                    <p className="text-xs text-gray-500 font-mono">{alert.vehicle?.plate || 'N/A'}</p>
-                  </div>
+                  )}
                 </div>
-                <div className="space-y-1.5 text-sm text-gray-600">
-                  <div className="flex items-center gap-2">
-                    <Zap size={14} className="text-gray-400 flex-shrink-0" />
-                    <span>{alert.charger || 'N/A'}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <MapPin size={14} className="text-gray-400 flex-shrink-0" />
-                    <span className="truncate">{alert.hub || 'N/A'}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Timeline */}
-            <div className="bg-gray-50 rounded-xl p-4 border border-gray-100">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                Timeline
-              </p>
-              <div className="space-y-3">
-                <div className="flex items-center gap-3 text-sm">
-                  <Clock size={15} className="text-gray-400 flex-shrink-0" />
-                  <span className="text-gray-500 w-24">Triggered</span>
-                  <span className="text-gray-800 font-medium">{formatDateTime(alert.created_at)}</span>
-                </div>
-                {alert.resolved_at && (
-                  <div className="flex items-center gap-3 text-sm">
-                    <CheckCheck size={15} className="text-green-500 flex-shrink-0" />
-                    <span className="text-gray-500 w-24">Resolved</span>
-                    <span className="text-gray-800 font-medium">{formatDateTime(alert.resolved_at)}</span>
-                  </div>
-                )}
-              </div>
-            </div>
+              </>
+            )}
           </div>
 
-          {/* Modal footer */}
+          {/* Modal footer — status actions */}
           <div className="flex items-center gap-3 p-6 border-t border-gray-100">
-            {alert.status === 'active' && (
+            {st.next && (
               <button
-                onClick={() => onAcknowledge(alert.id)}
-                disabled={isUpdating}
+                onClick={() => handleStatusChange(ticket.id, st.next)}
+                disabled={isUpdatingStatus}
                 className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition flex items-center justify-center gap-2 font-medium shadow-lg shadow-blue-500/25 disabled:opacity-50"
               >
-                {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye size={18} />}
-                Acknowledge
-              </button>
-            )}
-            {alert.status !== 'resolved' && (
-              <button
-                onClick={() => onResolve(alert.id)}
-                disabled={isUpdating}
-                className="flex-1 px-4 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 transition flex items-center justify-center gap-2 font-medium shadow-lg shadow-green-500/25 disabled:opacity-50"
-              >
-                {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle size={18} />}
-                Mark Resolved
+                {isUpdatingStatus ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <CheckCircle size={18} />
+                )}
+                Mark as {STATUS_CONFIG[st.next].label}
               </button>
             )}
             <button
@@ -789,7 +757,7 @@ const CustomerAlerts = () => {
             <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-500">Total Alerts</p>
+                  <p className="text-sm text-gray-500">Total Tickets</p>
                   <p className="text-2xl font-bold text-gray-900 mt-1">{stats.total}</p>
                 </div>
                 <div className="w-12 h-12 bg-gradient-to-br from-gray-600 to-gray-800 rounded-xl flex items-center justify-center shadow-lg shadow-gray-500/25">
@@ -801,8 +769,8 @@ const CustomerAlerts = () => {
             <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-500">Critical</p>
-                  <p className="text-2xl font-bold text-red-600 mt-1">{stats.critical}</p>
+                  <p className="text-sm text-gray-500">Open</p>
+                  <p className="text-2xl font-bold text-red-600 mt-1">{stats.open}</p>
                 </div>
                 <div className="w-12 h-12 bg-gradient-to-br from-red-500 to-rose-600 rounded-xl flex items-center justify-center shadow-lg shadow-red-500/25">
                   <ShieldAlert className="w-6 h-6 text-white" />
@@ -813,8 +781,8 @@ const CustomerAlerts = () => {
             <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-500">Warnings</p>
-                  <p className="text-2xl font-bold text-amber-600 mt-1">{stats.warning}</p>
+                  <p className="text-sm text-gray-500">In Progress</p>
+                  <p className="text-2xl font-bold text-amber-600 mt-1">{stats.inProgress}</p>
                 </div>
                 <div className="w-12 h-12 bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/25">
                   <AlertTriangle className="w-6 h-6 text-white" />
@@ -825,7 +793,7 @@ const CustomerAlerts = () => {
             <div className="bg-white rounded-2xl border border-gray-200 p-5 shadow-sm">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-500">Resolved</p>
+                  <p className="text-sm text-gray-500">Resolved / Closed</p>
                   <p className="text-2xl font-bold text-green-600 mt-1">{stats.resolved}</p>
                 </div>
                 <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-green-500/25">
@@ -838,25 +806,26 @@ const CustomerAlerts = () => {
           {/* TOOLBAR */}
           <div className="bg-white rounded-2xl border border-gray-200 p-4 mb-6 shadow-sm">
             <div className="flex flex-col lg:flex-row lg:items-center gap-4">
-              {/* Severity pills */}
+              {/* Priority pills */}
               <div className="flex flex-wrap items-center gap-2">
                 {[
-                  { key: 'all', label: 'All', color: 'text-gray-600' },
-                  { key: 'critical', label: 'Critical', color: 'text-red-600' },
-                  { key: 'warning', label: 'Warning', color: 'text-amber-600' },
-                  { key: 'info', label: 'Info', color: 'text-blue-600' }
-                ].map((s) => (
+                  { key: 'all', label: 'All' },
+                  { key: 'urgent', label: 'Urgent' },
+                  { key: 'high', label: 'High' },
+                  { key: 'medium', label: 'Medium' },
+                  { key: 'low', label: 'Low' }
+                ].map((p) => (
                   <button
-                    key={s.key}
-                    onClick={() => setSeverityFilter(s.key)}
+                    key={p.key}
+                    onClick={() => setPriorityFilter(p.key)}
                     className={`px-3.5 py-2 rounded-xl text-sm font-medium transition border ${
-                      severityFilter === s.key
+                      priorityFilter === p.key
                         ? 'bg-green-50 border-green-300 text-green-700'
                         : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'
                     }`}
                   >
-                    {s.label}
-                    <span className="ml-1.5 text-xs opacity-70">{severityCounts[s.key]}</span>
+                    {p.label}
+                    <span className="ml-1.5 text-xs opacity-70">{priorityCounts[p.key]}</span>
                   </button>
                 ))}
               </div>
@@ -872,16 +841,18 @@ const CustomerAlerts = () => {
                   className="pl-9 pr-8 py-2.5 rounded-xl border border-gray-300 bg-white text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent appearance-none cursor-pointer"
                 >
                   <option value="all">All Status</option>
-                  <option value="active">Active</option>
-                  <option value="acknowledged">Acknowledged</option>
-                  <option value="resolved">Resolved</option>
+                  {STATUS_ORDER.map((s) => (
+                    <option key={s} value={s}>
+                      {STATUS_CONFIG[s].label}
+                    </option>
+                  ))}
                 </select>
                 <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
               </div>
 
               {/* Refresh */}
               <button
-                onClick={fetchCustomerAlerts}
+                onClick={fetchTickets}
                 disabled={loading}
                 className="p-2.5 rounded-xl border border-gray-300 bg-white text-gray-600 hover:bg-gray-50 transition disabled:opacity-50"
                 title="Refresh"
@@ -894,7 +865,7 @@ const CustomerAlerts = () => {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
-                  placeholder="Search alerts, customers, chargers..."
+                  placeholder="Search tickets, customers..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white text-sm"
@@ -903,104 +874,105 @@ const CustomerAlerts = () => {
             </div>
           </div>
 
-          {/* ALERTS LIST */}
+          {/* TICKETS LIST */}
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-8 h-8 text-green-600 animate-spin" />
             </div>
           ) : error ? (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-600 flex items-center gap-2">
-              <AlertCircle size={20} />
-              <span>{error}</span>
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-red-600 flex items-center justify-between gap-2">
+              <span className="flex items-center gap-2">
+                <AlertCircle size={20} />
+                {error}
+              </span>
+              <button
+                onClick={fetchTickets}
+                className="text-sm font-medium underline hover:no-underline"
+              >
+                Retry
+              </button>
             </div>
-          ) : filteredAlerts.length === 0 ? (
+          ) : filteredTickets.length === 0 ? (
             <div className="text-center py-12 bg-white rounded-xl border-2 border-dashed border-gray-200">
               <Bell className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500 font-medium">No Alerts Found</p>
+              <p className="text-gray-500 font-medium">No Tickets Found</p>
               <p className="text-sm text-gray-400 mt-1">
-                {searchQuery || severityFilter !== 'all' || statusFilter !== 'all'
+                {searchQuery || priorityFilter !== 'all' || statusFilter !== 'all'
                   ? 'Try adjusting your filters or search'
-                  : 'All clear — no customer alerts right now'}
+                  : 'All clear — no customer support tickets right now'}
               </p>
             </div>
           ) : (
             <>
               <div className="space-y-3">
-                {paginatedAlerts.map((alert) => {
-                  const sev = SEVERITY_CONFIG[alert.severity] || SEVERITY_CONFIG.info;
-                  const st = STATUS_CONFIG[alert.status] || STATUS_CONFIG.active;
-                  const SevIcon = sev.icon;
+                {paginatedTickets.map((ticket) => {
+                  const pr = PRIORITY_CONFIG[ticket.priority] || PRIORITY_CONFIG.medium;
+                  const st = STATUS_CONFIG[ticket.status] || STATUS_CONFIG.open;
+                  const PrIcon = pr.icon;
 
                   return (
                     <div
-                      key={alert.id}
-                      onClick={() => setSelectedAlert(alert)}
-                      className={`bg-white rounded-2xl border border-gray-200 border-l-4 ${sev.leftBorder} shadow-sm hover:shadow-md transition-all cursor-pointer`}
+                      key={ticket.id}
+                      onClick={() => openTicket(ticket)}
+                      className={`bg-white rounded-2xl border border-gray-200 border-l-4 ${pr.leftBorder} shadow-sm hover:shadow-md transition-all cursor-pointer`}
                     >
                       <div className="p-5">
                         <div className="flex items-start justify-between gap-4">
                           <div className="flex items-start gap-4 min-w-0 flex-1">
-                            <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${sev.iconBox}`}>
-                              <SevIcon className="w-5 h-5" />
+                            <div className={`w-11 h-11 rounded-xl flex items-center justify-center flex-shrink-0 ${pr.iconBox}`}>
+                              <PrIcon className="w-5 h-5" />
                             </div>
 
                             <div className="min-w-0 flex-1">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <h3 className="font-semibold text-gray-900">{alert.title}</h3>
-                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${sev.badge}`}>
-                                  {sev.label}
+                                <h3 className="font-semibold text-gray-900">{ticket.subject}</h3>
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${pr.badge}`}>
+                                  {pr.label}
                                 </span>
                                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${st.badge}`}>
                                   {st.label}
                                 </span>
                               </div>
 
-                              <p className="text-sm text-gray-500 mt-1.5">{alert.message}</p>
+                              <p className="text-sm text-gray-500 mt-1.5 line-clamp-2">{ticket.description}</p>
 
                               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3 text-xs text-gray-500">
                                 <span className="inline-flex items-center gap-1.5">
                                   <User size={13} className="text-gray-400" />
-                                  {alert.customer?.name || 'Unknown'}
+                                  {ticket.customer?.name || 'Unknown'}
                                 </span>
                                 <span className="inline-flex items-center gap-1.5">
-                                  <Zap size={13} className="text-gray-400" />
-                                  {alert.charger}
-                                </span>
-                                <span className="inline-flex items-center gap-1.5">
-                                  <MapPin size={13} className="text-gray-400" />
-                                  {alert.hub}
+                                  <MessageSquare size={13} className="text-gray-400" />
+                                  {ticket.reply_count} {ticket.reply_count === 1 ? 'reply' : 'replies'}
                                 </span>
                                 <span className="inline-flex items-center gap-1.5">
                                   <Clock size={13} className="text-gray-400" />
-                                  {timeAgo(alert.created_at)}
+                                  {timeAgo(ticket.created_at)}
                                 </span>
-                                <span className="font-mono text-gray-400">{alert.id}</span>
+                                <span className="font-mono text-gray-400">{ticket.id}</span>
                               </div>
                             </div>
                           </div>
 
-                          {/* Actions */}
+                          {/* Quick actions */}
                           <div className="flex items-center gap-1 flex-shrink-0">
-                            {alert.status === 'active' && (
+                            {st.next && (
                               <button
-                                onClick={(e) => { e.stopPropagation(); handleAcknowledge(alert.id); }}
-                                className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition"
-                                title="Acknowledge"
-                              >
-                                <Eye size={16} />
-                              </button>
-                            )}
-                            {alert.status !== 'resolved' && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleResolve(alert.id); }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleStatusChange(ticket.id, st.next);
+                                }}
                                 className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition"
-                                title="Mark Resolved"
+                                title={`Mark as ${STATUS_CONFIG[st.next].label}`}
                               >
                                 <CheckCircle size={16} />
                               </button>
                             )}
                             <button
-                              onClick={(e) => { e.stopPropagation(); setSelectedAlert(alert); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openTicket(ticket);
+                              }}
                               className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition"
                               title="View Details"
                             >
@@ -1020,13 +992,13 @@ const CustomerAlerts = () => {
                   <p className="text-sm text-gray-500">
                     Showing{' '}
                     <span className="font-medium text-gray-700">
-                      {(currentPage - 1) * ALERTS_PER_PAGE + 1}
+                      {(currentPage - 1) * TICKETS_PER_PAGE + 1}
                     </span>{' '}
                     to{' '}
                     <span className="font-medium text-gray-700">
-                      {Math.min(currentPage * ALERTS_PER_PAGE, filteredAlerts.length)}
+                      {Math.min(currentPage * TICKETS_PER_PAGE, filteredTickets.length)}
                     </span>{' '}
-                    of <span className="font-medium text-gray-700">{filteredAlerts.length}</span> alerts
+                    of <span className="font-medium text-gray-700">{filteredTickets.length}</span> tickets
                   </p>
 
                   <div className="flex items-center gap-2">
@@ -1067,13 +1039,15 @@ const CustomerAlerts = () => {
         </div>
       </div>
 
-      {/* ALERT DETAIL MODAL */}
-      {selectedAlert && (
-        <AlertDetailModal
-          alert={selectedAlert}
-          onClose={() => setSelectedAlert(null)}
-          onAcknowledge={handleAcknowledge}
-          onResolve={handleResolve}
+      {/* TICKET DETAIL MODAL */}
+      {selectedTicket && (
+        <TicketDetailModal
+          ticket={selectedTicket}
+          onClose={() => {
+            setSelectedTicket(null);
+            setReplyText('');
+            setReplyError('');
+          }}
         />
       )}
     </div>
