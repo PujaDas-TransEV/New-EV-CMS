@@ -52,6 +52,7 @@ import AddStaff from './components/UserAccess/AddStaffAccess';
 import ReportAnalytics from './components/ReportandAnalytics/Report';
 import Vehicles from './components/CustomerandVehicles/Vehicles';
 import ChargerOperations from './components/ChargerSessions/ChargerOperation';
+import CustomerAlerts from './components/CustomerandVehicles/CustomerAlerts';
 import './index.css';
 
 function App() {
@@ -99,7 +100,7 @@ function App() {
           {/* Customer & Vehicles */}
         
           <Route path="/customers" element={<ProtectedRoute><Customers /></ProtectedRoute>} />
-          
+          <Route path="/customer-alerts" element={<ProtectedRoute><CustomerAlerts /></ProtectedRoute>} />
           {/* Customer Groups */}
           <Route path="/customer-groups" element={<ProtectedRoute><CustomerGroups /></ProtectedRoute>} />
           <Route path="/customer-group-detail/:userGroupId" element={<ProtectedRoute><CustomerGroupDetail /></ProtectedRoute>} />
